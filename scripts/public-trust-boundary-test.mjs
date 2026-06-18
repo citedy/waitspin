@@ -3,28 +3,28 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 const root = process.cwd();
-const required = [
-  "workspace files",
-  "source code",
-  "open editor text",
-  "prompts",
-  "model responses",
-  "terminal output",
-  "shell history",
-  "repository URLs",
-  "screenshots",
-  "clipboard",
-  "raw keystrokes",
-  "status-bar-fallback",
-  "claude-code",
-  "mimocode",
-  "opencode",
-  "grok",
-];
-
 const trust = await readFile(path.join(root, "TRUST.md"), "utf8");
 const privacy = await readFile(path.join(root, "app/waitspin/privacy/page.tsx"), "utf8");
-const searchable = (trust + "\n" + privacy).replace(/\s+/g, " ");
+const publicTrustSource = await readFile(
+  path.join(root, "lib/waitspin/public-trust.ts"),
+  "utf8",
+);
+
+function extractConstArray(name) {
+  const match = publicTrustSource.match(
+    new RegExp("export const " + name + " = \\[([\\s\\S]*?)\\] as const;"),
+  );
+  if (!match) throw new Error("Missing canonical trust array: " + name);
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]);
+}
+
+const required = [
+  ...extractConstArray("WAITSPIN_NEVER_SENT_DATA"),
+  ...extractConstArray("WAITSPIN_SENT_PAYLOADS"),
+  ...new Set([...publicTrustSource.matchAll(/target: "([^"]+)"/g)].map((item) => item[1])),
+];
+
+const searchable = (trust + "\n" + privacy + "\n" + publicTrustSource).replace(/\s+/g, " ");
 for (const token of required) {
   if (!searchable.includes(token)) {
     throw new Error("Missing trust-boundary token: " + token);

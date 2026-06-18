@@ -142,12 +142,12 @@ describe("WaitSpin public docs contract", () => {
     expect(provenance.vsix_sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(provenance.npm_package_version).toBe("0.1.6");
     expect(openApi).toContain("Register a supported publisher install target.");
-    expect(JSON.stringify(parsed)).toContain(
-      JSON.stringify(WAITSPIN_PUBLIC_TARGET_IDS),
-    );
-    expect(JSON.stringify(parsed)).not.toContain('"cline"');
-    expect(JSON.stringify(parsed)).not.toContain('"kimi"');
-    expect(JSON.stringify(parsed)).not.toContain('"mmx"');
+    const publisherTargetEnum =
+      parsed.components.schemas.PublisherRegisterRequest.properties.target.enum;
+    expect(publisherTargetEnum).toEqual(WAITSPIN_PUBLIC_TARGET_IDS);
+    expect(publisherTargetEnum).not.toContain("cline");
+    expect(publisherTargetEnum).not.toContain("kimi");
+    expect(publisherTargetEnum).not.toContain("mmx");
     expect(docsPage).toContain('const docsUrl = "https://waitspin.com/docs"');
     expect(docsPage).toContain("alternates: { canonical: docsUrl }");
     expect(docsPage).toContain(WAITSPIN_PUBLIC_TRUST_REPO_URL);
