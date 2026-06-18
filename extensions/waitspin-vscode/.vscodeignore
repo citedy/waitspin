@@ -1,0 +1,9 @@
+.vscode/**
+__tests__/**
+src/**
+*.vsix
+*.tsbuildinfo
+package-lock.json
+tsconfig.json
+out/**/*.map
+media/waitspin-icon.svg

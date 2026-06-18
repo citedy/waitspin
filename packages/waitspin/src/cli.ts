@@ -1,0 +1,3914 @@
+#!/usr/bin/env node
+
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { constants as fsConstants } from "node:fs";
+import {
+  access,
+  chmod,
+  cp,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import {
+  experimentalAllInstallTargets,
+  experimentalInstallTarget,
+  isExperimentalCliTargetName,
+  runExperimentalCliTargetInstall,
+  runExperimentalCliTargetStatus,
+  runExperimentalCliTargetUninstall,
+  type ExperimentalAllInstallTarget,
+  type ExperimentalCliDeps,
+  type ExperimentalCliTargetName,
+} from "./targets/experimental-cli.js";
+
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+const DEFAULT_BASE_URL =
+  process.env.WAITSPIN_BASE_URL?.trim() || "https://api.waitspin.com";
+const PRODUCTION_API_ORIGIN = "https://api.waitspin.com";
+const REQUEST_TIMEOUT_MS = 30_000;
+const DEV_API_BASE_OPT_IN_ENV = "WAITSPIN_ALLOW_DEV_API_BASE";
+const DEV_EXTENSION_ASSETS_OPT_IN_ENV =
+  "WAITSPIN_ALLOW_DEV_EXTENSION_ASSETS";
+const CLAUDE_CODE_BIN_ENV = "WAITSPIN_CLAUDE_CODE_BIN";
+const CLAUDE_CODE_MIN_VERSION = "2.1.97";
+const CLAUDE_CODE_PUBLISHER_TARGET = "claude-code";
+const CLAUDE_CODE_REFRESH_INTERVAL_SECONDS = 5;
+const MIMOCODE_BIN_ENV = "WAITSPIN_MIMOCODE_BIN";
+const MIMOCODE_DEFAULT_BIN = "mimo";
+const OPENCODE_PUBLISHER_TARGET = "opencode";
+const OPENCODE_BIN_ENV = "WAITSPIN_OPENCODE_BIN";
+const OPENCODE_DEFAULT_BIN = "opencode";
+
+const extensionTargets = {
+  vscode: "vscode",
+} as const;
+
+type ExtensionTarget = keyof typeof extensionTargets;
+
+export function usageText(): string {
+  return (
+    [
+      "Usage:",
+      "  waitspin init --email you@example.com [--code CODE] [--key-profile control|publisher-extension] [--base-url URL]",
+      "  waitspin bid create --line TEXT --url https://example.com --price-per-block CENTS --blocks N [--base-url URL] [--api-key KEY]",
+      "  waitspin bids list [--base-url URL] [--api-key KEY]",
+      "  waitspin bid checkout <campaign-id> [--base-url URL] [--api-key KEY]",
+      "  waitspin market [--base-url URL]",
+      "  waitspin wallet status [--base-url URL] [--api-key KEY]",
+      "  waitspin wallet connect [--base-url URL] [--api-key KEY]",
+      "  waitspin wallet ledger [--limit N] [--base-url URL] [--api-key KEY]",
+      "  waitspin wallet payout --dry-run [--base-url URL] [--api-key KEY]",
+      "  waitspin wallet payout --confirm-test-transfer [--base-url URL] [--api-key KEY]",
+      "  waitspin extension install [--target vscode] [--base-url URL] [--api-key KEY] [--dry-run]",
+      "  waitspin extension status [--target vscode]",
+      "  waitspin extension uninstall [--target vscode] [--dry-run]",
+      "  waitspin install --all [--api-key KEY] [--compose-existing] [--dry-run]",
+      "  waitspin status --all",
+      "  waitspin claude-code install [--api-key KEY] [--compose-existing] [--dry-run]",
+      "  waitspin claude-code status",
+      "  waitspin claude-code uninstall [--dry-run]",
+      "  waitspin mimocode install [--api-key KEY] [--dry-run]",
+      "  waitspin mimocode status",
+      "  waitspin mimocode uninstall [--dry-run]",
+      "  waitspin opencode install [--api-key KEY] [--dry-run]",
+      "  waitspin opencode status",
+      "  waitspin opencode uninstall [--dry-run]",
+      "  waitspin grok install [--api-key KEY] [--dry-run]",
+      "  waitspin grok status",
+      "  waitspin grok uninstall [--dry-run]",
+      "",
+      "Defaults:",
+      "  API base: https://api.waitspin.com",
+      "  API key: WAITSPIN_API_KEY env var",
+      "  Public publisher targets: status-bar-fallback, claude-code, mimocode, opencode, grok",
+    ].join("\n") + "\n"
+  );
+}
+
+function usage(exitCode = 1): never {
+  const output = usageText();
+  if (exitCode === 0) {
+    process.stdout.write(output);
+  } else {
+    process.stderr.write(output);
+  }
+  process.exit(exitCode);
+}
+
+function parseArgs(argv: string[]) {
+  if (argv.length === 0) {
+    usage();
+  }
+
+  const [command, ...rest] = argv;
+  if (command === "help" || command === "--help" || command === "-h") {
+    usage(0);
+  }
+
+  const flags = new Map<string, string[]>();
+  const positionals: string[] = [];
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const token = rest[index];
+    if (!token) continue;
+    if (!token.startsWith("--")) {
+      positionals.push(token);
+      continue;
+    }
+    const key = token.slice(2);
+    if (key === "help") {
+      usage(0);
+    }
+    if (
+      key === "dry-run" ||
+      key === "allow-debug-auto-verify" ||
+      key === "allow-dev-api-base" ||
+      key === "allow-dev-extension-assets" ||
+      key === "confirm-test-transfer" ||
+      key === "compose-existing" ||
+      key === "include-experimental" ||
+      key === "all"
+    ) {
+      flags.set(key, ["true"]);
+      continue;
+    }
+    const next = rest[index + 1];
+    if (next === undefined) {
+      throw new Error(`Missing value for --${key}`);
+    }
+    const existing = flags.get(key) || [];
+    existing.push(next);
+    flags.set(key, existing);
+    index += 1;
+  }
+
+  return { command, flags, positionals };
+}
+
+function requireFlag(flags: Map<string, string[]>, name: string): string {
+  const value = flags.get(name)?.[0]?.trim();
+  if (!value) {
+    throw new Error(`Missing required flag --${name}`);
+  }
+  return value;
+}
+
+function optionalFlag(
+  flags: Map<string, string[]>,
+  name: string,
+): string | undefined {
+  const value = flags.get(name)?.[0]?.trim();
+  return value || undefined;
+}
+
+function booleanFlag(flags: Map<string, string[]>, name: string): boolean {
+  return flags.get(name)?.[0] === "true";
+}
+
+function resolveBaseUrl(flags: Map<string, string[]>) {
+  return optionalFlag(flags, "base-url") || DEFAULT_BASE_URL;
+}
+
+function allowDevApiBase(flags: Map<string, string[]>): boolean {
+  return (
+    booleanFlag(flags, "allow-dev-api-base") ||
+    process.env[DEV_API_BASE_OPT_IN_ENV] === "1"
+  );
+}
+
+function allowDevExtensionAssets(flags: Map<string, string[]>): boolean {
+  return (
+    booleanFlag(flags, "allow-dev-extension-assets") ||
+    process.env[DEV_EXTENSION_ASSETS_OPT_IN_ENV] === "1"
+  );
+}
+
+function isLoopbackApiHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/\.$/, "");
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/.test(normalized)
+  );
+}
+
+function normalizeOriginUrl(value: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(
+      "Invalid WaitSpin API base URL. Use an http(s) origin without credentials, path, query, or fragment.",
+    );
+  }
+
+  if (
+    (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    (parsed.pathname !== "" && parsed.pathname !== "/")
+  ) {
+    throw new Error(
+      "Invalid WaitSpin API base URL. Use an http(s) origin without credentials, path, query, or fragment.",
+    );
+  }
+
+  return parsed;
+}
+
+function resolveCredentialedBaseUrl(flags: Map<string, string[]>): string {
+  const parsed = normalizeOriginUrl(resolveBaseUrl(flags));
+  if (parsed.protocol === "https:" && parsed.origin === PRODUCTION_API_ORIGIN) {
+    return parsed.origin;
+  }
+
+  if (
+    allowDevApiBase(flags) &&
+    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+    isLoopbackApiHostname(parsed.hostname)
+  ) {
+    return parsed.origin;
+  }
+
+  throw new Error(
+    `Refusing to send WaitSpin credentials to a non-production API origin. Use ${PRODUCTION_API_ORIGIN} or set ${DEV_API_BASE_OPT_IN_ENV}=1 / --allow-dev-api-base with a loopback http(s) origin for local development.`,
+  );
+}
+
+function resolveApiKey(flags: Map<string, string[]>) {
+  return optionalFlag(flags, "api-key") || process.env.WAITSPIN_API_KEY?.trim();
+}
+
+function resolveKeyIntendedUse(flags: Map<string, string[]>): string | null {
+  const explicitProfile = optionalFlag(flags, "key-profile");
+  if (!explicitProfile) {
+    return null;
+  }
+  if (explicitProfile === "publisher-extension") {
+    return "key_profile:publisher_extension";
+  }
+  if (explicitProfile === "control") {
+    return "key_profile:control";
+  }
+  throw new Error("--key-profile must be control or publisher-extension");
+}
+
+function requireApiKey(flags: Map<string, string[]>) {
+  const apiKey = resolveApiKey(flags);
+  if (!apiKey) {
+    throw new Error(
+      [
+        "Missing API key. Set WAITSPIN_API_KEY or pass --api-key.",
+        "Next command:",
+        "  export WAITSPIN_API_KEY='PASTE_KEY_HERE'",
+      ].join("\n"),
+    );
+  }
+  return apiKey;
+}
+
+function timeoutSignal(): AbortSignal {
+  return AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+}
+
+class WaitSpinCliHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+async function requestJson<T>(
+  input: string,
+  init: RequestInit,
+): Promise<{ status: number; body: T | null }> {
+  const response = await fetch(input, { ...init, signal: timeoutSignal() });
+  const text = await response.text();
+  if (response.status === 204 || !text) {
+    return { status: response.status, body: null };
+  }
+
+  let payload: JsonValue;
+  try {
+    payload = JSON.parse(text) as JsonValue;
+  } catch {
+    if (!response.ok) {
+      throw new WaitSpinCliHttpError(
+        response.status,
+        `HTTP ${response.status}: upstream returned a non-JSON error response`,
+      );
+    }
+    throw new Error("Invalid JSON response from WaitSpin API");
+  }
+
+  if (!response.ok) {
+    throw new WaitSpinCliHttpError(
+      response.status,
+      `HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 500)}`,
+    );
+  }
+
+  return { status: response.status, body: payload as T };
+}
+
+let jsonPrinter: (value: unknown) => void = (value) => {
+  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+};
+
+function printJson(value: unknown) {
+  jsonPrinter(value);
+}
+
+async function capturePrintedJson<T>(fn: () => Promise<void>): Promise<T> {
+  const previousPrinter = jsonPrinter;
+  let captured: unknown;
+  jsonPrinter = (value) => {
+    captured = value;
+  };
+  try {
+    await fn();
+  } finally {
+    jsonPrinter = previousPrinter;
+  }
+  return captured as T;
+}
+
+function keyProfileFromIntendedUse(
+  intendedUse: string | null,
+): "control" | "publisher_extension" | null {
+  if (intendedUse === "key_profile:publisher_extension") {
+    return "publisher_extension";
+  }
+  if (intendedUse === "key_profile:control") {
+    return "control";
+  }
+  return null;
+}
+
+function keyProfileFlagFromIntendedUse(intendedUse: string | null): string {
+  const profile = keyProfileFromIntendedUse(intendedUse);
+  if (profile === "publisher_extension") {
+    return " --key-profile publisher-extension";
+  }
+  if (profile === "control") {
+    return " --key-profile control";
+  }
+  return "";
+}
+
+function waitspinInitVerifyCommand(input: {
+  email: string;
+  intendedUse: string | null;
+}): string {
+  return `waitspin init --email ${input.email} --code CODE_FROM_EMAIL${keyProfileFlagFromIntendedUse(input.intendedUse)}`;
+}
+
+function nextCommandsForVerifiedKey(input: {
+  intendedUse: string | null;
+  scopes?: string[];
+}): { next: string; next_commands: string[]; human_message: string } {
+  const scopes = input.scopes ?? [];
+  const publisherKey =
+    keyProfileFromIntendedUse(input.intendedUse) === "publisher_extension" ||
+    (scopes.includes("publishers:write") &&
+      scopes.includes("serve:read") &&
+      scopes.includes("events:write") &&
+      !scopes.includes("campaigns:write"));
+
+  if (publisherKey) {
+    return {
+      next: "install_publisher_target",
+      next_commands: [
+        "export WAITSPIN_API_KEY='PASTE_KEY_HERE'",
+        "waitspin install --all --dry-run --compose-existing",
+        "waitspin install --all --compose-existing",
+        "waitspin status --all",
+      ],
+      human_message:
+        "Use this publisher-extension key only for publisher install, serve polling, and impressions. Rotate it if it appears in logs.",
+    };
+  }
+
+  return {
+    next: "create_campaign_or_inspect_market",
+    next_commands: [
+      "export WAITSPIN_API_KEY='PASTE_KEY_HERE'",
+      "waitspin market",
+      'waitspin bid create --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1',
+    ],
+    human_message:
+      "Use this control key for advertiser and wallet commands. Keep it out of shell history and logs.",
+  };
+}
+
+async function runInit(flags: Map<string, string[]>) {
+  const baseUrl = resolveBaseUrl(flags);
+  const email = requireFlag(flags, "email");
+  const intendedUse = resolveKeyIntendedUse(flags);
+  const providedCode =
+    optionalFlag(flags, "code") ||
+    process.env.WAITSPIN_VERIFICATION_CODE?.trim();
+
+  if (providedCode) {
+    const { body } = await requestJson<{
+      account_id: string;
+      api_key: string;
+      trust_level: string;
+      scopes: string[];
+    }>(`${baseUrl}/v1/keys/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        code: providedCode,
+        ...(intendedUse ? { intended_use: intendedUse } : {}),
+      }),
+    });
+    printJson({
+      ok: true,
+      base_url: baseUrl,
+      ...body,
+      ...nextCommandsForVerifiedKey({
+        intendedUse,
+        scopes: body?.scopes,
+      }),
+    });
+    return;
+  }
+
+  const { body: requestResult } = await requestJson<{
+    delivery: "email" | "debug";
+    expires_in_seconds?: number;
+    verification_debug_code?: string;
+  }>(`${baseUrl}/v1/keys/request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email,
+      ...(intendedUse ? { intended_use: intendedUse } : {}),
+    }),
+  });
+
+  const code = requestResult?.verification_debug_code;
+  const allowDebugAutoVerify =
+    booleanFlag(flags, "allow-debug-auto-verify") ||
+    process.env.WAITSPIN_ALLOW_DEBUG_CODE_AUTO_VERIFY === "1";
+
+  if (!code || !allowDebugAutoVerify) {
+    printJson({
+      ok: true,
+      next: "enter_email_code",
+      delivery: requestResult?.delivery,
+      email,
+      expires_in_seconds: requestResult?.expires_in_seconds ?? 900,
+      next_command: waitspinInitVerifyCommand({ email, intendedUse }),
+      human_message:
+        "Check your email for the 6-digit WaitSpin code. Paste it as CODE_FROM_EMAIL.",
+      ...(code ? { debug_code_available: true } : {}),
+    });
+    return;
+  }
+
+  const { body: verifyResult } = await requestJson<{
+    account_id: string;
+    api_key: string;
+    trust_level: string;
+    scopes: string[];
+  }>(`${baseUrl}/v1/keys/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email,
+      code,
+      ...(intendedUse ? { intended_use: intendedUse } : {}),
+    }),
+  });
+  printJson({
+    ok: true,
+    base_url: baseUrl,
+    ...verifyResult,
+    ...nextCommandsForVerifiedKey({
+      intendedUse,
+      scopes: verifyResult?.scopes,
+    }),
+  });
+}
+
+async function runBidCreate(flags: Map<string, string[]>) {
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const apiKey = requireApiKey(flags);
+  const adLine = requireFlag(flags, "line");
+  const destinationUrl = requireFlag(flags, "url");
+  const pricePerBlockCents = Number(requireFlag(flags, "price-per-block"));
+  const blocks = Number(requireFlag(flags, "blocks"));
+
+  if (!Number.isFinite(pricePerBlockCents) || pricePerBlockCents < 100) {
+    throw new Error("--price-per-block must be at least 100 cents");
+  }
+  if (!Number.isFinite(blocks) || blocks < 1) {
+    throw new Error("--blocks must be at least 1");
+  }
+
+  const { body } = await requestJson<Record<string, unknown>>(
+    `${baseUrl}/v1/campaigns`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "Idempotency-Key": randomUUID(),
+      },
+      body: JSON.stringify({
+        ad_line: adLine,
+        destination_url: destinationUrl,
+        price_per_block_cents: pricePerBlockCents,
+        blocks,
+      }),
+    },
+  );
+  printJson({ ok: true, ...body });
+}
+
+async function runBidsList(flags: Map<string, string[]>) {
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const apiKey = requireApiKey(flags);
+  const { body } = await requestJson<{ campaigns: unknown[] }>(
+    `${baseUrl}/v1/campaigns`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    },
+  );
+  printJson({ ok: true, campaigns: body?.campaigns ?? [] });
+}
+
+async function runBidCheckout(
+  flags: Map<string, string[]>,
+  positionals: string[],
+) {
+  const campaignId = positionals[0]?.trim();
+  if (!campaignId) {
+    throw new Error("Usage: waitspin bid checkout CAMPAIGN_ID");
+  }
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const apiKey = requireApiKey(flags);
+  const { body } = await requestJson<Record<string, unknown>>(
+    `${baseUrl}/v1/blocks/checkout`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ campaign_id: campaignId }),
+    },
+  );
+  printJson({
+    ok: true,
+    ...body,
+    checkout_disclosure: {
+      terms_url: "https://waitspin.com/waitspin/terms",
+      privacy_url: "https://waitspin.com/waitspin/privacy",
+      refund_policy:
+        "Unused prepaid block handling is support-reviewed. No automated account-credit balance, redemption flow, or self-serve cash refund request flow is shipped.",
+    },
+  });
+}
+
+async function runMarket(flags: Map<string, string[]>) {
+  const baseUrl = resolveBaseUrl(flags);
+  const { body } = await requestJson<Record<string, unknown>>(
+    `${baseUrl}/v1/market`,
+    { method: "GET" },
+  );
+  printJson({ ok: true, ...body });
+}
+
+async function runWalletStatus(flags: Map<string, string[]>) {
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const apiKey = requireApiKey(flags);
+  const { body } = await requestJson<Record<string, unknown>>(
+    `${baseUrl}/v1/wallet/status`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    },
+  );
+  printJson({ ok: true, ...body });
+}
+
+async function runWalletConnect(flags: Map<string, string[]>) {
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const apiKey = requireApiKey(flags);
+  const { body } = await requestJson<Record<string, unknown>>(
+    `${baseUrl}/v1/wallet/connect`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    },
+  );
+  printJson({ ok: true, ...body });
+}
+
+async function runWalletLedger(flags: Map<string, string[]>) {
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const apiKey = requireApiKey(flags);
+  const limit = optionalFlag(flags, "limit");
+  const url = new URL(`${baseUrl}/v1/wallet/ledger`);
+  if (limit) {
+    url.searchParams.set("limit", limit);
+  }
+  const { body } = await requestJson<Record<string, unknown>>(url.toString(), {
+    method: "GET",
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  printJson({ ok: true, ...body });
+}
+
+async function runWalletPayout(flags: Map<string, string[]>) {
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const apiKey = requireApiKey(flags);
+  const dryRun = booleanFlag(flags, "dry-run");
+  const confirmTestTransfer = booleanFlag(flags, "confirm-test-transfer");
+
+  if (!dryRun && !confirmTestTransfer) {
+    throw new Error(
+      "Use --dry-run first, then --confirm-test-transfer for a guarded test payout",
+    );
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey}`,
+  };
+  if (!dryRun) {
+    headers["Idempotency-Key"] = randomUUID();
+  }
+
+  const { body } = await requestJson<Record<string, unknown>>(
+    `${baseUrl}/v1/wallet/payouts`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        dry_run: dryRun,
+        confirm_test_transfer: confirmTestTransfer,
+      }),
+    },
+  );
+  printJson({ ok: true, ...body });
+}
+
+export function generateInstallId(): string {
+  return `wins_${randomUUID().replace(/-/g, "")}`;
+}
+
+export function publisherTargetForExtension(target: ExtensionTarget): string {
+  return target === "vscode" ? "status-bar-fallback" : target;
+}
+
+function extensionInstallDir(_target: ExtensionTarget): string {
+  return path.join(os.homedir(), ".vscode", "extensions");
+}
+
+function vscodeExtensionInstallDir(manifest: {
+  name: string;
+  publisher: string;
+  version: string;
+}) {
+  const extensionRoot = path.resolve(extensionInstallDir("vscode"));
+  const installName = `${manifest.publisher}.${manifest.name}-${manifest.version}`;
+  if (!/^[a-z0-9][a-z0-9.-]*$/.test(installName)) {
+    throw new Error("Refusing to install extension with unsafe manifest name.");
+  }
+  const installPath = path.resolve(extensionRoot, installName);
+  if (!installPath.startsWith(`${extensionRoot}${path.sep}`)) {
+    throw new Error("Refusing to install extension outside the VS Code root.");
+  }
+  return installPath;
+}
+
+function installStatePath(target: ExtensionTarget): string {
+  return path.join(os.homedir(), ".waitspin", `${target}-install.json`);
+}
+
+function extensionMarkerPath(target: ExtensionTarget): string {
+  return path.join(extensionInstallDir(target), ".waitspin-install.json");
+}
+
+function resolveExtensionTarget(flags: Map<string, string[]>): ExtensionTarget {
+  const target = optionalFlag(flags, "target") || "vscode";
+  if (!(target in extensionTargets)) {
+    throw new Error(
+      `Unsupported extension target: ${target}. Public WaitSpin installs currently support --target vscode only.`,
+    );
+  }
+  return target as ExtensionTarget;
+}
+
+type InstallState = {
+  install_id: string;
+  publisher_id?: string;
+  publisher_target: string;
+  registered_at?: string;
+};
+
+type InstallMarker = InstallState & {
+  extension?: string;
+  version?: string;
+  extension_installed?: boolean;
+  installed_extension_path?: string | null;
+};
+
+async function loadInstallState(
+  statePath: string,
+): Promise<InstallState | null> {
+  try {
+    const raw = await readFile(statePath, "utf8");
+    const parsed = JSON.parse(raw) as InstallState;
+    if (!parsed.install_id?.trim()) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function loadInstallMarker(
+  markerPath: string,
+): Promise<InstallMarker | null> {
+  try {
+    return JSON.parse(await readFile(markerPath, "utf8")) as InstallMarker;
+  } catch {
+    return null;
+  }
+}
+
+function assertManagedVscodeExtensionPath(input: string): string {
+  const extensionRoot = path.resolve(extensionInstallDir("vscode"));
+  const resolved = path.resolve(input);
+  const name = path.basename(resolved);
+  if (
+    !resolved.startsWith(`${extensionRoot}${path.sep}`) ||
+    !name.startsWith("waitspin.")
+  ) {
+    throw new Error(
+      "Refusing to manage an extension path outside the WaitSpin VS Code install directory.",
+    );
+  }
+  return resolved;
+}
+
+async function registerPublisherInstall(input: {
+  baseUrl: string;
+  apiKey: string;
+  installId: string;
+  target: string;
+}): Promise<{ publisher_id: string; install_id: string; target: string }> {
+  let body: { publisher_id: string; install_id: string; target: string } | null =
+    null;
+  try {
+    ({ body } = await requestJson<{
+      publisher_id: string;
+      install_id: string;
+      target: string;
+    }>(`${input.baseUrl}/v1/publishers/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.apiKey}`,
+      },
+      body: JSON.stringify({
+        install_id: input.installId,
+        target: input.target,
+      }),
+    }));
+  } catch (error) {
+    if (
+      input.target === CLAUDE_CODE_PUBLISHER_TARGET &&
+      error instanceof WaitSpinCliHttpError &&
+      error.status === 400 &&
+      /status-bar-fallback|Invalid input|Validation error/.test(error.message)
+    ) {
+      throw new Error(
+        [
+          'WaitSpin API rejected target "claude-code".',
+          "Your local CLI supports Claude Code, but the selected API base does not.",
+          "",
+          "For production:",
+          "  deploy the backend target allowlist, then rerun:",
+          "  waitspin claude-code install --compose-existing",
+          "",
+          "For developer-local acceptance only, use an explicit loopback API with --allow-dev-api-base.",
+        ].join("\n"),
+      );
+    }
+    if (
+      input.target === OPENCODE_PUBLISHER_TARGET &&
+      error instanceof WaitSpinCliHttpError &&
+      error.status === 400 &&
+      /Invalid input|Validation error/.test(error.message)
+    ) {
+      throw new Error(
+        [
+          `WaitSpin API rejected target "${OPENCODE_PUBLISHER_TARGET}".`,
+          "Your local CLI supports OpenCode, but the selected API base does not.",
+          "",
+          "For production:",
+          "  deploy the backend target allowlist, then rerun:",
+          `  waitspin ${OPENCODE_PUBLISHER_TARGET} install`,
+          "",
+          "For developer-local acceptance only, use an explicit loopback API with --allow-dev-api-base.",
+        ].join("\n"),
+      );
+    }
+    if (
+      isExperimentalCliTargetName(input.target) &&
+      error instanceof WaitSpinCliHttpError &&
+      error.status === 400 &&
+      /Invalid input|Validation error/.test(error.message)
+    ) {
+      throw new Error(
+        [
+          `WaitSpin API rejected target "${input.target}".`,
+          "Your local CLI supports this hidden experimental target, but the selected API base does not.",
+          "",
+          "For production:",
+          "  deploy the backend target allowlist, then rerun the explicit target install.",
+          "",
+          "For developer-local acceptance only, use an explicit loopback API with --allow-dev-api-base.",
+        ].join("\n"),
+      );
+    }
+    throw error;
+  }
+
+  if (!body) {
+    throw new Error("Publisher registration returned empty body");
+  }
+
+  return body;
+}
+
+async function resolveExtensionDir(
+  flags: Map<string, string[]>,
+): Promise<string> {
+  const packageRoot = resolveCliPackageRoot();
+  const candidates = [
+    path.join(packageRoot, "assets", "waitspin-vscode"),
+  ];
+  if (allowDevExtensionAssets(flags)) {
+    candidates.push(path.join(packageRoot, "../../extensions/waitspin-vscode"));
+  }
+
+  for (const candidate of candidates) {
+    const resolved = path.resolve(candidate);
+    try {
+      await access(path.join(resolved, "package.json"), fsConstants.F_OK);
+      return resolved;
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(
+    `WaitSpin extension package not found. Use a build that ships assets/waitspin-vscode or set ${DEV_EXTENSION_ASSETS_OPT_IN_ENV}=1 / --allow-dev-extension-assets from a trusted checkout.`,
+  );
+}
+
+function parseVscodeExtensionManifest(value: unknown): {
+  name: string;
+  publisher: string;
+  version: string;
+} {
+  if (!value || typeof value !== "object") {
+    throw new Error("Extension manifest must be a JSON object.");
+  }
+  const manifest = value as Record<string, unknown>;
+  const name = typeof manifest.name === "string" ? manifest.name.trim() : "";
+  const publisher =
+    typeof manifest.publisher === "string" ? manifest.publisher.trim() : "";
+  const version =
+    typeof manifest.version === "string" ? manifest.version.trim() : "";
+
+  if (
+    name !== "waitspin-vscode" ||
+    publisher !== "waitspin" ||
+    !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)
+  ) {
+    throw new Error(
+      "Unexpected WaitSpin VS Code extension manifest. Refusing to construct install path.",
+    );
+  }
+
+  return { name, publisher, version };
+}
+
+function resolveCliPackageRoot(): string {
+  if (!process.argv[1]) return process.cwd();
+  let entrypoint = process.argv[1];
+  try {
+    entrypoint = realpathSync(entrypoint);
+  } catch {
+    // Keep the raw argv path; path.dirname still gives a useful best effort.
+  }
+  return path.resolve(path.dirname(entrypoint), "..");
+}
+
+async function installVscodeExtensionRuntime(input: {
+  sourceDir: string;
+  manifest: { name: string; publisher: string; version: string };
+}): Promise<string> {
+  const targetDir = vscodeExtensionInstallDir(input.manifest);
+  await validateVscodeExtensionRuntimeSource(input.sourceDir);
+  await mkdir(targetDir, { recursive: true });
+  await cp(
+    path.join(input.sourceDir, "package.json"),
+    path.join(targetDir, "package.json"),
+    {
+      force: true,
+    },
+  );
+  await cp(path.join(input.sourceDir, "out"), path.join(targetDir, "out"), {
+    recursive: true,
+    force: true,
+  });
+  await cp(path.join(input.sourceDir, "media"), path.join(targetDir, "media"), {
+    recursive: true,
+    force: true,
+  });
+  return targetDir;
+}
+
+async function validateVscodeExtensionRuntimeSource(sourceDir: string) {
+  for (const [assetPath, label] of [
+    [path.join("out", "extension.js"), "compiled extension entrypoint"],
+    [path.join("media", "waitspin-icon.png"), "extension marketplace icon"],
+    [
+      path.join("media", "waitspin-activitybar.svg"),
+      "extension Activity Bar icon",
+    ],
+  ] as const) {
+    try {
+      await access(path.join(sourceDir, assetPath), fsConstants.F_OK);
+    } catch {
+      throw new Error(
+        `WaitSpin VS Code ${label} missing at ${path.join(sourceDir, assetPath)}.`,
+      );
+    }
+  }
+}
+
+export async function runExtensionInstall(flags: Map<string, string[]>) {
+  const target = resolveExtensionTarget(flags);
+
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const publisherTarget = publisherTargetForExtension(target);
+  const extensionDir = await resolveExtensionDir(flags);
+  const manifestPath = path.join(extensionDir, "package.json");
+
+  let manifestJson: unknown;
+  try {
+    manifestJson = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch {
+    throw new Error(`Extension package not found at ${extensionDir}.`);
+  }
+  const manifest = parseVscodeExtensionManifest(manifestJson);
+  await validateVscodeExtensionRuntimeSource(extensionDir);
+
+  const installDir = extensionInstallDir(target);
+  const statePath = installStatePath(target);
+  const existingState = await loadInstallState(statePath);
+  const installId = existingState?.install_id || generateInstallId();
+
+  const summary = {
+    ok: true,
+    target,
+    extension: manifest.name,
+    version: manifest.version,
+    source: extensionDir,
+    install_hint: installDir,
+    install_id: installId,
+    publisher_target: publisherTarget,
+    state_path: statePath,
+    note: "Installs the WaitSpin VS Code publisher extension with Activity Bar wallet and sponsor surfaces.",
+    next: {
+      create_publisher_key:
+        "waitspin init --email you@example.com --key-profile publisher-extension",
+      set_vscode_settings: {
+        "waitspin.installId": installId,
+      },
+      credential_storage:
+        "The VS Code extension migrates a one-time waitspin.apiKey user setting into SecretStorage; runtime polling reads SecretStorage only.",
+      optional_bootstrap_env: {
+        WAITSPIN_INSTALL_ID: installId,
+      },
+    },
+  };
+
+  if (booleanFlag(flags, "dry-run")) {
+    printJson({ ...summary, dry_run: true, publisher_registered: false });
+    return;
+  }
+
+  const apiKey = requireApiKey(flags);
+  const registration = await registerPublisherInstall({
+    baseUrl,
+    apiKey,
+    installId,
+    target: publisherTarget,
+  });
+
+  const installState: InstallState = {
+    install_id: registration.install_id,
+    publisher_id: registration.publisher_id,
+    publisher_target: registration.target,
+    registered_at: new Date().toISOString(),
+  };
+
+  await mkdir(path.dirname(statePath), { recursive: true });
+  await writeFile(
+    statePath,
+    `${JSON.stringify(installState, null, 2)}\n`,
+    "utf8",
+  );
+
+  await mkdir(installDir, { recursive: true });
+  const markerPath = extensionMarkerPath(target);
+  const installedExtensionPath = await installVscodeExtensionRuntime({
+    sourceDir: extensionDir,
+    manifest,
+  });
+  await writeFile(
+    markerPath,
+    `${JSON.stringify(
+      {
+        ...summary,
+        ...installState,
+        extension_installed: Boolean(installedExtensionPath),
+        installed_extension_path: installedExtensionPath,
+        publisher_registered: true,
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  printJson({
+    ...summary,
+    ...installState,
+    extension_installed: Boolean(installedExtensionPath),
+    installed_extension_path: installedExtensionPath,
+    publisher_registered: true,
+  });
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath, fsConstants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function managedInstalledPath(marker: InstallMarker | null): string | null {
+  const markerPath = marker?.installed_extension_path?.trim();
+  return markerPath ? assertManagedVscodeExtensionPath(markerPath) : null;
+}
+
+function managedInstalledPathStatus(marker: InstallMarker | null): {
+  path: string | null;
+  error: string | null;
+} {
+  try {
+    return { path: managedInstalledPath(marker), error: null };
+  } catch {
+    return { path: null, error: "invalid_managed_extension_path" };
+  }
+}
+
+export async function runExtensionStatus(flags: Map<string, string[]>) {
+  const target = resolveExtensionTarget(flags);
+  const statePath = installStatePath(target);
+  const markerPath = extensionMarkerPath(target);
+  const [state, marker] = await Promise.all([
+    loadInstallState(statePath),
+    loadInstallMarker(markerPath),
+  ]);
+  const installedPathStatus = managedInstalledPathStatus(marker);
+  const installedExtensionPath = installedPathStatus.path;
+  const extensionInstalled = installedExtensionPath
+    ? await pathExists(path.join(installedExtensionPath, "package.json"))
+    : false;
+
+  printJson({
+    ok: true,
+    target,
+    mode: "status-bar-fallback",
+    installed: extensionInstalled,
+    publisher_registered: Boolean(state?.publisher_id || marker?.publisher_id),
+    install_id: state?.install_id || marker?.install_id || null,
+    publisher_id: state?.publisher_id || marker?.publisher_id || null,
+    publisher_target:
+      state?.publisher_target ||
+      marker?.publisher_target ||
+      publisherTargetForExtension(target),
+    extension: marker?.extension || null,
+    version: marker?.version || null,
+    state_path: statePath,
+    marker_path: markerPath,
+    installed_extension_path: installedExtensionPath,
+    install_marker_error: installedPathStatus.error,
+  });
+}
+
+export async function runExtensionUninstall(flags: Map<string, string[]>) {
+  const target = resolveExtensionTarget(flags);
+  const statePath = installStatePath(target);
+  const markerPath = extensionMarkerPath(target);
+  const marker = await loadInstallMarker(markerPath);
+  const installedPathStatus = managedInstalledPathStatus(marker);
+  const installedExtensionPath = installedPathStatus.path;
+  const removePaths = [statePath, markerPath];
+  if (installedExtensionPath) {
+    removePaths.unshift(installedExtensionPath);
+  }
+
+  if (booleanFlag(flags, "dry-run")) {
+    printJson({
+      ok: true,
+      target,
+      dry_run: true,
+      would_remove: removePaths,
+      install_marker_error: installedPathStatus.error,
+    });
+    return;
+  }
+
+  await Promise.all(
+    removePaths.map((filePath) =>
+      rm(filePath, { force: true, recursive: true }),
+    ),
+  );
+  printJson({
+    ok: true,
+    target,
+    uninstalled: true,
+    removed: removePaths,
+    install_marker_error: installedPathStatus.error,
+  });
+}
+
+type ClaudeCodeSettings = Record<string, JsonValue>;
+
+type ClaudeCodeStatusLine = {
+  type: "command";
+  command: string;
+  padding?: number;
+  refreshInterval?: number;
+};
+
+type ClaudeCodeSettingsScope = "project" | "local";
+
+type ClaudeCodeScopedStatusLine = {
+  scope: ClaudeCodeSettingsScope;
+  path: string;
+  statusLine: JsonValue | undefined;
+};
+
+type ClaudeCodeInstallState = InstallState & {
+  target: typeof CLAUDE_CODE_PUBLISHER_TARGET;
+  base_url: string;
+  api_key: string;
+  runtime_path: string;
+  cache_path: string;
+  settings_path: string;
+  managed_status_line: ClaudeCodeStatusLine;
+  previous_status_line?: JsonValue;
+  composed_existing_status_line?: boolean;
+  claude_version?: string;
+  installed_at: string;
+};
+
+function claudeCodeInstallDir(): string {
+  return path.join(os.homedir(), ".waitspin");
+}
+
+function claudeCodeStatePath(): string {
+  return path.join(claudeCodeInstallDir(), "claude-code-install.json");
+}
+
+function claudeCodeRuntimePath(): string {
+  return path.join(claudeCodeInstallDir(), "claude-code-statusline.mjs");
+}
+
+function claudeCodeCachePath(): string {
+  return path.join(claudeCodeInstallDir(), "claude-code-statusline-cache.json");
+}
+
+function claudeCodeSettingsPath(): string {
+  return path.join(os.homedir(), ".claude", "settings.json");
+}
+
+function claudeCodeProjectSettingsCandidates(
+  startDir = process.cwd(),
+): Array<{ scope: ClaudeCodeSettingsScope; path: string }> {
+  const candidates: Array<{ scope: ClaudeCodeSettingsScope; path: string }> =
+    [];
+  const homeDir = path.resolve(os.homedir());
+  let currentDir = path.resolve(startDir);
+
+  while (currentDir !== homeDir) {
+    candidates.push({
+      scope: "local",
+      path: path.join(currentDir, ".claude", "settings.local.json"),
+    });
+    candidates.push({
+      scope: "project",
+      path: path.join(currentDir, ".claude", "settings.json"),
+    });
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
+  }
+
+  return candidates;
+}
+
+function claudeCodeBinary(): string {
+  return process.env[CLAUDE_CODE_BIN_ENV]?.trim() || "claude";
+}
+
+function execFileText(
+  file: string,
+  args: string[],
+  options: { encoding: "utf8"; timeout: number },
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, options, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve({
+        stdout: String(stdout || ""),
+        stderr: String(stderr || ""),
+      });
+    });
+  });
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function windowsPath(value: string): string {
+  return value.replace(/\\/g, "/");
+}
+
+function powerShellQuote(value: string): string {
+  return `'${windowsPath(value).replace(/'/g, "''")}'`;
+}
+
+function powerShellCommandArgument(value: string): string {
+  return `"${value.replace(/[`"$]/g, "`$&")}"`;
+}
+
+function claudeCodeStatusLineCommand(input: {
+  runtimePath: string;
+  statePath: string;
+}): string {
+  if (process.platform === "win32") {
+    const command = [
+      "&",
+      powerShellQuote(process.execPath),
+      powerShellQuote(input.runtimePath),
+      "--state",
+      powerShellQuote(input.statePath),
+    ].join(" ");
+    return [
+      "powershell",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      powerShellCommandArgument(command),
+    ].join(" ");
+  }
+
+  return `${shellQuote(process.execPath)} ${shellQuote(input.runtimePath)} --state ${shellQuote(input.statePath)}`;
+}
+
+function managedClaudeCodeStatusLine(input: {
+  runtimePath: string;
+  statePath: string;
+}): ClaudeCodeStatusLine {
+  return {
+    type: "command",
+    command: claudeCodeStatusLineCommand(input),
+    padding: 2,
+    refreshInterval: CLAUDE_CODE_REFRESH_INTERVAL_SECONDS,
+  };
+}
+
+function parseVersionParts(value: string): [number, number, number] | null {
+  const match = value.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function isVersionAtLeast(value: string, minimum: string): boolean {
+  const current = parseVersionParts(value);
+  const target = parseVersionParts(minimum);
+  if (!current || !target) return false;
+  for (let index = 0; index < target.length; index += 1) {
+    if (current[index] > target[index]) return true;
+    if (current[index] < target[index]) return false;
+  }
+  return true;
+}
+
+async function readClaudeCodeVersion(): Promise<string> {
+  try {
+    const result = await execFileText(claudeCodeBinary(), ["--version"], {
+      encoding: "utf8",
+      timeout: 5_000,
+    });
+    return `${result.stdout || result.stderr || ""}`.trim();
+  } catch (error) {
+    throw new Error(
+      `Unable to run Claude Code. Install Claude Code or set ${CLAUDE_CODE_BIN_ENV} to its executable path before installing WaitSpin Claude Code support.`,
+      { cause: error },
+    );
+  }
+}
+
+async function assertSupportedClaudeCodeVersion(): Promise<string> {
+  const version = await readClaudeCodeVersion();
+  if (!isVersionAtLeast(version, CLAUDE_CODE_MIN_VERSION)) {
+    throw new Error(
+      `Unsupported Claude Code version: ${version || "unknown"}. WaitSpin Claude Code statusline support requires Claude Code ${CLAUDE_CODE_MIN_VERSION} or newer.`,
+    );
+  }
+  return version;
+}
+
+function isErrno(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === code
+  );
+}
+
+async function readJsonObjectFile(filePath: string): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await readFile(filePath, "utf8");
+    if (!raw.trim()) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(`${filePath} must contain a JSON object.`);
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function writeJsonObjectFile(
+  filePath: string,
+  value: unknown,
+  mode?: number,
+): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, {
+    encoding: "utf8",
+    mode,
+  });
+  if (mode) {
+    await chmod(filePath, mode);
+  }
+}
+
+async function loadClaudeCodeSettings(): Promise<ClaudeCodeSettings> {
+  const parsed = await readJsonObjectFile(claudeCodeSettingsPath());
+  return (parsed ?? {}) as ClaudeCodeSettings;
+}
+
+async function findClaudeCodeScopedStatusLine(): Promise<ClaudeCodeScopedStatusLine | null> {
+  for (const candidate of claudeCodeProjectSettingsCandidates()) {
+    const parsed = await readJsonObjectFile(candidate.path);
+    if (
+      parsed &&
+      Object.prototype.hasOwnProperty.call(parsed, "statusLine")
+    ) {
+      return {
+        scope: candidate.scope,
+        path: candidate.path,
+        statusLine: parsed.statusLine as JsonValue | undefined,
+      };
+    }
+  }
+  return null;
+}
+
+async function loadClaudeCodeInstallState(): Promise<ClaudeCodeInstallState | null> {
+  const parsed = await readJsonObjectFile(claudeCodeStatePath());
+  if (!parsed?.install_id || parsed.target !== CLAUDE_CODE_PUBLISHER_TARGET) {
+    return null;
+  }
+  return parsed as ClaudeCodeInstallState;
+}
+
+function isCommandStatusLine(value: unknown): value is ClaudeCodeStatusLine {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as { type?: unknown }).type === "command" &&
+    typeof (value as { command?: unknown }).command === "string" &&
+    (value as { command: string }).command.trim().length > 0
+  );
+}
+
+function statusLineEquals(left: unknown, right: unknown): boolean {
+  if (isCommandStatusLine(left) && isCommandStatusLine(right)) {
+    return (
+      left.type === right.type &&
+      left.command === right.command &&
+      left.padding === right.padding &&
+      left.refreshInterval === right.refreshInterval
+    );
+  }
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function claudeCodeScopedStatusLineBlocker(
+  scopedStatusLine: ClaudeCodeScopedStatusLine | null,
+  managedStatusLine: ClaudeCodeStatusLine,
+): string | null {
+  if (!scopedStatusLine) return null;
+  if (statusLineEquals(scopedStatusLine.statusLine, managedStatusLine)) {
+    return null;
+  }
+  return `Claude Code ${scopedStatusLine.scope} settings at ${scopedStatusLine.path} define a higher-priority statusLine. User-level WaitSpin install would not be used in this project. Remove or compose that statusLine first, then retry.`;
+}
+
+function resolveClaudeCodeSettingsUpdate(input: {
+  settings: ClaudeCodeSettings;
+  managedStatusLine: ClaudeCodeStatusLine;
+  existingState: ClaudeCodeInstallState | null;
+  composeExisting: boolean;
+}): {
+  nextSettings: ClaudeCodeSettings;
+  previousStatusLine?: JsonValue;
+  composedExistingStatusLine: boolean;
+  action: "install" | "refresh-managed" | "compose-existing";
+} {
+  const current = input.settings.statusLine;
+  const isAlreadyManaged =
+    statusLineEquals(current, input.managedStatusLine) ||
+    (input.existingState?.managed_status_line &&
+      statusLineEquals(current, input.existingState.managed_status_line));
+
+  if (!current || isAlreadyManaged) {
+    return {
+      nextSettings: { ...input.settings, statusLine: input.managedStatusLine },
+      previousStatusLine: input.existingState?.previous_status_line,
+      composedExistingStatusLine: Boolean(
+        input.existingState?.composed_existing_status_line,
+      ),
+      action: isAlreadyManaged ? "refresh-managed" : "install",
+    };
+  }
+
+  if (!input.composeExisting) {
+    throw new Error(
+      "Claude Code already has a statusLine configured. Re-run with --compose-existing to preserve it and append the WaitSpin sponsor line, or remove it first.",
+    );
+  }
+
+  if (!isCommandStatusLine(current)) {
+    throw new Error(
+      "Claude Code statusLine exists but is not a command status line; refusing to compose because restore would be ambiguous.",
+    );
+  }
+
+  if (current.command === input.managedStatusLine.command) {
+    return {
+      nextSettings: { ...input.settings, statusLine: input.managedStatusLine },
+      composedExistingStatusLine: false,
+      action: "refresh-managed",
+    };
+  }
+
+  return {
+    nextSettings: { ...input.settings, statusLine: input.managedStatusLine },
+    previousStatusLine: current as JsonValue,
+    composedExistingStatusLine: true,
+    action: "compose-existing",
+  };
+}
+
+function redactedClaudeCodeState(
+  state: ClaudeCodeInstallState | null,
+): Record<string, unknown> | null {
+  if (!state) return null;
+  return {
+    target: state.target,
+    install_id: state.install_id,
+    publisher_id: state.publisher_id,
+    publisher_target: state.publisher_target,
+    registered_at: state.registered_at,
+    base_url: state.base_url,
+    runtime_path: state.runtime_path,
+    cache_path: state.cache_path,
+    settings_path: state.settings_path,
+    composed_existing_status_line: Boolean(
+      state.composed_existing_status_line,
+    ),
+    has_previous_status_line: state.previous_status_line !== undefined,
+    claude_version: state.claude_version,
+    installed_at: state.installed_at,
+    api_key_present: Boolean(state.api_key),
+  };
+}
+
+function claudeCodeStatuslineRuntimeSource(): string {
+  return String.raw`#!/usr/bin/env node
+import { spawn } from "node:child_process";
+import {
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+
+const FETCH_INTERVAL_MS = 15_000;
+const FETCH_TIMEOUT_MS = 2_500;
+const PREVIOUS_TIMEOUT_MS = 1_000;
+const MAX_ACTIVE_AGE_MS = 60_000;
+const LOCK_RETRY_MS = 40;
+const LOCK_TIMEOUT_MS = 2_000;
+const LOCK_STALE_MS = 10_000;
+
+function argValue(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+async function readStdin() {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function readJson(filePath, fallback) {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+async function writeJson(filePath, value) {
+  const tmp = filePath + "." + process.pid + ".tmp";
+  await writeFile(tmp, JSON.stringify(value, null, 2) + "\n", {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  await rename(tmp, filePath);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function acquireCacheLock(cachePath) {
+  const lockPath = cachePath + ".lock";
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < LOCK_TIMEOUT_MS) {
+    try {
+      await mkdir(lockPath);
+      return async () => {
+        await rm(lockPath, { recursive: true, force: true });
+      };
+    } catch {
+      try {
+        const lockStat = await stat(lockPath);
+        if (Date.now() - lockStat.mtimeMs > LOCK_STALE_MS) {
+          await rm(lockPath, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+        // Another process may have released the lock between mkdir/stat.
+      }
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
+
+  throw new Error("Timed out waiting for WaitSpin statusline cache lock.");
+}
+
+async function withCacheLock(cachePath, callback) {
+  const release = await acquireCacheLock(cachePath);
+  try {
+    return await callback();
+  } finally {
+    await release();
+  }
+}
+
+function cleanLine(value) {
+  return String(value || "")
+    .replace(
+      /(?:\u001B\[[0-?]*[ -/]*[@-~]|\u001B\][^\u0007]*(?:\u0007|\u001B\\)|\u001B[P^_][\s\S]*?\u001B\\|\u001B[@-Z\\-_]|\u009B[0-?]*[ -/]*[@-~])/g,
+      " ",
+    )
+    .replace(/[\r\n\u0000-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
+async function runPreviousStatusLine(command, input) {
+  if (!command) return "";
+  return await new Promise((resolve) => {
+    const child = spawn(command, {
+      shell: true,
+      stdio: ["pipe", "pipe", "ignore"],
+      env: process.env,
+    });
+    let stdout = "";
+    let settled = false;
+    let killTimer = null;
+    function finish(value) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      resolve(value);
+    }
+    const timer = setTimeout(() => {
+      child.stdout.destroy();
+      child.stdin.destroy();
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+      }, 100);
+      killTimer.unref?.();
+      child.unref?.();
+      finish("");
+    }, PREVIOUS_TIMEOUT_MS);
+    timer.unref?.();
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+      if (stdout.length > 4000) stdout = stdout.slice(0, 4000);
+    });
+    child.on("error", () => {
+      finish("");
+    });
+    child.on("close", () => {
+      finish(stdout.trimEnd());
+    });
+    child.stdin.end(input);
+  });
+}
+
+async function waitspinFetch(url, init) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseServe(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const creative = payload.creative;
+  if (!creative || typeof creative !== "object") return null;
+  const line = cleanLine(creative.line);
+  if (!line) return null;
+  if (
+    typeof payload.serve_id !== "string" ||
+    typeof payload.serve_receipt !== "string"
+  ) {
+    return null;
+  }
+  const parsedExpiresAt = Date.parse(payload.expires_at || "");
+  return {
+    serveId: payload.serve_id,
+    serveReceipt: payload.serve_receipt,
+    line,
+    shownAt: Date.now(),
+    expiresAtMs: Number.isFinite(parsedExpiresAt)
+      ? parsedExpiresAt
+      : Date.now() + MAX_ACTIVE_AGE_MS,
+    minVisibleMs:
+      typeof payload.min_visible_ms === "number" && payload.min_visible_ms >= 5000
+        ? payload.min_visible_ms
+        : 5000,
+    impressionRecorded: false,
+  };
+}
+
+function serveIsExpired(serve) {
+  return (
+    Date.now() >= (serve.expiresAtMs || 0) ||
+    Date.now() - serve.shownAt > MAX_ACTIVE_AGE_MS
+  );
+}
+
+async function fetchNextServe(state, session) {
+  const response = await waitspinFetch(state.base_url + "/v1/serve/next", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + state.api_key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ install_id: state.install_id }),
+  });
+  session.lastFetchAt = Date.now();
+  if (response.status === 204) {
+    session.activeServe = null;
+    return;
+  }
+  if (!response.ok) return;
+  const parsed = parseServe(await response.json());
+  if (parsed) session.activeServe = parsed;
+}
+
+async function recordImpression(state, session) {
+  const serve = session.activeServe;
+  if (!serve || serve.impressionRecorded) return;
+  const visibleMs = Date.now() - serve.shownAt;
+  if (visibleMs < serve.minVisibleMs) return;
+  const response = await waitspinFetch(state.base_url + "/v1/events/impression", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + state.api_key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      serve_id: serve.serveId,
+      serve_receipt: serve.serveReceipt,
+      install_id: state.install_id,
+      visible_ms: Math.max(visibleMs, serve.minVisibleMs),
+    }),
+  });
+  if (response.ok) serve.impressionRecorded = true;
+}
+
+function sessionKey(inputJson) {
+  return (
+    inputJson.session_id ||
+    inputJson.transcript_path ||
+    inputJson.cwd ||
+    "claude-code"
+  );
+}
+
+function pruneSessions(cache) {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  for (const [key, value] of Object.entries(cache.sessions || {})) {
+    if ((value.lastSeenAt || 0) < cutoff) delete cache.sessions[key];
+  }
+}
+
+async function main() {
+  const statePath = argValue("--state");
+  if (!statePath) return;
+  const stdin = await readStdin();
+  let inputJson = {};
+  try {
+    inputJson = stdin.trim() ? JSON.parse(stdin) : {};
+  } catch {
+    inputJson = {};
+  }
+  const state = await readJson(statePath, null);
+  if (!state?.api_key || !state.install_id || !state.base_url || !state.cache_path) {
+    return;
+  }
+
+  const previous = await runPreviousStatusLine(
+    state.previous_status_line?.type === "command"
+      ? state.previous_status_line.command
+      : "",
+    stdin,
+  );
+  let renderedSession = null;
+
+  try {
+    renderedSession = await withCacheLock(state.cache_path, async () => {
+      const cache = await readJson(state.cache_path, { sessions: {} });
+      if (!cache.sessions || typeof cache.sessions !== "object") cache.sessions = {};
+      const key = sessionKey(inputJson);
+      const session = cache.sessions[key] || {};
+      session.lastSeenAt = Date.now();
+      cache.sessions[key] = session;
+
+      if (session.activeServe && serveIsExpired(session.activeServe)) {
+        session.activeServe = null;
+      }
+      await recordImpression(state, session);
+      const shouldFetchNext = !session.activeServe
+        ? Date.now() - (session.lastFetchAt || 0) >= FETCH_INTERVAL_MS
+        : session.activeServe.impressionRecorded &&
+          Date.now() - (session.lastFetchAt || 0) >= FETCH_INTERVAL_MS;
+      if (shouldFetchNext) {
+        await fetchNextServe(state, session);
+      }
+      pruneSessions(cache);
+      await writeJson(state.cache_path, cache);
+      return session;
+    });
+  } catch {
+    // Statusline rendering must never interrupt Claude Code.
+  }
+
+  const sponsor = renderedSession?.activeServe?.line
+    ? "Sponsored: " + renderedSession.activeServe.line
+    : "";
+  const lines = [previous, sponsor].filter(Boolean);
+  if (lines.length > 0) process.stdout.write(lines.join("\n"));
+}
+
+main().catch(() => {});
+`;
+}
+
+async function writeClaudeCodeRuntime(runtimePath: string): Promise<void> {
+  await mkdir(path.dirname(runtimePath), { recursive: true });
+  await writeFile(runtimePath, claudeCodeStatuslineRuntimeSource(), {
+    encoding: "utf8",
+    mode: 0o755,
+  });
+  await chmod(runtimePath, 0o755);
+}
+
+function assertSafeClaudeCodeManagedPath(filePath: string): string {
+  const installRoot = path.resolve(claudeCodeInstallDir());
+  const resolved = path.resolve(filePath);
+  if (
+    !resolved.startsWith(`${installRoot}${path.sep}`) ||
+    !path.basename(resolved).startsWith("claude-code-")
+  ) {
+    throw new Error(
+      "Refusing to manage a Claude Code WaitSpin file outside ~/.waitspin.",
+    );
+  }
+  return resolved;
+}
+
+export async function runClaudeCodeInstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const statePath = claudeCodeStatePath();
+  const runtimePath = claudeCodeRuntimePath();
+  const cachePath = claudeCodeCachePath();
+  const settingsPath = claudeCodeSettingsPath();
+  const existingState = await loadClaudeCodeInstallState();
+  const installId = existingState?.install_id || generateInstallId();
+  const managedStatusLine = managedClaudeCodeStatusLine({
+    runtimePath,
+    statePath,
+  });
+  const settings = await loadClaudeCodeSettings();
+  const scopedStatusLine = await findClaudeCodeScopedStatusLine();
+  const scopedStatusLineBlockedReason = claudeCodeScopedStatusLineBlocker(
+    scopedStatusLine,
+    managedStatusLine,
+  );
+  let settingsUpdate: ReturnType<typeof resolveClaudeCodeSettingsUpdate> | null =
+    null;
+  let settingsBlockedReason: string | null = null;
+  try {
+    settingsUpdate = resolveClaudeCodeSettingsUpdate({
+      settings,
+      managedStatusLine,
+      existingState,
+      composeExisting: booleanFlag(flags, "compose-existing"),
+    });
+  } catch (error) {
+    if (!dryRun) throw error;
+    settingsBlockedReason =
+      error instanceof Error ? error.message : String(error);
+  }
+  if (scopedStatusLineBlockedReason && !dryRun) {
+    throw new Error(scopedStatusLineBlockedReason);
+  }
+
+  const summary = {
+    ok: true,
+    target: CLAUDE_CODE_PUBLISHER_TARGET,
+    mode: "statusline-command",
+    install_id: installId,
+    publisher_target: CLAUDE_CODE_PUBLISHER_TARGET,
+    state_path: statePath,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    settings_path: settingsPath,
+    settings_action: settingsUpdate?.action ?? "blocked",
+    composed_existing_status_line:
+      settingsUpdate?.composedExistingStatusLine ?? false,
+    note: "Installs WaitSpin through Claude Code's official statusLine.command surface.",
+    next: "check_status",
+    next_command: "waitspin claude-code status",
+  };
+
+  if (dryRun) {
+    const blockedReason =
+      settingsBlockedReason ?? scopedStatusLineBlockedReason;
+    printJson({
+      ...summary,
+      dry_run: true,
+      publisher_registered: false,
+      has_existing_status_line: Boolean(settings.statusLine),
+      ...(scopedStatusLine
+        ? {
+            scoped_status_line: {
+              scope: scopedStatusLine.scope,
+              path: scopedStatusLine.path,
+              overrides_user_settings: Boolean(scopedStatusLineBlockedReason),
+            },
+          }
+        : {}),
+      ...(blockedReason
+        ? {
+            would_fail: true,
+            settings_blocked_reason: blockedReason,
+            next: settingsBlockedReason
+              ? "resolve_status_line_conflict"
+              : "resolve_project_status_line_override",
+            ...(settingsBlockedReason
+              ? {
+                  next_command:
+                    "waitspin claude-code install --compose-existing",
+                }
+              : {
+                  human_message:
+                    "Current project/local Claude Code settings override user-level statusLine. Remove or compose that statusLine before installing WaitSpin for this project.",
+                }),
+          }
+        : {}),
+    });
+    return;
+  }
+
+  if (!settingsUpdate) {
+    throw new Error("Unable to resolve Claude Code settings update.");
+  }
+  const claudeVersion = await assertSupportedClaudeCodeVersion();
+  const apiKey = requireApiKey(flags);
+  const registration = await registerPublisherInstall({
+    baseUrl,
+    apiKey,
+    installId,
+    target: CLAUDE_CODE_PUBLISHER_TARGET,
+  });
+  const installedAt = new Date().toISOString();
+  const installState: ClaudeCodeInstallState = {
+    target: CLAUDE_CODE_PUBLISHER_TARGET,
+    install_id: registration.install_id,
+    publisher_id: registration.publisher_id,
+    publisher_target: registration.target,
+    registered_at: installedAt,
+    base_url: baseUrl,
+    api_key: apiKey,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    settings_path: settingsPath,
+    managed_status_line: managedStatusLine,
+    previous_status_line: settingsUpdate.previousStatusLine,
+    composed_existing_status_line: settingsUpdate.composedExistingStatusLine,
+    claude_version: claudeVersion,
+    installed_at: installedAt,
+  };
+
+  try {
+    await writeClaudeCodeRuntime(runtimePath);
+    await writeJsonObjectFile(statePath, installState, 0o600);
+    await writeJsonObjectFile(settingsPath, settingsUpdate.nextSettings);
+  } catch (error) {
+    if (existingState) {
+      await writeJsonObjectFile(statePath, existingState, 0o600).catch(
+        () => {},
+      );
+    } else {
+      await Promise.resolve(
+        rm(statePath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(runtimePath, { force: true, recursive: true }),
+      ).catch(() => {});
+    }
+    throw error;
+  }
+
+  printJson({
+    ...summary,
+    ...redactedClaudeCodeState(installState),
+    publisher_registered: true,
+    claude_version: claudeVersion,
+    next: "launch_claude_code",
+    next_command: "claude",
+    acceptance_hint:
+      "Keep the sponsored line visible for at least 5 seconds, then verify an impression.",
+  });
+}
+
+export async function runClaudeCodeStatus() {
+  const state = await loadClaudeCodeInstallState();
+  const settings = await loadClaudeCodeSettings();
+  const managedStatusLine = state?.managed_status_line ?? null;
+  const currentStatusLine = settings.statusLine;
+  const statusLineConfigured = Boolean(
+    managedStatusLine && statusLineEquals(currentStatusLine, managedStatusLine),
+  );
+  const scopedStatusLine = await findClaudeCodeScopedStatusLine();
+  const scopedStatusLineOverridden = Boolean(
+    managedStatusLine &&
+      scopedStatusLine &&
+      !statusLineEquals(scopedStatusLine.statusLine, managedStatusLine),
+  );
+  const effectiveStatusLineConfigured =
+    statusLineConfigured && !scopedStatusLineOverridden;
+  const runtimeInstalled = state
+    ? await pathExists(assertSafeClaudeCodeManagedPath(state.runtime_path))
+    : false;
+
+  const installed = Boolean(
+    state && runtimeInstalled && effectiveStatusLineConfigured,
+  );
+  printJson({
+    ok: true,
+    target: CLAUDE_CODE_PUBLISHER_TARGET,
+    mode: "statusline-command",
+    installed,
+    publisher_registered: Boolean(state?.publisher_id),
+    install_id: state?.install_id ?? null,
+    publisher_id: state?.publisher_id ?? null,
+    publisher_target: state?.publisher_target ?? CLAUDE_CODE_PUBLISHER_TARGET,
+    state_path: claudeCodeStatePath(),
+    runtime_path: state?.runtime_path ?? claudeCodeRuntimePath(),
+    cache_path: state?.cache_path ?? claudeCodeCachePath(),
+    settings_path: claudeCodeSettingsPath(),
+    runtime_installed: runtimeInstalled,
+    status_line_configured: statusLineConfigured,
+    effective_status_line_configured: effectiveStatusLineConfigured,
+    status_line_overridden: scopedStatusLineOverridden,
+    ...(scopedStatusLineOverridden && scopedStatusLine
+      ? {
+          status_line_override_scope: scopedStatusLine.scope,
+          status_line_override_path: scopedStatusLine.path,
+        }
+      : {}),
+    composed_existing_status_line: Boolean(
+      state?.composed_existing_status_line,
+    ),
+    has_previous_status_line: Boolean(state?.previous_status_line),
+    claude_version: state?.claude_version ?? null,
+    ...(installed
+      ? {
+          next: "launch_claude_code",
+          next_command: "claude",
+          acceptance_hint:
+            "Keep the sponsored line visible for at least 5 seconds, then verify an impression.",
+        }
+      : {
+          next: "install_claude_code",
+          next_command: "waitspin claude-code install --compose-existing",
+          human_message: scopedStatusLineOverridden
+            ? "Claude Code WaitSpin support is installed in user settings, but a higher-priority project/local statusLine overrides it in this directory."
+            : "Claude Code WaitSpin statusline support is not installed for this user.",
+        }),
+  });
+}
+
+export async function runClaudeCodeUninstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const state = await loadClaudeCodeInstallState();
+  const settings = await loadClaudeCodeSettings();
+  const declaredRemovePaths = state
+    ? [
+        state.runtime_path,
+        state.cache_path,
+        claudeCodeStatePath(),
+      ]
+    : [claudeCodeStatePath()];
+
+  let nextSettings: ClaudeCodeSettings | null = null;
+  let settingsAction:
+    | "restore-previous"
+    | "remove-managed"
+    | "skip-user-settings"
+    | "not-managed" = "not-managed";
+  let settingsWarning: string | null = null;
+  if (state?.managed_status_line) {
+    if (!statusLineEquals(settings.statusLine, state.managed_status_line)) {
+      settingsAction = "skip-user-settings";
+      settingsWarning =
+        "Claude Code statusLine is no longer the WaitSpin managed command; leaving user settings unchanged while removing WaitSpin-managed files.";
+    } else {
+      nextSettings = { ...settings };
+      if (state.previous_status_line !== undefined) {
+        nextSettings.statusLine = state.previous_status_line;
+        settingsAction = "restore-previous";
+      } else {
+        delete nextSettings.statusLine;
+        settingsAction = "remove-managed";
+      }
+    }
+  }
+
+  if (dryRun) {
+    printJson({
+      ok: true,
+      target: CLAUDE_CODE_PUBLISHER_TARGET,
+      dry_run: true,
+      installed: Boolean(state),
+      settings_action: settingsAction,
+      would_remove: declaredRemovePaths,
+      path_validation: state ? "deferred_until_apply" : "not_needed",
+      ...(settingsWarning
+        ? {
+            settings_warning: settingsWarning,
+          }
+        : {}),
+    });
+    return;
+  }
+
+  const removePaths = state
+    ? [
+        assertSafeClaudeCodeManagedPath(state.runtime_path),
+        assertSafeClaudeCodeManagedPath(state.cache_path),
+        claudeCodeStatePath(),
+      ]
+    : [claudeCodeStatePath()];
+
+  if (nextSettings) {
+    await writeJsonObjectFile(claudeCodeSettingsPath(), nextSettings);
+  }
+  await Promise.all(
+    removePaths.map((filePath) =>
+      rm(filePath, { force: true, recursive: true }),
+    ),
+  );
+  printJson({
+    ok: true,
+    target: CLAUDE_CODE_PUBLISHER_TARGET,
+    uninstalled: true,
+    settings_action: settingsAction,
+    removed: removePaths,
+    ...(settingsWarning ? { settings_warning: settingsWarning } : {}),
+  });
+}
+
+// --- MiMo Code Publisher Support ---
+
+const MIMOCODE_PUBLISHER_TARGET = "mimocode";
+
+type MiMoCodeInstallState = InstallState & {
+  target: typeof MIMOCODE_PUBLISHER_TARGET;
+  base_url: string;
+  api_key: string;
+  runtime_path: string;
+  cache_path: string;
+  state_path: string;
+  bashrc_path: string;
+  installed_at: string;
+};
+
+function miMoCodeInstallDir(): string {
+  return path.join(os.homedir(), ".waitspin");
+}
+
+function miMoCodeStatePath(): string {
+  return path.join(miMoCodeInstallDir(), "mimocode-statusline.json");
+}
+
+function miMoCodeCachePath(): string {
+  return path.join(miMoCodeInstallDir(), "mimocode-statusline-cache.json");
+}
+
+function miMoCodeRuntimePath(): string {
+  return path.join(
+    os.homedir(),
+    ".local",
+    "bin",
+    "waitspin-mimocode-runtime",
+  );
+}
+
+function miMoCodeBashrcPath(): string {
+  return path.join(os.homedir(), ".bashrc");
+}
+
+const MIMOCODE_BASHRC_MARKER = "# WaitSpin MiMo Code statusline hook";
+const MIMOCODE_BASHRC_END_MARKER =
+  "# End WaitSpin MiMo Code statusline hook";
+
+function miMoCodeStatuslineRuntimeSource(): string {
+  return String.raw`#!/usr/bin/env node
+import {
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+const FETCH_INTERVAL_MS = 15_000;
+const FETCH_TIMEOUT_MS = 2_500;
+const MAX_ACTIVE_AGE_MS = 60_000;
+const LOCK_RETRY_MS = 40;
+const LOCK_TIMEOUT_MS = 2_000;
+const LOCK_STALE_MS = 10_000;
+
+const STATE_DIR = path.join(os.homedir(), ".waitspin");
+const STATE_FILE = path.join(STATE_DIR, "mimocode-statusline.json");
+const DEFAULT_CACHE_FILE = path.join(STATE_DIR, "mimocode-statusline-cache.json");
+
+async function readJson(filePath, fallback) {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+async function writeJson(filePath, value) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tmp = filePath + "." + process.pid + ".tmp";
+  await writeFile(tmp, JSON.stringify(value, null, 2) + "\n", {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  await rename(tmp, filePath);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function acquireCacheLock(cachePath) {
+  await mkdir(path.dirname(cachePath), { recursive: true });
+  const lockPath = cachePath + ".lock";
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < LOCK_TIMEOUT_MS) {
+    try {
+      await mkdir(lockPath);
+      return async () => {
+        await rm(lockPath, { recursive: true, force: true });
+      };
+    } catch {
+      try {
+        const lockStat = await stat(lockPath);
+        if (Date.now() - lockStat.mtimeMs > LOCK_STALE_MS) {
+          await rm(lockPath, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+        // Another process may have released the lock between mkdir/stat.
+      }
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
+
+  throw new Error("Timed out waiting for WaitSpin MiMo cache lock.");
+}
+
+async function withCacheLock(cachePath, callback) {
+  const release = await acquireCacheLock(cachePath);
+  try {
+    return await callback();
+  } finally {
+    await release();
+  }
+}
+
+function cleanLine(value) {
+  return String(value || "")
+    .replace(
+      /(?:\u001B\[[0-?]*[ -/]*[@-~]|\u001B\][^\u0007]*(?:\u0007|\u001B\\)|\u001B[P^_][\s\S]*?\u001B\\|\u001B[@-Z\\-_]|\u009B[0-?]*[ -/]*[@-~])/g,
+      " ",
+    )
+    .replace(/[\r\n\u0000-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
+async function waitspinFetch(url, init) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseServe(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const creative = payload.creative;
+  if (!creative || typeof creative !== "object") return null;
+  const line = cleanLine(creative.line);
+  if (!line) return null;
+  if (
+    typeof payload.serve_id !== "string" ||
+    typeof payload.serve_receipt !== "string"
+  ) {
+    return null;
+  }
+  const parsedExpiresAt = Date.parse(payload.expires_at || "");
+  return {
+    serveId: payload.serve_id,
+    serveReceipt: payload.serve_receipt,
+    line,
+    shownAt: Date.now(),
+    expiresAtMs: Number.isFinite(parsedExpiresAt)
+      ? parsedExpiresAt
+      : Date.now() + MAX_ACTIVE_AGE_MS,
+    minVisibleMs:
+      typeof payload.min_visible_ms === "number" && payload.min_visible_ms >= 5000
+        ? payload.min_visible_ms
+        : 5000,
+    impressionRecorded: false,
+  };
+}
+
+function serveIsExpired(serve) {
+  return (
+    Date.now() >= (serve.expiresAtMs || 0) ||
+    Date.now() - serve.shownAt > MAX_ACTIVE_AGE_MS
+  );
+}
+
+async function fetchNextServe(state, cache) {
+  const response = await waitspinFetch(state.base_url + "/v1/serve/next", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + state.api_key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ install_id: state.install_id }),
+  });
+  cache.lastFetchAt = Date.now();
+  if (response.status === 204) {
+    cache.activeServe = null;
+    return;
+  }
+  if (!response.ok) return;
+  const parsed = parseServe(await response.json());
+  if (parsed) cache.activeServe = parsed;
+}
+
+async function recordImpression(state, cache) {
+  const serve = cache.activeServe;
+  if (!serve || serve.impressionRecorded) return;
+  const visibleMs = Date.now() - serve.shownAt;
+  if (visibleMs < serve.minVisibleMs) return;
+  const response = await waitspinFetch(state.base_url + "/v1/events/impression", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + state.api_key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      serve_id: serve.serveId,
+      serve_receipt: serve.serveReceipt,
+      install_id: state.install_id,
+      visible_ms: Math.max(visibleMs, serve.minVisibleMs),
+    }),
+  });
+  if (response.ok) {
+    serve.impressionRecorded = true;
+  } else if ([400, 404, 409, 410].includes(response.status)) {
+    cache.activeServe = null;
+  }
+}
+
+async function renderSponsorLine(state) {
+  const cachePath = state.cache_path || DEFAULT_CACHE_FILE;
+  return await withCacheLock(cachePath, async () => {
+    const cache = await readJson(cachePath, {});
+    if (cache.activeServe && serveIsExpired(cache.activeServe)) {
+      cache.activeServe = null;
+    }
+
+    await recordImpression(state, cache);
+
+    const shouldFetchNext = !cache.activeServe
+      ? Date.now() - (cache.lastFetchAt || 0) >= FETCH_INTERVAL_MS
+      : cache.activeServe.impressionRecorded &&
+        Date.now() - (cache.lastFetchAt || 0) >= FETCH_INTERVAL_MS;
+    if (shouldFetchNext) {
+      await fetchNextServe(state, cache);
+    }
+
+    await writeJson(cachePath, cache);
+    return cache.activeServe?.line || "";
+  });
+}
+
+async function main() {
+  const state = await readJson(STATE_FILE, null);
+  if (!state?.api_key || !state.install_id || !state.base_url) return;
+
+  try {
+    const line = await renderSponsorLine(state);
+    if (line) process.stdout.write(line);
+  } catch {
+    // Prompt hooks must never interrupt the user's shell.
+  }
+}
+
+main().catch(() => {});
+`;
+}
+
+function miMoCodeBashHook(): string {
+  const D = "$";
+  return `${MIMOCODE_BASHRC_MARKER}
+__waitspin_statusline() {
+  local line
+  line=$("$HOME/.local/bin/waitspin-mimocode-runtime" 2>/dev/null)
+  if [ -n "$line" ]; then
+    printf "\\x1b[38;5;245m──\\x1b[0m \\x1b[38;5;220m%s\\x1b[0m \\x1b[38;5;245m──\\x1b[0m" "$line"
+  fi
+}
+
+__waitspin_prompt_command() {
+  local waitspin_previous_status=$?
+  if [ -n "${D}{__WAITSPIN_PREVIOUS_PROMPT_COMMAND:-}" ]; then
+    eval "$__WAITSPIN_PREVIOUS_PROMPT_COMMAND"
+  fi
+  __waitspin_statusline
+  return ${D}waitspin_previous_status
+}
+
+if [ -z "${D}{__WAITSPIN_PROMPT_INSTALLED:-}" ]; then
+  __WAITSPIN_PREVIOUS_PROMPT_COMMAND="${D}{PROMPT_COMMAND:-}"
+  PROMPT_COMMAND="__waitspin_prompt_command"
+  __WAITSPIN_PROMPT_INSTALLED=1
+fi
+${MIMOCODE_BASHRC_END_MARKER}`;
+}
+
+function readJsonObjectFileSafe(filePath: string): Promise<Record<string, unknown> | null> {
+  return readJsonObjectFile(filePath);
+}
+
+async function loadMiMoCodeInstallState(): Promise<MiMoCodeInstallState | null> {
+  const parsed = await readJsonObjectFileSafe(miMoCodeStatePath());
+  if (!parsed?.install_id || parsed.target !== MIMOCODE_PUBLISHER_TARGET) {
+    return null;
+  }
+  return parsed as unknown as MiMoCodeInstallState;
+}
+
+function redactedMiMoCodeState(
+  state: MiMoCodeInstallState | null,
+): Record<string, unknown> | null {
+  if (!state) return null;
+  return {
+    target: state.target,
+    install_id: state.install_id,
+    publisher_id: state.publisher_id,
+    publisher_target: state.publisher_target,
+    registered_at: state.registered_at,
+    base_url: state.base_url,
+    runtime_path: state.runtime_path,
+    cache_path: state.cache_path,
+    state_path: state.state_path,
+    bashrc_path: state.bashrc_path,
+    installed_at: state.installed_at,
+    api_key_present: Boolean(state.api_key),
+  };
+}
+
+async function writeMiMoCodeRuntime(runtimePath: string): Promise<void> {
+  await mkdir(path.dirname(runtimePath), { recursive: true });
+  await writeFile(runtimePath, miMoCodeStatuslineRuntimeSource(), {
+    encoding: "utf8",
+    mode: 0o755,
+  });
+  await chmod(runtimePath, 0o755);
+}
+
+async function writeTextFileAtomic(filePath: string, value: string): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.waitspin-${process.pid}.tmp`;
+  await writeFile(tmpPath, value, { encoding: "utf8" });
+  await rename(tmpPath, filePath);
+}
+
+async function addMiMoCodeBashHook(bashrcPath: string): Promise<boolean> {
+  try {
+    const content = await readFile(bashrcPath, "utf8").catch(() => "");
+    if (content.includes(MIMOCODE_BASHRC_MARKER)) {
+      return false;
+    }
+    await writeTextFileAtomic(
+      bashrcPath,
+      `${content}${content.endsWith("\n") || !content ? "" : "\n"}${miMoCodeBashHook()}\n`,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function removeMiMoCodeBashHook(bashrcPath: string): Promise<boolean> {
+  try {
+    const content = await readFile(bashrcPath, "utf8");
+    if (!content.includes(MIMOCODE_BASHRC_MARKER)) {
+      return false;
+    }
+    const markerIndex = content.indexOf(MIMOCODE_BASHRC_MARKER);
+    const afterMarker = content.slice(markerIndex);
+    const markerEnd = afterMarker.indexOf(MIMOCODE_BASHRC_END_MARKER);
+    const before = content.slice(0, markerIndex);
+    let after: string;
+    if (markerEnd >= 0) {
+      after = afterMarker.slice(markerEnd + MIMOCODE_BASHRC_END_MARKER.length);
+    } else {
+      const hookEnd = afterMarker.indexOf("\n}\n");
+      if (hookEnd === -1) {
+        return false;
+      }
+      after = afterMarker.slice(hookEnd + 3);
+    }
+    await writeTextFileAtomic(bashrcPath, before + after);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function runMiMoCodeInstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const statePath = miMoCodeStatePath();
+  const runtimePath = miMoCodeRuntimePath();
+  const cachePath = miMoCodeCachePath();
+  const bashrcPath = miMoCodeBashrcPath();
+  const existingState = await loadMiMoCodeInstallState();
+  const installId = existingState?.install_id || generateInstallId();
+
+  const summary = {
+    ok: true,
+    target: MIMOCODE_PUBLISHER_TARGET,
+    mode: "shell-hook",
+    install_id: installId,
+    publisher_target: MIMOCODE_PUBLISHER_TARGET,
+    state_path: statePath,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    bashrc_path: bashrcPath,
+    note: "Installs WaitSpin through a bash hook that polls the API for sponsored messages.",
+    next: "check_status",
+    next_command: "waitspin mimocode status",
+  };
+
+  if (dryRun) {
+    const hookExists = await readFile(bashrcPath, "utf8")
+      .then((c) => c.includes(MIMOCODE_BASHRC_MARKER))
+      .catch(() => false);
+
+    printJson({
+      ...summary,
+      dry_run: true,
+      publisher_registered: false,
+      bashrc_hook_exists: hookExists,
+      would_write: [statePath, runtimePath],
+    });
+    return;
+  }
+
+  const apiKey = requireApiKey(flags);
+  const registration = await registerPublisherInstall({
+    baseUrl,
+    apiKey,
+    installId,
+    target: MIMOCODE_PUBLISHER_TARGET,
+  });
+
+  const installedAt = new Date().toISOString();
+  const installState: MiMoCodeInstallState = {
+    target: MIMOCODE_PUBLISHER_TARGET,
+    install_id: registration.install_id,
+    publisher_id: registration.publisher_id,
+    publisher_target: registration.target,
+    registered_at: installedAt,
+    base_url: baseUrl,
+    api_key: apiKey,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    state_path: statePath,
+    bashrc_path: bashrcPath,
+    installed_at: installedAt,
+  };
+
+  try {
+    await writeMiMoCodeRuntime(runtimePath);
+    await writeJsonObjectFile(statePath, installState, 0o600);
+    await addMiMoCodeBashHook(bashrcPath);
+  } catch (error) {
+    if (existingState) {
+      await writeJsonObjectFile(statePath, existingState, 0o600).catch(
+        () => {},
+      );
+    } else {
+      await Promise.resolve(
+        rm(statePath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(runtimePath, { force: true, recursive: true }),
+      ).catch(() => {});
+    }
+    throw error;
+  }
+
+  printJson({
+    ...summary,
+    ...redactedMiMoCodeState(installState),
+    publisher_registered: true,
+    next: "test_runtime",
+    next_command: "waitspin-mimocode-runtime",
+    acceptance_hint:
+      "Run 'source ~/.bashrc' or restart your shell, then keep the sponsored line visible for at least 5 seconds.",
+  });
+}
+
+export async function runMiMoCodeStatus() {
+  const state = await loadMiMoCodeInstallState();
+  const runtimePath = state?.runtime_path ?? miMoCodeRuntimePath();
+  const cachePath = state?.cache_path ?? miMoCodeCachePath();
+  const bashrcPath = state?.bashrc_path ?? miMoCodeBashrcPath();
+  const runtimeInstalled = await pathExists(runtimePath);
+  const hookExists = await readFile(bashrcPath, "utf8")
+    .then((c) => c.includes(MIMOCODE_BASHRC_MARKER))
+    .catch(() => false);
+
+  const installed = Boolean(state && runtimeInstalled);
+
+  printJson({
+    ok: true,
+    target: MIMOCODE_PUBLISHER_TARGET,
+    mode: "shell-hook",
+    installed,
+    publisher_registered: Boolean(state?.publisher_id),
+    install_id: state?.install_id ?? null,
+    publisher_id: state?.publisher_id ?? null,
+    publisher_target: state?.publisher_target ?? MIMOCODE_PUBLISHER_TARGET,
+    state_path: miMoCodeStatePath(),
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    bashrc_path: bashrcPath,
+    runtime_installed: runtimeInstalled,
+    bashrc_hook: hookExists,
+    installed_at: state?.installed_at ?? null,
+    ...(installed
+      ? {
+          next: "test_runtime",
+          next_command: "waitspin-mimocode-runtime",
+          acceptance_hint:
+            "Run 'source ~/.bashrc' or restart your shell, then keep the sponsored line visible for at least 5 seconds.",
+        }
+      : {
+          next: "install_mimocode",
+          next_command: "waitspin mimocode install",
+        }),
+  });
+}
+
+export async function runMiMoCodeUninstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const state = await loadMiMoCodeInstallState();
+  const bashrcPath = state?.bashrc_path ?? miMoCodeBashrcPath();
+  const runtimePath = state?.runtime_path ?? miMoCodeRuntimePath();
+  const cachePath = state?.cache_path ?? miMoCodeCachePath();
+
+  const declaredRemovePaths = [
+    runtimePath,
+    miMoCodeStatePath(),
+    cachePath,
+  ];
+
+  if (dryRun) {
+    printJson({
+      ok: true,
+      target: MIMOCODE_PUBLISHER_TARGET,
+      dry_run: true,
+      installed: Boolean(state),
+      would_remove: declaredRemovePaths,
+      bashrc_hook: await readFile(bashrcPath, "utf8")
+        .then((c) => c.includes(MIMOCODE_BASHRC_MARKER))
+        .catch(() => false),
+    });
+    return;
+  }
+
+  const removePaths = [miMoCodeStatePath()];
+  const skippedUnsafePaths: string[] = [];
+  if (state) {
+    try {
+      removePaths.unshift(assertSafeMiMoCodeRuntimePath(state.runtime_path));
+    } catch {
+      skippedUnsafePaths.push(state.runtime_path);
+    }
+    try {
+      removePaths.push(assertSafeMiMoCodeCachePath(cachePath));
+    } catch {
+      skippedUnsafePaths.push(cachePath);
+    }
+  } else {
+    removePaths.push(assertSafeMiMoCodeCachePath(cachePath));
+  }
+
+  await removeMiMoCodeBashHook(bashrcPath);
+  await Promise.all(
+    removePaths.map((filePath) =>
+      rm(filePath, { force: true, recursive: true }),
+    ),
+  );
+
+  printJson({
+    ok: true,
+    target: MIMOCODE_PUBLISHER_TARGET,
+    uninstalled: true,
+    removed: removePaths,
+    bashrc_hook_removed: true,
+    ...(skippedUnsafePaths.length > 0
+      ? { skipped_unsafe_paths: skippedUnsafePaths }
+      : {}),
+  });
+}
+
+function assertSafeMiMoCodeRuntimePath(filePath: string): string {
+  const expected = path.resolve(miMoCodeRuntimePath());
+  const resolved = path.resolve(filePath);
+  if (resolved !== expected) {
+    throw new Error(
+      "Refusing to manage a MiMo Code runtime path that is not the WaitSpin-managed executable.",
+    );
+  }
+  return expected;
+}
+
+function assertSafeMiMoCodeCachePath(filePath: string): string {
+  const expected = path.resolve(miMoCodeCachePath());
+  const resolved = path.resolve(filePath);
+  if (resolved !== expected) {
+    throw new Error(
+      "Refusing to manage a MiMo Code cache path that is not the WaitSpin-managed cache.",
+    );
+  }
+  return expected;
+}
+
+// --- OpenCode Publisher Support ---
+
+type OpencodeInstallState = InstallState & {
+  target: typeof OPENCODE_PUBLISHER_TARGET;
+  base_url: string;
+  api_key: string;
+  runtime_path: string;
+  cache_path: string;
+  plugin_path: string;
+  tui_config_path: string;
+  tui_plugin_entry: string;
+  installed_at: string;
+};
+
+const OPENCODE_TUI_PLUGIN_ENTRY = "./plugins/waitspin-opencode.plugin.tsx";
+
+type OpencodeTuiConfigPlan = {
+  configPath: string;
+  previousConfig: Record<string, unknown> | null;
+  nextConfig: Record<string, unknown>;
+  changed: boolean;
+};
+
+function opencodeInstallDir(): string {
+  return path.join(os.homedir(), ".waitspin");
+}
+
+function opencodeConfigDir(): string {
+  return path.join(os.homedir(), ".config", "opencode");
+}
+
+function opencodeStatePath(): string {
+  return path.join(opencodeInstallDir(), "opencode-install.json");
+}
+
+function opencodeRuntimePath(): string {
+  return path.join(opencodeInstallDir(), "opencode-statusline.mjs");
+}
+
+function opencodeCachePath(): string {
+  return path.join(opencodeInstallDir(), "opencode-statusline-cache.json");
+}
+
+function opencodePluginInstallDir(): string {
+  return path.join(opencodeConfigDir(), "plugins");
+}
+
+function opencodePluginDestPath(): string {
+  return path.join(opencodePluginInstallDir(), "waitspin-opencode.plugin.tsx");
+}
+
+function opencodeTuiConfigPath(): string {
+  return path.join(opencodeConfigDir(), "tui.json");
+}
+
+function opencodePluginAssetName(): string {
+  return "waitspin-opencode.plugin.tsx";
+}
+
+async function resolveOpencodeAssetsDir(
+  flags: Map<string, string[]>,
+): Promise<string> {
+  const packageRoot = resolveCliPackageRoot();
+  const candidates = [
+    path.join(packageRoot, "assets", "waitspin-opencode"),
+  ];
+  if (allowDevExtensionAssets(flags)) {
+    candidates.push(
+      path.join(
+        packageRoot,
+        "..",
+        "..",
+        "extensions",
+        "waitspin-opencode",
+      ),
+    );
+  }
+
+  for (const candidate of candidates) {
+    const resolved = path.resolve(candidate);
+    try {
+      await access(
+        path.join(resolved, "opencode-statusline.mjs"),
+        fsConstants.F_OK,
+      );
+      await access(path.join(resolved, opencodePluginAssetName()), fsConstants.F_OK);
+      return resolved;
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(
+    `WaitSpin OpenCode assets not found. Use a build that ships assets/waitspin-opencode or set ${DEV_EXTENSION_ASSETS_OPT_IN_ENV}=1 / --allow-dev-extension-assets from a trusted checkout.`,
+  );
+}
+
+function assertSafeOpencodeManagedPath(filePath: string): string {
+  const expected = path.resolve(opencodeCachePath());
+  const resolved = path.resolve(filePath);
+  if (resolved !== expected) {
+    throw new Error(
+      "Refusing to manage an OpenCode WaitSpin cache path that is not the managed cache.",
+    );
+  }
+  return expected;
+}
+
+function assertSafeOpencodePluginPath(filePath: string): string {
+  const expected = path.resolve(opencodePluginDestPath());
+  const resolved = path.resolve(filePath);
+  if (resolved !== expected) {
+    throw new Error(
+      "Refusing to manage an OpenCode plugin path that is not the WaitSpin-managed plugin.",
+    );
+  }
+  return expected;
+}
+
+function assertSafeOpencodeTuiConfigPath(filePath: string): string {
+  const expected = path.resolve(opencodeTuiConfigPath());
+  const resolved = path.resolve(filePath);
+  if (resolved !== expected) {
+    throw new Error(
+      "Refusing to manage an OpenCode TUI config path that is not the WaitSpin-managed config.",
+    );
+  }
+  return expected;
+}
+
+function assertSafeOpencodeManagedRuntimePath(filePath: string): string {
+  const expected = path.resolve(opencodeRuntimePath());
+  const resolved = path.resolve(filePath);
+  if (resolved !== expected) {
+    throw new Error(
+      "Refusing to manage an OpenCode runtime path that is not the WaitSpin-managed runtime.",
+    );
+  }
+  return expected;
+}
+
+function opencodeTuiPluginEntrySpec(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
+
+function isWaitSpinOpencodeTuiPluginEntry(
+  value: unknown,
+  tuiConfigPath = opencodeTuiConfigPath(),
+): boolean {
+  const spec = opencodeTuiPluginEntrySpec(value);
+  if (!spec) return false;
+  if (spec === OPENCODE_TUI_PLUGIN_ENTRY) return true;
+  if (path.isAbsolute(spec)) {
+    return path.resolve(spec) === path.resolve(opencodePluginDestPath());
+  }
+  if (spec.startsWith(".")) {
+    return (
+      path.resolve(path.dirname(tuiConfigPath), spec) ===
+      path.resolve(opencodePluginDestPath())
+    );
+  }
+  return false;
+}
+
+function opencodeConfigWithTuiPluginEntry(input: {
+  config: Record<string, unknown>;
+  tuiConfigPath: string;
+}): Record<string, unknown> {
+  const plugin = input.config.plugin;
+  if (plugin !== undefined && !Array.isArray(plugin)) {
+    throw new Error(
+      "OpenCode tui.json plugin field must be an array before WaitSpin can manage it.",
+    );
+  }
+  const entries = Array.isArray(plugin) ? plugin : [];
+  if (
+    entries.some((entry) =>
+      isWaitSpinOpencodeTuiPluginEntry(entry, input.tuiConfigPath),
+    )
+  ) {
+    return input.config;
+  }
+  return {
+    ...input.config,
+    plugin: [...entries, OPENCODE_TUI_PLUGIN_ENTRY],
+  };
+}
+
+async function planOpencodeTuiConfigInstall(
+  tuiConfigPath: string,
+): Promise<OpencodeTuiConfigPlan> {
+  const previousConfig = await readJsonObjectFile(tuiConfigPath);
+  const config = previousConfig ?? {};
+  const nextConfig = opencodeConfigWithTuiPluginEntry({
+    config,
+    tuiConfigPath,
+  });
+  return {
+    configPath: tuiConfigPath,
+    previousConfig,
+    nextConfig,
+    changed: JSON.stringify(config) !== JSON.stringify(nextConfig),
+  };
+}
+
+async function writeOpencodeTuiConfigPlan(
+  plan: OpencodeTuiConfigPlan,
+): Promise<void> {
+  if (!plan.changed) return;
+  await writeJsonObjectFile(plan.configPath, plan.nextConfig);
+}
+
+async function restoreOpencodeTuiConfigPlan(
+  plan: OpencodeTuiConfigPlan,
+): Promise<void> {
+  if (!plan.changed) return;
+  if (plan.previousConfig) {
+    await writeJsonObjectFile(plan.configPath, plan.previousConfig).catch(
+      () => {},
+    );
+    return;
+  }
+  await Promise.resolve(rm(plan.configPath, { force: true })).catch(() => {});
+}
+
+async function opencodeTuiPluginConfigured(
+  tuiConfigPath: string,
+): Promise<boolean> {
+  const config = (await readJsonObjectFile(tuiConfigPath)) ?? {};
+  const plugin = config.plugin;
+  return (
+    Array.isArray(plugin) &&
+    plugin.some((entry) =>
+      isWaitSpinOpencodeTuiPluginEntry(entry, tuiConfigPath),
+    )
+  );
+}
+
+async function removeOpencodeTuiPluginEntry(tuiConfigPath: string): Promise<{
+  updated: boolean;
+  configured_before: boolean;
+  error: string | null;
+}> {
+  try {
+    const config = (await readJsonObjectFile(tuiConfigPath)) ?? {};
+    const plugin = config.plugin;
+    if (plugin === undefined) {
+      return { updated: false, configured_before: false, error: null };
+    }
+    if (!Array.isArray(plugin)) {
+      return {
+        updated: false,
+        configured_before: false,
+        error: "invalid_plugin_field",
+      };
+    }
+    const filtered = plugin.filter(
+      (entry) => !isWaitSpinOpencodeTuiPluginEntry(entry, tuiConfigPath),
+    );
+    if (filtered.length === plugin.length) {
+      return { updated: false, configured_before: false, error: null };
+    }
+    const nextConfig = { ...config };
+    if (filtered.length > 0) {
+      nextConfig.plugin = filtered;
+    } else {
+      delete nextConfig.plugin;
+    }
+    await writeJsonObjectFile(tuiConfigPath, nextConfig);
+    return { updated: true, configured_before: true, error: null };
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) {
+      return { updated: false, configured_before: false, error: null };
+    }
+    return { updated: false, configured_before: false, error: "read_failed" };
+  }
+}
+
+async function loadOpencodeInstallState(): Promise<OpencodeInstallState | null> {
+  const parsed = await readJsonObjectFile(opencodeStatePath());
+  if (!parsed?.install_id || parsed.target !== OPENCODE_PUBLISHER_TARGET) {
+    return null;
+  }
+  return parsed as OpencodeInstallState;
+}
+
+function redactedOpencodeState(
+  state: OpencodeInstallState | null,
+): Record<string, unknown> | null {
+  if (!state) return null;
+  return {
+    target: state.target,
+    install_id: state.install_id,
+    publisher_id: state.publisher_id,
+    publisher_target: state.publisher_target,
+    registered_at: state.registered_at,
+    base_url: state.base_url,
+    runtime_path: state.runtime_path,
+    cache_path: state.cache_path,
+    plugin_path: state.plugin_path,
+    tui_config_path: state.tui_config_path,
+    tui_plugin_entry: state.tui_plugin_entry,
+    installed_at: state.installed_at,
+    api_key_present: Boolean(state.api_key),
+  };
+}
+
+async function writeOpencodeRuntimeAndPlugin(input: {
+  sourceDir: string;
+  runtimePath: string;
+  pluginDest: string;
+  statePath: string;
+}): Promise<void> {
+  await mkdir(path.dirname(input.runtimePath), { recursive: true });
+  await mkdir(path.dirname(input.pluginDest), { recursive: true });
+  await cp(
+    path.join(input.sourceDir, "opencode-statusline.mjs"),
+    input.runtimePath,
+    { force: true },
+  );
+  const pluginTemplate = await readFile(
+    path.join(input.sourceDir, opencodePluginAssetName()),
+    "utf8",
+  );
+  const pluginSource = pluginTemplate
+    .replaceAll('"__WAITSPIN_STATE_PATH__"', JSON.stringify(input.statePath));
+  await writeFile(input.pluginDest, pluginSource, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  await chmod(input.runtimePath, 0o755);
+  await chmod(input.pluginDest, 0o600);
+}
+
+export async function runOpencodeInstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const statePath = opencodeStatePath();
+  const runtimePath = opencodeRuntimePath();
+  const cachePath = opencodeCachePath();
+  const pluginDest = opencodePluginDestPath();
+  const tuiConfigPath = opencodeTuiConfigPath();
+  const existingState = await loadOpencodeInstallState();
+  const installId = existingState?.install_id || generateInstallId();
+
+  const summary = {
+    ok: true,
+    target: OPENCODE_PUBLISHER_TARGET,
+    mode: "tui-plugin-slot",
+    install_id: installId,
+    publisher_target: OPENCODE_PUBLISHER_TARGET,
+    state_path: statePath,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    plugin_path: pluginDest,
+    tui_config_path: tuiConfigPath,
+    tui_plugin_entry: OPENCODE_TUI_PLUGIN_ENTRY,
+    note: "Installs WaitSpin through the OpenCode TUI plugin slot (app_bottom).",
+    next: "check_status",
+    next_command: "waitspin opencode status",
+  };
+
+  if (dryRun) {
+    printJson({
+      ...summary,
+      dry_run: true,
+      publisher_registered: false,
+    });
+    return;
+  }
+
+  const assetsDir = await resolveOpencodeAssetsDir(flags);
+  const apiKey = requireApiKey(flags);
+  const tuiConfigPlan = await planOpencodeTuiConfigInstall(tuiConfigPath);
+  const registration = await registerPublisherInstall({
+    baseUrl,
+    apiKey,
+    installId,
+    target: OPENCODE_PUBLISHER_TARGET,
+  });
+
+  const installedAt = new Date().toISOString();
+  const installState: OpencodeInstallState = {
+    target: OPENCODE_PUBLISHER_TARGET,
+    install_id: registration.install_id,
+    publisher_id: registration.publisher_id,
+    publisher_target: registration.target,
+    registered_at: installedAt,
+    base_url: baseUrl,
+    api_key: apiKey,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    plugin_path: pluginDest,
+    tui_config_path: tuiConfigPath,
+    tui_plugin_entry: OPENCODE_TUI_PLUGIN_ENTRY,
+    installed_at: installedAt,
+  };
+
+  try {
+    await writeOpencodeRuntimeAndPlugin({
+      sourceDir: assetsDir,
+      runtimePath,
+      pluginDest,
+      statePath,
+    });
+    await writeOpencodeTuiConfigPlan(tuiConfigPlan);
+    await writeJsonObjectFile(statePath, installState, 0o600);
+  } catch (error) {
+    await restoreOpencodeTuiConfigPlan(tuiConfigPlan);
+    if (existingState) {
+      await writeJsonObjectFile(statePath, existingState, 0o600).catch(
+        () => {},
+      );
+    } else {
+      await Promise.resolve(
+        rm(statePath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(runtimePath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(pluginDest, { force: true, recursive: true }),
+      ).catch(() => {});
+    }
+    throw error;
+  }
+
+  printJson({
+    ...summary,
+    ...redactedOpencodeState(installState),
+    publisher_registered: true,
+    next: "restart_opencode",
+    next_command: "opencode",
+    acceptance_hint:
+      "Restart OpenCode to load the TUI plugin. The sponsored line appears in the app_bottom slot.",
+  });
+}
+
+export async function runOpencodeStatus() {
+  const state = await loadOpencodeInstallState();
+  const runtimePath = state?.runtime_path ?? opencodeRuntimePath();
+  const cachePath = state?.cache_path ?? opencodeCachePath();
+  const pluginDest = state?.plugin_path ?? opencodePluginDestPath();
+  const tuiConfigPath = state?.tui_config_path ?? opencodeTuiConfigPath();
+
+  let runtimeInstalled = false;
+  let pluginInstalled = false;
+  let tuiPluginConfigured = false;
+  let tuiConfigError: string | null = null;
+
+  if (state) {
+    runtimeInstalled = await pathExists(
+      assertSafeOpencodeManagedRuntimePath(state.runtime_path),
+    );
+    pluginInstalled = await pathExists(
+      assertSafeOpencodePluginPath(state.plugin_path),
+    );
+    try {
+      tuiPluginConfigured = await opencodeTuiPluginConfigured(
+        assertSafeOpencodeTuiConfigPath(tuiConfigPath),
+      );
+    } catch {
+      tuiConfigError = "invalid_tui_config";
+    }
+  } else {
+    const safeRuntime = assertSafeOpencodeManagedRuntimePath(runtimePath);
+    runtimeInstalled = await pathExists(safeRuntime);
+    const safePlugin = assertSafeOpencodePluginPath(pluginDest);
+    pluginInstalled = await pathExists(safePlugin);
+    try {
+      tuiPluginConfigured = await opencodeTuiPluginConfigured(
+        assertSafeOpencodeTuiConfigPath(tuiConfigPath),
+      );
+    } catch {
+      tuiPluginConfigured = false;
+    }
+  }
+
+  const installed = Boolean(
+    state && runtimeInstalled && pluginInstalled && tuiPluginConfigured,
+  );
+
+  printJson({
+    ok: true,
+    target: OPENCODE_PUBLISHER_TARGET,
+    mode: "tui-plugin-slot",
+    installed,
+    publisher_registered: Boolean(state?.publisher_id),
+    install_id: state?.install_id ?? null,
+    publisher_id: state?.publisher_id ?? null,
+    publisher_target:
+      state?.publisher_target ?? OPENCODE_PUBLISHER_TARGET,
+    state_path: opencodeStatePath(),
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    plugin_path: pluginDest,
+    tui_config_path: tuiConfigPath,
+    tui_plugin_entry: state?.tui_plugin_entry ?? OPENCODE_TUI_PLUGIN_ENTRY,
+    runtime_installed: runtimeInstalled,
+    plugin_installed: pluginInstalled,
+    tui_plugin_configured: tuiPluginConfigured,
+    tui_config_error: tuiConfigError,
+    installed_at: state?.installed_at ?? null,
+    ...(installed
+      ? {
+          next: "restart_opencode",
+          next_command: "opencode",
+          acceptance_hint:
+            "Restart OpenCode to load the TUI plugin. The sponsored line appears in the app_bottom slot.",
+        }
+      : {
+          next: "install_opencode",
+          next_command: "waitspin opencode install",
+        }),
+  });
+}
+
+export async function runOpencodeUninstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const state = await loadOpencodeInstallState();
+  const tuiConfigPath = state?.tui_config_path ?? opencodeTuiConfigPath();
+
+  const declaredRemovePaths = state
+    ? [
+        state.runtime_path,
+        state.cache_path,
+        opencodeStatePath(),
+        state.plugin_path,
+      ]
+    : [opencodeStatePath()];
+
+  if (dryRun) {
+    printJson({
+      ok: true,
+      target: OPENCODE_PUBLISHER_TARGET,
+      dry_run: true,
+      installed: Boolean(state),
+      would_remove: declaredRemovePaths,
+      would_update: [tuiConfigPath],
+    });
+    return;
+  }
+
+  const removePaths: string[] = [];
+  const skippedUnsafePaths: string[] = [];
+  let tuiConfigUpdate:
+    | Awaited<ReturnType<typeof removeOpencodeTuiPluginEntry>>
+    | null = null;
+  if (state) {
+    try {
+      removePaths.push(assertSafeOpencodeManagedRuntimePath(state.runtime_path));
+    } catch {
+      skippedUnsafePaths.push(state.runtime_path);
+    }
+    try {
+      removePaths.push(assertSafeOpencodeManagedPath(state.cache_path));
+    } catch {
+      skippedUnsafePaths.push(state.cache_path);
+    }
+    try {
+      removePaths.push(assertSafeOpencodePluginPath(state.plugin_path));
+    } catch {
+      skippedUnsafePaths.push(state.plugin_path);
+    }
+    try {
+      tuiConfigUpdate = await removeOpencodeTuiPluginEntry(
+        assertSafeOpencodeTuiConfigPath(tuiConfigPath),
+      );
+    } catch {
+      skippedUnsafePaths.push(tuiConfigPath);
+    }
+  }
+  removePaths.splice(
+    state ? Math.min(removePaths.length, 2) : 0,
+    0,
+    opencodeStatePath(),
+  );
+
+  await Promise.all(
+    removePaths.map((filePath) =>
+      rm(filePath, { force: true, recursive: true }),
+    ),
+  );
+
+  printJson({
+    ok: true,
+    target: OPENCODE_PUBLISHER_TARGET,
+    uninstalled: true,
+    removed: removePaths,
+    tui_config_updated: tuiConfigUpdate?.updated ?? false,
+    tui_plugin_configured_before:
+      tuiConfigUpdate?.configured_before ?? false,
+    tui_config_error: tuiConfigUpdate?.error ?? null,
+    ...(skippedUnsafePaths.length > 0
+      ? { skipped_unsafe_paths: skippedUnsafePaths }
+      : {}),
+  });
+}
+
+type PublicAllInstallTarget = {
+  target: "vscode" | "claude-code" | "mimocode" | "opencode";
+  command: string;
+  statusCommand: string;
+  preflight: (flags: Map<string, string[]>) => Promise<string | null>;
+  install: (flags: Map<string, string[]>) => Promise<void>;
+  status: (flags: Map<string, string[]>) => Promise<void>;
+};
+
+type AllInstallTarget = PublicAllInstallTarget | ExperimentalAllInstallTarget;
+
+type AllTargetSummary = {
+  target: AllInstallTarget["target"];
+  command: string;
+  reason?: string;
+  detail?: string | null;
+  result?: unknown;
+};
+
+function cloneFlags(flags: Map<string, string[]>): Map<string, string[]> {
+  return new Map(
+    Array.from(flags.entries()).map(([key, values]) => [key, [...values]]),
+  );
+}
+
+function extensionAllFlags(flags: Map<string, string[]>): Map<string, string[]> {
+  const next = cloneFlags(flags);
+  next.set("target", ["vscode"]);
+  return next;
+}
+
+function executableFromEnv(envName: string, defaultBin: string): string {
+  return process.env[envName]?.trim() || defaultBin;
+}
+
+async function executableVersion(
+  envName: string,
+  defaultBin: string,
+  label: string,
+): Promise<string> {
+  const binary = executableFromEnv(envName, defaultBin);
+  try {
+    const result = await execFileText(binary, ["--version"], {
+      encoding: "utf8",
+      timeout: 5_000,
+    });
+    return `${result.stdout || result.stderr || label}`.trim();
+  } catch (error) {
+    throw new Error(
+      `${label} was not detected. Install ${label} or set ${envName} to its executable path.`,
+      { cause: error },
+    );
+  }
+}
+
+async function preflightVscode(flags: Map<string, string[]>): Promise<string> {
+  return resolveExtensionDir(flags);
+}
+
+async function preflightClaudeCode(): Promise<string> {
+  return assertSupportedClaudeCodeVersion();
+}
+
+async function preflightMiMoCode(): Promise<string> {
+  return executableVersion(MIMOCODE_BIN_ENV, MIMOCODE_DEFAULT_BIN, "MiMo Code");
+}
+
+async function preflightOpenCode(): Promise<string> {
+  return executableVersion(
+    OPENCODE_BIN_ENV,
+    OPENCODE_DEFAULT_BIN,
+    "OpenCode",
+  );
+}
+
+function experimentalCliDeps(): ExperimentalCliDeps {
+  return {
+    booleanFlag,
+    optionalFlag,
+    resolveCredentialedBaseUrl,
+    requireApiKey,
+    registerPublisherInstall,
+    generateInstallId,
+    printJson,
+  };
+}
+
+function allInstallTargets(flags: Map<string, string[]>): AllInstallTarget[] {
+  const experimentalDeps = experimentalCliDeps();
+  const targets: AllInstallTarget[] = [
+    {
+      target: "vscode",
+      command: "waitspin extension install --target vscode",
+      statusCommand: "waitspin extension status --target vscode",
+      preflight: preflightVscode,
+      install: (flags) => runExtensionInstall(extensionAllFlags(flags)),
+      status: (flags) => runExtensionStatus(extensionAllFlags(flags)),
+    },
+    {
+      target: CLAUDE_CODE_PUBLISHER_TARGET,
+      command: "waitspin claude-code install --compose-existing",
+      statusCommand: "waitspin claude-code status",
+      preflight: preflightClaudeCode,
+      install: runClaudeCodeInstall,
+      status: () => runClaudeCodeStatus(),
+    },
+    {
+      target: MIMOCODE_PUBLISHER_TARGET,
+      command: "waitspin mimocode install",
+      statusCommand: "waitspin mimocode status",
+      preflight: preflightMiMoCode,
+      install: runMiMoCodeInstall,
+      status: () => runMiMoCodeStatus(),
+    },
+    {
+      target: OPENCODE_PUBLISHER_TARGET,
+      command: "waitspin opencode install",
+      statusCommand: "waitspin opencode status",
+      preflight: preflightOpenCode,
+      install: runOpencodeInstall,
+      status: () => runOpencodeStatus(),
+    },
+    experimentalInstallTarget("grok", experimentalDeps),
+  ];
+  if (booleanFlag(flags, "include-experimental")) {
+    targets.push(
+      ...experimentalAllInstallTargets(experimentalDeps).filter(
+        (target) => target.target !== "grok",
+      ),
+    );
+  }
+  return targets;
+}
+
+function safeErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .replace(/wts_(?:live|test)__[A-Za-z0-9_-]+/g, "[REDACTED_WAITSPIN_KEY]")
+    .replace(/npm_[A-Za-z0-9_-]+/g, "[REDACTED_NPM_TOKEN]");
+}
+
+function isNotDetectedError(message: string): boolean {
+  if (/WaitSpin extension package not found|assets not found/i.test(message)) {
+    return false;
+  }
+  return /not detected|Unable to run Claude Code|Unsupported Claude Code version|ENOENT|spawn .*ENOENT|command not found|executable path/i.test(
+    message,
+  );
+}
+
+function isConflictError(message: string): boolean {
+  return /statusLine|status line|conflict|override|already has|blocked/i.test(
+    message,
+  );
+}
+
+function isUnsupportedTargetLayoutReason(reason: string): boolean {
+  return /unsupported_patch_layout|unsupported_native_cli/i.test(reason);
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function dryRunConflictReason(result: unknown): string | null {
+  const record = objectRecord(result);
+  if (!record.would_fail) return null;
+  if (
+    typeof record.failure_kind === "string" &&
+    isUnsupportedTargetLayoutReason(record.failure_kind)
+  ) {
+    return typeof record.human_message === "string"
+      ? record.human_message
+      : record.failure_kind;
+  }
+  const reason =
+    record.settings_blocked_reason ??
+    (record.failure_kind ? null : record.human_message);
+  if (!reason) return null;
+  return typeof reason === "string" ? reason : "target reported a conflict";
+}
+
+function dryRunFailureReason(result: unknown): string | null {
+  const record = objectRecord(result);
+  if (!record.would_fail) return null;
+  const reason =
+    record.failure_kind ??
+    record.rollback_reason ??
+    record.human_message ??
+    "target dry-run reported failure";
+  return typeof reason === "string" ? reason : "target dry-run reported failure";
+}
+
+export async function runInstallAll(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const includeExperimental = booleanFlag(flags, "include-experimental");
+  if (includeExperimental && !dryRun) {
+    throw new Error(
+      "--include-experimental is only available with install --all --dry-run. Use explicit waitspin <target> install commands for hidden experimental targets.",
+    );
+  }
+  const installed: AllTargetSummary[] = [];
+  const wouldInstall: AllTargetSummary[] = [];
+  const skippedNotDetected: AllTargetSummary[] = [];
+  const skippedConflict: AllTargetSummary[] = [];
+  const failedRollback: AllTargetSummary[] = [];
+
+  for (const target of allInstallTargets(flags)) {
+    let detail: string | null = null;
+    try {
+      detail = await target.preflight(flags);
+    } catch (error) {
+      const reason = safeErrorMessage(error);
+      const bucket = isNotDetectedError(reason)
+        ? skippedNotDetected
+        : failedRollback;
+      bucket.push({
+        target: target.target,
+        command: target.command,
+        reason,
+      });
+      continue;
+    }
+
+    try {
+      const result = await capturePrintedJson<unknown>(() =>
+        target.install(flags),
+      );
+      const conflictReason = dryRunConflictReason(result);
+      if (conflictReason) {
+        skippedConflict.push({
+          target: target.target,
+          command: target.command,
+          reason: conflictReason,
+          detail,
+          result,
+        });
+        continue;
+      }
+      const failureReason = dryRunFailureReason(result);
+      if (failureReason) {
+        failedRollback.push({
+          target: target.target,
+          command: target.command,
+          reason: failureReason,
+          detail,
+          result,
+        });
+        continue;
+      }
+      const summary = {
+        target: target.target,
+        command: target.command,
+        detail,
+        result,
+      };
+      if (dryRun) {
+        wouldInstall.push(summary);
+      } else {
+        installed.push(summary);
+      }
+    } catch (error) {
+      const reason = safeErrorMessage(error);
+      const bucket = isConflictError(reason)
+        ? skippedConflict
+        : isUnsupportedTargetLayoutReason(reason)
+          ? skippedConflict
+        : isNotDetectedError(reason)
+          ? skippedNotDetected
+          : failedRollback;
+      bucket.push({
+        target: target.target,
+        command: target.command,
+        reason,
+        detail,
+      });
+    }
+  }
+
+  printJson({
+    ok: failedRollback.length === 0,
+    command: "install --all",
+    dry_run: dryRun,
+    mode: "detected-targets",
+    include_experimental: includeExperimental,
+    installed,
+    would_install: wouldInstall,
+    skipped_not_detected: skippedNotDetected,
+    skipped_conflict: skippedConflict,
+    failed_rollback: failedRollback,
+    next: "check_all_status",
+    next_command: includeExperimental
+      ? "waitspin status --all --include-experimental"
+      : "waitspin status --all",
+    human_message:
+      "Install-all is an advanced agent command. Explicit target commands remain the canonical debug path.",
+  });
+}
+
+export async function runStatusAll(flags: Map<string, string[]>) {
+  const statuses: AllTargetSummary[] = [];
+  const installed: AllTargetSummary[] = [];
+  const failedStatus: AllTargetSummary[] = [];
+
+  for (const target of allInstallTargets(flags)) {
+    try {
+      const result = await capturePrintedJson<unknown>(() =>
+        target.status(flags),
+      );
+      const summary = {
+        target: target.target,
+        command: target.statusCommand,
+        result,
+      };
+      statuses.push(summary);
+      if (objectRecord(result).installed === true) {
+        installed.push(summary);
+      }
+    } catch (error) {
+      failedStatus.push({
+        target: target.target,
+        command: target.statusCommand,
+        reason: safeErrorMessage(error),
+      });
+    }
+  }
+
+  printJson({
+    ok: failedStatus.length === 0,
+    command: "status --all",
+    include_experimental: booleanFlag(flags, "include-experimental"),
+    installed,
+    statuses,
+    failed_status: failedStatus,
+  });
+}
+
+export async function main(argv: string[] = process.argv.slice(2)) {
+  const { command, flags, positionals } = parseArgs(argv);
+
+  if (command === "init") {
+    await runInit(flags);
+    return;
+  }
+
+  if (command === "bid" && positionals[0] === "create") {
+    await runBidCreate(flags);
+    return;
+  }
+
+  if (command === "bids" && positionals[0] === "list") {
+    await runBidsList(flags);
+    return;
+  }
+
+  if (command === "bid" && positionals[0] === "checkout") {
+    await runBidCheckout(flags, positionals.slice(1));
+    return;
+  }
+
+  if (command === "market") {
+    await runMarket(flags);
+    return;
+  }
+
+  if (command === "wallet" && positionals[0] === "status") {
+    await runWalletStatus(flags);
+    return;
+  }
+
+  if (command === "wallet" && positionals[0] === "connect") {
+    await runWalletConnect(flags);
+    return;
+  }
+
+  if (command === "wallet" && positionals[0] === "ledger") {
+    await runWalletLedger(flags);
+    return;
+  }
+
+  if (command === "wallet" && positionals[0] === "payout") {
+    await runWalletPayout(flags);
+    return;
+  }
+
+  if (command === "extension" && positionals[0] === "install") {
+    await runExtensionInstall(flags);
+    return;
+  }
+
+  if (command === "extension" && positionals[0] === "status") {
+    await runExtensionStatus(flags);
+    return;
+  }
+
+  if (command === "extension" && positionals[0] === "uninstall") {
+    await runExtensionUninstall(flags);
+    return;
+  }
+
+  if (command === "install" && booleanFlag(flags, "all")) {
+    await runInstallAll(flags);
+    return;
+  }
+
+  if (command === "status" && booleanFlag(flags, "all")) {
+    await runStatusAll(flags);
+    return;
+  }
+
+  if (command === "claude-code" && positionals[0] === "install") {
+    await runClaudeCodeInstall(flags);
+    return;
+  }
+
+  if (command === "claude-code" && positionals[0] === "status") {
+    await runClaudeCodeStatus();
+    return;
+  }
+
+  if (command === "claude-code" && positionals[0] === "uninstall") {
+    await runClaudeCodeUninstall(flags);
+    return;
+  }
+
+  if (command === "mimocode" && positionals[0] === "install") {
+    await runMiMoCodeInstall(flags);
+    return;
+  }
+
+  if (command === "mimocode" && positionals[0] === "status") {
+    await runMiMoCodeStatus();
+    return;
+  }
+
+  if (command === "mimocode" && positionals[0] === "uninstall") {
+    await runMiMoCodeUninstall(flags);
+    return;
+  }
+
+  if (command === "opencode" && positionals[0] === "install") {
+    await runOpencodeInstall(flags);
+    return;
+  }
+
+  if (command === "opencode" && positionals[0] === "status") {
+    await runOpencodeStatus();
+    return;
+  }
+
+  if (command === "opencode" && positionals[0] === "uninstall") {
+    await runOpencodeUninstall(flags);
+    return;
+  }
+
+  if (isExperimentalCliTargetName(command) && positionals[0] === "install") {
+    await runExperimentalCliTargetInstall(
+      command as ExperimentalCliTargetName,
+      flags,
+      experimentalCliDeps(),
+    );
+    return;
+  }
+
+  if (isExperimentalCliTargetName(command) && positionals[0] === "status") {
+    await runExperimentalCliTargetStatus(
+      command as ExperimentalCliTargetName,
+      experimentalCliDeps(),
+    );
+    return;
+  }
+
+  if (isExperimentalCliTargetName(command) && positionals[0] === "uninstall") {
+    await runExperimentalCliTargetUninstall(
+      command as ExperimentalCliTargetName,
+      flags,
+      experimentalCliDeps(),
+    );
+    return;
+  }
+
+  usage();
+}
+
+function isDirectEntrypoint(): boolean {
+  if (!process.argv[1]) {
+    return false;
+  }
+
+  const entrypointName = path.basename(process.argv[1]);
+  return entrypointName === "waitspin" || /^cli\.[cm]?[jt]s$/.test(entrypointName);
+}
+
+if (isDirectEntrypoint()) {
+  main().catch((error) => {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.stderr.write(usageText());
+    process.exit(1);
+  });
+}

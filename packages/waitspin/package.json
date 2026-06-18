@@ -1,0 +1,52 @@
+{
+  "name": "waitspin",
+  "version": "0.1.6",
+  "description": "CLI for WaitSpin sponsored wait-state ads: auth, campaigns, checkout, and publisher installs for VS Code, Claude Code, MiMo Code, OpenCode, and Grok Code CLI.",
+  "type": "module",
+  "bin": {
+    "waitspin": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "assets/waitspin-vscode/package.json",
+    "assets/waitspin-vscode/media",
+    "assets/waitspin-vscode/out",
+    "assets/waitspin-mimocode",
+    "assets/waitspin-opencode/opencode-statusline.mjs",
+    "assets/waitspin-opencode/waitspin-opencode.plugin.tsx",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.16.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "sync:extension-assets": "node scripts/sync-vscode-extension-assets.mjs",
+    "prepack": "npm run sync:extension-assets && npm run build"
+  },
+  "keywords": [
+    "waitspin",
+    "vscode",
+    "claude-code",
+    "mimocode",
+    "opencode",
+    "grok",
+    "status-bar",
+    "spinner",
+    "ads",
+    "agents"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "5.9.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/citedy/waitspin.git",
+    "directory": "packages/waitspin"
+  }
+}

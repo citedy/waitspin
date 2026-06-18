@@ -1,0 +1,1 @@
+WaitSpin VS Code extension public source is licensed AGPL-3.0-or-later. See ../../LICENSE and NOTICE.

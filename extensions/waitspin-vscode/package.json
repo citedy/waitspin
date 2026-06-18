@@ -1,0 +1,120 @@
+{
+  "name": "waitspin-vscode",
+  "displayName": "WaitSpin",
+  "description": "WaitSpin publisher wallet, ledger, and sponsored wait-state cards for VS Code-compatible editors.",
+  "version": "0.1.0",
+  "publisher": "waitspin",
+  "license": "AGPL-3.0-or-later",
+  "icon": "media/waitspin-icon.png",
+  "homepage": "https://waitspin.com/docs",
+  "bugs": {
+    "url": "https://github.com/nttylock/waitspin/issues"
+  },
+  "qna": false,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "waitspin",
+    "publisher",
+    "wallet",
+    "ledger",
+    "vscode",
+    "sponsored",
+    "wait-state",
+    "ads",
+    "developer-tools"
+  ],
+  "galleryBanner": {
+    "color": "#101820",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onCommand:waitspin.activatePublisher",
+    "onView:waitspin.publisherView",
+    "onStartupFinished"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/citedy/waitspin.git",
+    "directory": "extensions/waitspin-vscode"
+  },
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "waitspin.activatePublisher",
+        "title": "WaitSpin: Start publisher polling"
+      },
+      {
+        "command": "waitspin.refreshWallet",
+        "title": "WaitSpin: Refresh wallet"
+      },
+      {
+        "command": "waitspin.openAd",
+        "title": "WaitSpin: Open sponsored link"
+      },
+      {
+        "command": "waitspin.openDocs",
+        "title": "WaitSpin: Open docs"
+      },
+      {
+        "command": "waitspin.openMarket",
+        "title": "WaitSpin: Open market"
+      },
+      {
+        "command": "waitspin.openCliInstallHelp",
+        "title": "WaitSpin: Install or update CLI"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "waitspin",
+          "title": "WaitSpin",
+          "icon": "media/waitspin-activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "waitspin": [
+        {
+          "id": "waitspin.publisherView",
+          "name": "Publisher"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "WaitSpin",
+      "properties": {
+        "waitspin.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "One-time bootstrap publisher-scoped WaitSpin API key. On activation the extension migrates this setting into VS Code SecretStorage; runtime polling uses SecretStorage only."
+        },
+        "waitspin.installId": {
+          "type": "string",
+          "default": "",
+          "description": "Publisher install id from waitspin publishers register. Store in user settings."
+        },
+        "waitspin.apiBase": {
+          "type": "string",
+          "default": "https://api.waitspin.com",
+          "description": "WaitSpin control API base URL. Credentialed polling trusts only user settings and https://api.waitspin.com by default."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "5.9.2"
+  }
+}

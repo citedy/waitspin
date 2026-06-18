@@ -1,0 +1,112 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+
+import {
+  WAITSPIN_NEVER_SENT_DATA,
+  WAITSPIN_PRIVATE_BOUNDARY,
+  WAITSPIN_PUBLIC_PUBLISHER_TARGETS,
+  WAITSPIN_PUBLIC_TRUST_REPO_URL,
+  WAITSPIN_SENT_PAYLOADS,
+  waitSpinPublicTargetsSentence,
+} from "@/lib/waitspin/public-trust";
+import { Section, WaitSpinLegalPage } from "../legal-content";
+
+const marketplaceUrl =
+  "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode";
+const sourceUrl = `${WAITSPIN_PUBLIC_TRUST_REPO_URL}/tree/main/extensions/waitspin-vscode`;
+const provenancePath = "/provenance/waitspin-vscode.json";
+
+export const metadata: Metadata = {
+  title: "WaitSpin Trust",
+  description:
+    "WaitSpin client trust boundary, VS Code Marketplace provenance, public source links, and privacy guarantees for supported publisher surfaces.",
+};
+
+export default function WaitSpinTrustPage() {
+  return (
+    <WaitSpinLegalPage
+      title="WaitSpin Trust"
+      description="Public trust materials for the WaitSpin client surfaces, install channels, source links, and privacy boundary."
+    >
+      <Section title="Public Trust Boundary">
+        <p>
+          WaitSpin measures wait-state ad visibility, not developer work. The
+          public client surfaces only fetch a sponsored line for a registered
+          install, display it in the supported wait-state surface, and report an
+          impression after the visible interval.
+        </p>
+        <p>
+          Public publisher targets: {waitSpinPublicTargetsSentence()}.
+        </p>
+      </Section>
+
+      <Section title="Never Sent By The Public Clients">
+        <ul className="list-disc space-y-2 pl-5">
+          {WAITSPIN_NEVER_SENT_DATA.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </Section>
+
+      <Section title="Operational Payloads">
+        <ul className="list-disc space-y-2 pl-5">
+          {WAITSPIN_SENT_PAYLOADS.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <p>
+          WaitSpin has no separate analytics telemetry stream in the public
+          clients. Serve, impression, wallet, and accounting events are
+          operational telemetry needed to run the marketplace.
+        </p>
+      </Section>
+
+      <Section title="VS Code Extension Provenance">
+        <p>
+          The VS Code extension is installed from the{" "}
+          <a className="underline" href={marketplaceUrl}>
+            Visual Studio Marketplace
+          </a>
+          . WaitSpin publishes the client source at{" "}
+          <a className="underline" href={sourceUrl}>
+            github.com/citedy/waitspin
+          </a>{" "}
+          and publishes a machine-readable provenance manifest at{" "}
+          <Link className="underline" href={provenancePath}>
+            {provenancePath}
+          </Link>
+          . The repository does not track VSIX binaries; release automation
+          packages them and records the SHA256 in the manifest.
+        </p>
+      </Section>
+
+      <Section title="Supported Public Surfaces">
+        <ul className="list-disc space-y-2 pl-5">
+          {WAITSPIN_PUBLIC_PUBLISHER_TARGETS.map((target) => (
+            <li key={target.target}>
+              <strong>{target.label}</strong>: <code>{target.target}</code>.{" "}
+              {target.localBehavior}
+            </li>
+          ))}
+        </ul>
+        <p>
+          Native spinner patching beyond these supported status surfaces remains
+          outside the public contract until separately shipped and documented.
+        </p>
+      </Section>
+
+      <Section title="What Stays Private">
+        <p>
+          The public trust repository is scoped to client code, public docs,
+          public contracts, provenance, and trust-boundary tests. These systems
+          stay private:
+        </p>
+        <ul className="list-disc space-y-2 pl-5">
+          {WAITSPIN_PRIVATE_BOUNDARY.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </Section>
+    </WaitSpinLegalPage>
+  );
+}
