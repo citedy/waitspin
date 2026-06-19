@@ -17,7 +17,7 @@
     "waitspin:ci": "npm run waitspin:build && npm run waitspin:extension:build && npm run openapi:lint && npm run waitspin:package-smoke && npm run waitspin:trust-boundary"
   },
   "devDependencies": {
-    "@redocly/cli": "^2.33.0",
+    "@redocly/cli": "^2.34.0",
     "@vscode/vsce": "^3.9.2",
     "typescript": "5.9.2",
     "yauzl": "^3.4.0",
