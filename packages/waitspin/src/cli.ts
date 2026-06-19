@@ -43,6 +43,50 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const DEV_API_BASE_OPT_IN_ENV = "WAITSPIN_ALLOW_DEV_API_BASE";
 const DEV_EXTENSION_ASSETS_OPT_IN_ENV =
   "WAITSPIN_ALLOW_DEV_EXTENSION_ASSETS";
+const WTS_PUBLISHER_CONNECT_COUNTRY_CODES = new Set([
+  "US",
+  "PT",
+  "AU",
+  "AT",
+  "BE",
+  "BG",
+  "CA",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GI",
+  "GR",
+  "HK",
+  "HU",
+  "IE",
+  "IT",
+  "JP",
+  "LV",
+  "LI",
+  "LT",
+  "LU",
+  "MT",
+  "MX",
+  "NL",
+  "NZ",
+  "NO",
+  "PL",
+  "RO",
+  "SG",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
+  "CH",
+  "TH",
+  "AE",
+  "GB",
+]);
 const CLAUDE_CODE_BIN_ENV = "WAITSPIN_CLAUDE_CODE_BIN";
 const CLAUDE_CODE_MIN_VERSION = "2.1.97";
 const CLAUDE_CODE_PUBLISHER_TARGET = "claude-code";
@@ -69,7 +113,7 @@ export function usageText(): string {
       "  waitspin bid checkout <campaign-id> [--base-url URL] [--api-key KEY]",
       "  waitspin market [--base-url URL]",
       "  waitspin wallet status [--base-url URL] [--api-key KEY]",
-      "  waitspin wallet connect [--base-url URL] [--api-key KEY]",
+      "  waitspin wallet connect [--country US] [--base-url URL] [--api-key KEY]",
       "  waitspin wallet ledger [--limit N] [--base-url URL] [--api-key KEY]",
       "  waitspin wallet payout --dry-run [--base-url URL] [--api-key KEY]",
       "  waitspin wallet payout --confirm-test-transfer [--base-url URL] [--api-key KEY]",
@@ -619,14 +663,35 @@ async function runWalletStatus(flags: Map<string, string[]>) {
 async function runWalletConnect(flags: Map<string, string[]>) {
   const baseUrl = resolveCredentialedBaseUrl(flags);
   const apiKey = requireApiKey(flags);
+  const country = optionalCountryFlag(flags, "country");
+  const requestBody = country ? JSON.stringify({ country }) : undefined;
   const { body } = await requestJson<Record<string, unknown>>(
     `${baseUrl}/v1/wallet/connect`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        ...(requestBody ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(requestBody ? { body: requestBody } : {}),
     },
   );
   printJson({ ok: true, ...body });
+}
+
+function optionalCountryFlag(
+  flags: Map<string, string[]>,
+  name: string,
+): string | undefined {
+  const value = optionalFlag(flags, name)?.toUpperCase();
+  if (!value) return undefined;
+  if (!/^[A-Z]{2}$/.test(value)) {
+    throw new Error(`--${name} must be a two-letter country code like US`);
+  }
+  if (!WTS_PUBLISHER_CONNECT_COUNTRY_CODES.has(value)) {
+    throw new Error(`--${name} ${value} is not a supported payout country`);
+  }
+  return value;
 }
 
 async function runWalletLedger(flags: Map<string, string[]>) {
@@ -1011,8 +1076,10 @@ export async function runExtensionInstall(flags: Map<string, string[]>) {
     install_id: installId,
     publisher_target: publisherTarget,
     state_path: statePath,
-    note: "Installs the WaitSpin VS Code publisher extension with Activity Bar wallet and sponsor surfaces.",
+    note: "CLI fallback for installing the WaitSpin VS Code publisher extension with Activity Bar wallet and sponsor surfaces.",
     next: {
+      marketplace_setup:
+        "Preferred public setup: code --install-extension waitspin.waitspin-vscode, then run WaitSpin: Connect publisher inside VS Code.",
       create_publisher_key:
         "waitspin init --email you@example.com --key-profile publisher-extension",
       set_vscode_settings: {

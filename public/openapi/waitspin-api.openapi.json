@@ -315,6 +315,14 @@
         "operationId": "createWaitSpinWalletConnectLink",
         "summary": "Create or refresh a Stripe Express onboarding link.",
         "security": [{ "WaitSpinApiKey": [] }],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WalletConnectRequest" }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Connect onboarding link.",
@@ -324,8 +332,10 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" }
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
     },
@@ -870,11 +880,23 @@
         },
         "additionalProperties": true
       },
+      "WalletConnectRequest": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string",
+            "description": "Two-letter publisher payout country for new Stripe Express accounts.",
+            "enum": ["US", "AU", "AT", "BE", "BG", "CA", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GI", "GR", "HK", "HU", "IE", "IT", "JP", "LV", "LI", "LT", "LU", "MT", "MX", "NL", "NZ", "NO", "PL", "PT", "RO", "SG", "SK", "SI", "ES", "SE", "CH", "TH", "AE", "GB"]
+          }
+        },
+        "additionalProperties": false
+      },
       "WalletConnectResponse": {
         "type": "object",
         "required": ["stripe_account_id", "onboarding_url", "payouts_enabled", "details_submitted"],
         "properties": {
           "stripe_account_id": { "type": "string" },
+          "country_code": { "type": ["string", "null"] },
           "onboarding_url": { "type": "string", "format": "uri" },
           "payouts_enabled": { "type": "boolean" },
           "details_submitted": { "type": "boolean" }

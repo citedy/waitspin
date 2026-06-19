@@ -34,14 +34,16 @@ export function WaitSpinLegalPage({
 }
 
 export function Section({
+  id,
   title,
   children,
 }: {
+  id?: string;
   title: string;
   children: ReactNode;
 }) {
   return (
-    <section className="waitspin-text-section">
+    <section id={id} className="waitspin-text-section">
       <h2>{title}</h2>
       <div className="waitspin-text-section-body">{children}</div>
     </section>

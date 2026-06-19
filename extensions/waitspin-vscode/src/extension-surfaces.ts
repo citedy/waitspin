@@ -99,16 +99,16 @@ export class PublisherSurfaces {
 
     if (!this.state.hasApiKey || !this.state.installId) {
       item.text = "$(plug) WaitSpin setup";
-      item.tooltip = "WaitSpin needs a publisher-extension key and install ID";
-      item.command = "waitspin.openCliInstallHelp";
+      item.tooltip = "Connect a WaitSpin publisher install";
+      item.command = "waitspin.connectPublisher";
       item.show();
       return;
     }
 
     if (this.state.authStopped) {
       item.text = "$(error) WaitSpin auth";
-      item.tooltip = "WaitSpin authentication stopped";
-      item.command = "waitspin.activatePublisher";
+      item.tooltip = "Reconnect or rotate the WaitSpin publisher key";
+      item.command = "waitspin.connectPublisher";
       item.show();
       return;
     }

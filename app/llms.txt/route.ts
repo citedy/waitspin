@@ -17,6 +17,7 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - Public client source: https://github.com/citedy/waitspin
 - Agent contract: https://waitspin.com/.well-known/agents.md
 - WaitSpin agent contract mirror: https://waitspin.com/waitspin/agents.md
+- VS Code Marketplace extension: https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
 - REST API discovery: https://api.waitspin.com/v1
 - OpenAPI contract: https://waitspin.com/openapi/waitspin-api.openapi.json
 
@@ -27,6 +28,7 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - OpenAPI: https://waitspin.com/openapi/waitspin-api.openapi.json
 - Public market: GET /v1/market
 - Verified publisher surfaces: VS Code Activity Bar/status-bar extension, Claude Code statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer
+- VS Code install path: code --install-extension waitspin.waitspin-vscode, then run WaitSpin: Connect publisher inside VS Code. CLI fallback: waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
 - Advanced agent install: waitspin install --all --dry-run --compose-existing, waitspin install --all --compose-existing, waitspin status --all
 - Guarded wallet, ledger, Connect onboarding, and payout routes
 - Privacy boundary: public clients do not read or send workspace files, source code, editor text, prompts, model responses, terminal output, shell history, repository URLs, screenshots, clipboard contents, or raw keystrokes.

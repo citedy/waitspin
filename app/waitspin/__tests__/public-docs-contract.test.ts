@@ -91,28 +91,28 @@ describe("WaitSpin public docs contract", () => {
       publicChrome,
       llmsTxt,
     ] = await Promise.all([
-        readFile(
-          path.join(repoRoot, "openapi/waitspin-api.openapi.json"),
-          "utf8",
-        ),
-        readFile(
-          path.join(repoRoot, "public/openapi/waitspin-api.openapi.json"),
-          "utf8",
-        ).catch(() => ""),
-        readFile(path.join(repoRoot, "app/waitspin/docs/page.tsx"), "utf8"),
-        readFile(
-          path.join(repoRoot, "app/waitspin/waitspin-landing-client.tsx"),
-          "utf8",
-        ),
-        readFile(path.join(repoRoot, "app/waitspin/page.tsx"), "utf8"),
-        readFile(path.join(repoRoot, "app/waitspin/trust/page.tsx"), "utf8"),
-        readFile(
-          path.join(repoRoot, "public/provenance/waitspin-vscode.json"),
-          "utf8",
-        ),
-        readFile(path.join(repoRoot, "app/waitspin/public-chrome.tsx"), "utf8"),
-        readFile(path.join(repoRoot, "app/llms.txt/route.ts"), "utf8"),
-      ]);
+      readFile(
+        path.join(repoRoot, "openapi/waitspin-api.openapi.json"),
+        "utf8",
+      ),
+      readFile(
+        path.join(repoRoot, "public/openapi/waitspin-api.openapi.json"),
+        "utf8",
+      ).catch(() => ""),
+      readFile(path.join(repoRoot, "app/waitspin/docs/page.tsx"), "utf8"),
+      readFile(
+        path.join(repoRoot, "app/waitspin/waitspin-landing-client.tsx"),
+        "utf8",
+      ),
+      readFile(path.join(repoRoot, "app/waitspin/page.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "app/waitspin/trust/page.tsx"), "utf8"),
+      readFile(
+        path.join(repoRoot, "public/provenance/waitspin-vscode.json"),
+        "utf8",
+      ),
+      readFile(path.join(repoRoot, "app/waitspin/public-chrome.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "app/llms.txt/route.ts"), "utf8"),
+    ]);
     const parsed = JSON.parse(openApi) as { paths: Record<string, unknown> };
 
     expect(JSON.parse(publicCopy)).toEqual(parsed);
@@ -125,6 +125,18 @@ describe("WaitSpin public docs contract", () => {
     }
     expect(docsPage).toContain("/openapi/waitspin-api.openapi.json");
     expect(docsPage).toContain("/provenance/waitspin-vscode.json");
+    expect(docsPage).toContain('id="publisher-wallet-and-payouts"');
+    expect(docsPage).toContain("Publisher Wallet And Payouts");
+    expect(docsPage).toContain('id="publisher-levels-and-limits"');
+    expect(docsPage).toContain("Publisher Levels And Limits");
+    expect(docsPage).toContain("level 1/10");
+    expect(docsPage).toContain("one install can receive up to 0.5%");
+    expect(docsPage).toContain("Payout account not set up");
+    expect(docsPage).toContain("Set up payout account");
+    expect(docsPage).toContain("/wallet/connect");
+    expect(docsPage).toContain("waitspin wallet connect");
+    expect(docsPage).toContain("earnings_maturing");
+    expect(docsPage).toContain("balance_below_minimum");
     expect(trustPage).toContain(
       "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
     );
@@ -138,7 +150,7 @@ describe("WaitSpin public docs contract", () => {
     expect(provenance.marketplace_url).toBe(
       "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
     );
-    expect(provenance.vsix_filename).toBe("waitspin-vscode-0.1.0.vsix");
+    expect(provenance.vsix_filename).toBe("waitspin-vscode-0.1.6.vsix");
     expect(provenance.vsix_sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(provenance.npm_package_version).toBe("0.1.6");
     expect(openApi).toContain("Register a supported publisher install target.");
@@ -154,6 +166,17 @@ describe("WaitSpin public docs contract", () => {
     expect(docsPage).toContain("/waitspin/trust");
     expect(launchPage).toContain('const launchUrl = "https://waitspin.com"');
     expect(launchPage).toContain("alternates: { canonical: launchUrl }");
+    expect(launchPage).toContain("parseCheckoutReturnState");
+    expect(launchPage).toContain("searchParams?.checkout");
+    expect(launchPage).toContain("searchParams?.campaign");
+    expect(launchPage).toContain("rawCampaignId.toLowerCase()");
+    expect(launchClient).toContain("waitspin-checkout-return");
+    expect(launchClient).toContain("Campaign inventory active");
+    expect(launchClient).toContain("Checkout returned");
+    expect(launchClient).toContain("Checkout canceled");
+    expect(launchClient).toContain("active prepaid inventory");
+    expect(launchClient).not.toContain("confirmed the Stripe payment");
+    expect(launchClient).toContain("waitspin bids list");
     expect(llmsTxt).toContain("/openapi/waitspin-api.openapi.json");
     expect(llmsTxt).toContain(WAITSPIN_PUBLIC_TRUST_REPO_URL);
     expect(llmsTxt).toContain("Trust boundary");
@@ -435,14 +458,22 @@ describe("WaitSpin public docs contract", () => {
   });
 
   it("publishes the public trust boundary and curated export pipeline", async () => {
-    const [trustPage, privacyPage, publicTrustSource, exportScript, packageJson] =
-      await Promise.all([
-        readFile(path.join(repoRoot, "app/waitspin/trust/page.tsx"), "utf8"),
-        readFile(path.join(repoRoot, "app/waitspin/privacy/page.tsx"), "utf8"),
-        readFile(path.join(repoRoot, "lib/waitspin/public-trust.ts"), "utf8"),
-        readFile(path.join(repoRoot, "scripts/waitspin-public-export.mjs"), "utf8"),
-        readFile(path.join(repoRoot, "package.json"), "utf8"),
-      ]);
+    const [
+      trustPage,
+      privacyPage,
+      publicTrustSource,
+      exportScript,
+      packageJson,
+    ] = await Promise.all([
+      readFile(path.join(repoRoot, "app/waitspin/trust/page.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "app/waitspin/privacy/page.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "lib/waitspin/public-trust.ts"), "utf8"),
+      readFile(
+        path.join(repoRoot, "scripts/waitspin-public-export.mjs"),
+        "utf8",
+      ),
+      readFile(path.join(repoRoot, "package.json"), "utf8"),
+    ]);
 
     for (const source of [trustPage, privacyPage]) {
       expect(source).toMatch(/wait-state ad visibility/i);
@@ -471,7 +502,9 @@ describe("WaitSpin public docs contract", () => {
     expect(exportScript).toContain("STRIPE_");
     expect(exportScript).toContain("AGPL-3.0-or-later");
     expect(exportScript).toContain("waitspin:trust-boundary");
-    expect(exportScript).toContain("Cline, Kimi, and MMX are not public targets");
+    expect(exportScript).toContain(
+      "Cline, Kimi, and MMX are not public targets",
+    );
     expect(packageJson).toContain("waitspin:public-export");
     expect(packageJson).toContain("waitspin:public-export:dry-run");
   });
@@ -505,16 +538,28 @@ describe("WaitSpin public docs contract", () => {
 
   it("publishes SEO and AI discovery surfaces for the launch page", async () => {
     const [
+      { WAITSPIN_BRAND_ICON_VERSION, waitspinBrandIcons },
       { default: robots },
       { default: sitemap },
       { GET: llmsTxt },
       { GET: favicon },
+      { GET: icon180 },
+      { GET: iconSvg },
+      { GET: icon32 },
+      { GET: icon48 },
+      { GET: appleTouchIcon },
       { GET: webMcpOriginTrial },
     ] = await Promise.all([
+      import("@/app/waitspin/brand-icons"),
       import("@/app/robots"),
       import("@/app/sitemap"),
       import("@/app/llms.txt/route"),
       import("@/app/favicon.ico/route"),
+      import("@/app/icon-180.png/route"),
+      import("@/app/icon.svg/route"),
+      import("@/app/icon-32.png/route"),
+      import("@/app/icon-48.png/route"),
+      import("@/app/apple-touch-icon.png/route"),
       import("@/app/waitspin/webmcp-origin-trial.js/route"),
     ]);
 
@@ -530,6 +575,7 @@ describe("WaitSpin public docs contract", () => {
       expect.arrayContaining([
         "https://waitspin.com/",
         "https://waitspin.com/docs",
+        "https://waitspin.com/wallet/connect",
         "https://waitspin.com/waitspin",
         "https://waitspin.com/waitspin/docs",
         "https://waitspin.com/waitspin/trust",
@@ -555,7 +601,50 @@ describe("WaitSpin public docs contract", () => {
     );
     expect(llmsBody).not.toContain("VS Code status-bar fallback");
     expect(llmsResponse.headers.get("Content-Type")).toContain("text/plain");
-    expect(favicon().headers.get("Content-Type")).toContain("image/svg+xml");
+    expect(waitspinBrandIcons).toMatchObject({
+      apple: [
+        {
+          sizes: "180x180",
+          type: "image/png",
+          url: `/apple-touch-icon.png?v=${WAITSPIN_BRAND_ICON_VERSION}`,
+        },
+      ],
+      shortcut: [`/icon-32.png?v=${WAITSPIN_BRAND_ICON_VERSION}`],
+    });
+    expect(waitspinBrandIcons.icon).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sizes: "180x180",
+          type: "image/png",
+          url: `/icon-180.png?v=${WAITSPIN_BRAND_ICON_VERSION}`,
+        }),
+        expect.objectContaining({
+          sizes: "any",
+          type: "image/svg+xml",
+          url: `/icon.svg?v=${WAITSPIN_BRAND_ICON_VERSION}`,
+        }),
+        expect.objectContaining({
+          sizes: "32x32",
+          type: "image/png",
+          url: `/icon-32.png?v=${WAITSPIN_BRAND_ICON_VERSION}`,
+        }),
+        expect.objectContaining({
+          sizes: "48x48",
+          type: "image/png",
+          url: `/icon-48.png?v=${WAITSPIN_BRAND_ICON_VERSION}`,
+        }),
+        expect.objectContaining({
+          sizes: "16x16 32x32 48x48",
+          url: `/favicon.ico?v=${WAITSPIN_BRAND_ICON_VERSION}`,
+        }),
+      ]),
+    );
+    expect(favicon().headers.get("Content-Type")).toContain("image/x-icon");
+    expect(icon180().headers.get("Content-Type")).toContain("image/png");
+    expect(iconSvg().headers.get("Content-Type")).toContain("image/svg+xml");
+    expect(icon32().headers.get("Content-Type")).toContain("image/png");
+    expect(icon48().headers.get("Content-Type")).toContain("image/png");
+    expect(appleTouchIcon().headers.get("Content-Type")).toContain("image/png");
     const originTrialResponse = webMcpOriginTrial();
     expect(originTrialResponse.headers.get("Content-Type")).toContain(
       "application/javascript",
@@ -564,20 +653,36 @@ describe("WaitSpin public docs contract", () => {
       WAITSPIN_WEBMCP_ORIGIN_TRIAL_TOKENS[0],
     );
 
-    const [launchPage, launchClient, publicChrome, legalContent] =
-      await Promise.all([
-        readFile(path.join(repoRoot, "app/waitspin/page.tsx"), "utf8"),
-        readFile(
-          path.join(repoRoot, "app/waitspin/waitspin-landing-client.tsx"),
-          "utf8",
-        ),
-        readFile(path.join(repoRoot, "app/waitspin/public-chrome.tsx"), "utf8"),
-        readFile(path.join(repoRoot, "app/waitspin/legal-content.tsx"), "utf8"),
-      ]);
+    const [
+      brandIconsSource,
+      launchPage,
+      rootLayout,
+      launchClient,
+      publicChrome,
+      legalContent,
+    ] = await Promise.all([
+      readFile(path.join(repoRoot, "app/waitspin/brand-icons.ts"), "utf8"),
+      readFile(path.join(repoRoot, "app/waitspin/page.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "app/layout.tsx"), "utf8"),
+      readFile(
+        path.join(repoRoot, "app/waitspin/waitspin-landing-client.tsx"),
+        "utf8",
+      ),
+      readFile(path.join(repoRoot, "app/waitspin/public-chrome.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "app/waitspin/legal-content.tsx"), "utf8"),
+    ]);
 
+    expect(brandIconsSource).toContain("docs/waitspin/brand/assets");
+    expect(brandIconsSource).toContain("favicon-black.ico");
+    expect(brandIconsSource).toContain("favicon-black-180.png");
+    expect(brandIconsSource).toContain("favicon-black-32.png");
+    expect(brandIconsSource).toContain("favicon-black-48.png");
+    expect(brandIconsSource).toContain("orbit-symbol-black.svg");
+    expect(brandIconsSource).not.toContain("app/waitspin/brand-assets");
     expect(launchPage).toContain("openGraph");
     expect(launchPage).toContain("twitter");
-    expect(launchPage).toContain('icon: "/favicon.ico"');
+    expect(rootLayout).toContain("waitspinBrandIcons");
+    expect(rootLayout).toContain("icons: waitspinBrandIcons");
     expect(launchPage).toContain('type="application/ld+json"');
     expect(launchPage).toContain("SoftwareApplication");
     expect(launchPage).toContain("Organization");
@@ -699,7 +804,8 @@ describe("WaitSpin public docs contract", () => {
       termsPage,
     ];
     const commissionSentence = renderPublicCommissionSplitSentence();
-    const normalizeDocWhitespace = (value: string) => value.replace(/\s+/g, " ");
+    const normalizeDocWhitespace = (value: string) =>
+      value.replace(/\s+/g, " ");
     const internalSources = await Promise.all([
       readFile(path.join(repoRoot, "docs/waitspin/LAUNCH_BLOCKERS.md"), "utf8"),
       readFile(

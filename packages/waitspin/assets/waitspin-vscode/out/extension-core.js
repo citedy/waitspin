@@ -1,18 +1,68 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MIN_VISIBLE_MS = exports.DEFAULT_API_BASE = void 0;
+exports.PUBLISHER_EXTENSION_REQUIRED_SCOPES = exports.PUBLISHER_KEY_INTENDED_USE = exports.VSCODE_PUBLISHER_TARGET = exports.MIN_VISIBLE_MS = exports.DEFAULT_API_BASE = exports.formatMicroUnits = void 0;
+exports.generatePublisherInstallId = generatePublisherInstallId;
+exports.hasPublisherExtensionScopes = hasPublisherExtensionScopes;
+exports.parseVerifiedPublisherKeyPayload = parseVerifiedPublisherKeyPayload;
+exports.parsePublisherRegistrationPayload = parsePublisherRegistrationPayload;
 exports.isLoopbackApiHostname = isLoopbackApiHostname;
 exports.normalizeTrustedApiBase = normalizeTrustedApiBase;
 exports.isSafeExternalUrl = isSafeExternalUrl;
 exports.parseServePayload = parseServePayload;
 exports.parseWalletStatusPayload = parseWalletStatusPayload;
 exports.parseLedgerPayload = parseLedgerPayload;
-exports.formatMicroUnits = formatMicroUnits;
 exports.renderPublisherViewHtml = renderPublisherViewHtml;
+const node_crypto_1 = require("node:crypto");
+const extension_html_1 = require("./extension-html");
+const extension_wallet_view_1 = require("./extension-wallet-view");
+var extension_wallet_view_2 = require("./extension-wallet-view");
+Object.defineProperty(exports, "formatMicroUnits", { enumerable: true, get: function () { return extension_wallet_view_2.formatMicroUnits; } });
 exports.DEFAULT_API_BASE = "https://api.waitspin.com";
 exports.MIN_VISIBLE_MS = 5_000;
-const MICRO_UNITS_PER_CENT = 10_000;
-const MICRO_UNITS_PER_EURO = MICRO_UNITS_PER_CENT * 100;
+exports.VSCODE_PUBLISHER_TARGET = "status-bar-fallback";
+exports.PUBLISHER_KEY_INTENDED_USE = "key_profile:publisher_extension";
+exports.PUBLISHER_EXTENSION_REQUIRED_SCOPES = [
+    "publishers:write",
+    "serve:read",
+    "events:write",
+    "wallet:read",
+];
+function generatePublisherInstallId(randomUuid = node_crypto_1.randomUUID) {
+    return `wins_${randomUuid().replace(/-/g, "")}`;
+}
+function hasPublisherExtensionScopes(scopes) {
+    return exports.PUBLISHER_EXTENSION_REQUIRED_SCOPES.every((scope) => scopes.includes(scope));
+}
+function parseVerifiedPublisherKeyPayload(payload) {
+    const record = objectRecord(payload);
+    if (!record) {
+        return undefined;
+    }
+    const accountId = typeof record.account_id === "string" ? record.account_id.trim() : "";
+    const apiKey = typeof record.api_key === "string" ? record.api_key.trim() : "";
+    const keyProfile = typeof record.key_profile === "string" ? record.key_profile.trim() : "";
+    const scopes = readStringArray(record.scopes);
+    if (!accountId ||
+        !apiKey.startsWith("wts_live_") ||
+        keyProfile !== "publisher_extension" ||
+        !hasPublisherExtensionScopes(scopes)) {
+        return undefined;
+    }
+    return { accountId, apiKey, keyProfile, scopes };
+}
+function parsePublisherRegistrationPayload(payload) {
+    const record = objectRecord(payload);
+    if (!record) {
+        return undefined;
+    }
+    const publisherId = typeof record.publisher_id === "string" ? record.publisher_id.trim() : "";
+    const installId = typeof record.install_id === "string" ? record.install_id.trim() : "";
+    const target = typeof record.target === "string" ? record.target.trim() : "";
+    if (!publisherId || !installId || target !== exports.VSCODE_PUBLISHER_TARGET) {
+        return undefined;
+    }
+    return { publisherId, installId, target };
+}
 function isLoopbackApiHostname(hostname) {
     const normalized = hostname.toLowerCase().replace(/\.$/, "");
     return (normalized === "localhost" ||
@@ -198,14 +248,32 @@ function parseWalletStatusPayload(payload) {
     const balance = objectRecord(record.balance);
     const connect = objectRecord(record.connect);
     const payoutPolicy = objectRecord(record.payout_policy);
+    const publisherTrust = objectRecord(record.publisher_trust);
     if (!balance || !connect || !payoutPolicy) {
         return undefined;
     }
     const availableMicroUnits = readInteger(balance.available_micro_units);
     const maturingMicroUnits = readInteger(balance.maturing_micro_units);
     const heldMicroUnits = readInteger(balance.held_micro_units);
+    const reversalDebtMicroUnits = readInteger(balance.reversal_debt_micro_units) ?? 0;
     const pendingPayoutMicroUnits = readInteger(balance.pending_payout_micro_units);
     const lifetimeEarnedMicroUnits = readInteger(balance.lifetime_earned_micro_units);
+    const payoutTransferCents = readInteger(payoutPolicy.transfer_cents);
+    const minPayoutCents = readInteger(payoutPolicy.min_payout_cents);
+    const earningMaturityHours = readInteger(payoutPolicy.earning_maturity_hours);
+    const nextEligibleAt = typeof payoutPolicy.next_eligible_at === "string" &&
+        payoutPolicy.next_eligible_at.trim()
+        ? payoutPolicy.next_eligible_at.trim()
+        : undefined;
+    const publisherTrustLevel = readInteger(publisherTrust?.level);
+    const publisherTrustMaxLevel = readInteger(publisherTrust?.max_level);
+    const publisherTrustStatus = typeof publisherTrust?.status === "string" && publisherTrust.status.trim()
+        ? publisherTrust.status.trim()
+        : undefined;
+    const publisherTrustNextLevelAt = typeof publisherTrust?.next_level_at === "string" &&
+        publisherTrust.next_level_at.trim()
+        ? publisherTrust.next_level_at.trim()
+        : undefined;
     if (availableMicroUnits === undefined ||
         maturingMicroUnits === undefined ||
         heldMicroUnits === undefined ||
@@ -218,11 +286,20 @@ function parseWalletStatusPayload(payload) {
             availableMicroUnits,
             maturingMicroUnits,
             heldMicroUnits,
+            reversalDebtMicroUnits,
             pendingPayoutMicroUnits,
             lifetimeEarnedMicroUnits,
         },
         payoutEligible: payoutPolicy.eligible === true,
         payoutBlockedReasons: readStringArray(payoutPolicy.blocked_reasons),
+        payoutTransferCents,
+        minPayoutCents,
+        earningMaturityHours,
+        nextEligibleAt,
+        publisherTrustLevel,
+        publisherTrustMaxLevel,
+        publisherTrustStatus,
+        publisherTrustNextLevelAt,
         connectConnected: connect.connected === true,
         payoutsEnabled: connect.payouts_enabled === true,
     };
@@ -262,26 +339,16 @@ function parseLedgerPayload(payload) {
         ];
     });
 }
-function formatMicroUnits(value) {
-    const amount = value / MICRO_UNITS_PER_EURO;
-    const decimals = value !== 0 && Math.abs(value) < MICRO_UNITS_PER_CENT ? 6 : 2;
-    return `EUR ${trimTrailingZeros(amount.toFixed(decimals))}`;
-}
-function trimTrailingZeros(value) {
-    return value
-        .replace(/(\.\d*?[1-9])0+$/, "$1")
-        .replace(/\.0+$/, ".00");
-}
 function renderPublisherViewHtml(state) {
     const status = renderInstallStatus(state);
     const sponsor = renderSponsor(state);
-    const wallet = renderWallet(state.walletStatus);
-    const ledger = renderLedger(state.ledgerEntries);
+    const wallet = (0, extension_wallet_view_1.renderWallet)(state.walletStatus, state.installId);
+    const ledger = (0, extension_wallet_view_1.renderLedger)(state.ledgerEntries);
     const updated = state.lastUpdatedAt
-        ? `Updated ${escapeHtml(new Date(state.lastUpdatedAt).toLocaleString())}`
+        ? `Updated ${(0, extension_html_1.escapeHtml)(new Date(state.lastUpdatedAt).toLocaleString())}`
         : "Waiting for first refresh";
     const error = state.lastError
-        ? `<p class="notice error">${escapeHtml(state.lastError)}</p>`
+        ? `<p class="notice error">${(0, extension_html_1.escapeHtml)(state.lastError)}</p>`
         : "";
     return `<!doctype html>
 <html lang="en">
@@ -309,8 +376,13 @@ function renderPublisherViewHtml(state) {
     .line { font-weight: 650; }
     .grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; }
     .amount { font-variant-numeric: tabular-nums; }
+    .status { margin-top: 10px; }
+    .status-title { font-weight: 650; }
+    .reason { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--vscode-sideBarSectionHeader-border); }
+    .reason:first-child { border-top: 0; padding-top: 0; }
     .entry { padding: 8px 0; border-top: 1px solid var(--vscode-sideBarSectionHeader-border); }
     .entry:first-child { border-top: 0; }
+    a { color: var(--vscode-textLink-foreground); }
     code { font-family: var(--vscode-editor-font-family); }
   </style>
 </head>
@@ -330,20 +402,20 @@ function renderPublisherViewHtml(state) {
 }
 function renderInstallStatus(state) {
     if (state.authStopped) {
-        return `<p class="notice error">Authentication stopped. Rotate or refresh the publisher-extension key, then run WaitSpin: Start publisher polling.</p>`;
+        return `<p class="notice error">Authentication stopped. Run <code>WaitSpin: Connect publisher</code> to rotate or reconnect the publisher-extension key.</p>`;
     }
     if (!state.hasApiKey || !state.installId) {
-        return `<p class="notice">Install status: waiting for publisher-extension key and install ID. Run <code>waitspin extension install --target vscode</code>, then set User settings.</p>`;
+        return `<p class="notice">Install status: setup required. Run <code>WaitSpin: Connect publisher</code> to register this VS Code install and store the publisher key in SecretStorage.</p>`;
     }
-    const apiBase = state.apiBase ? escapeHtml(state.apiBase) : "trusted API";
-    return `<p class="notice">Install status: active for <code>${escapeHtml(state.installId)}</code> on ${apiBase}.</p>`;
+    const apiBase = state.apiBase ? (0, extension_html_1.escapeHtml)(state.apiBase) : "trusted API";
+    return `<p class="notice">Install status: active for <code>${(0, extension_html_1.escapeHtml)(state.installId)}</code> on ${apiBase}.</p>`;
 }
 function renderSponsor(state) {
     if (state.activeServe && state.inventoryStatus === "serving") {
-        return `<div class="sponsor"><p class="line">${escapeHtml(state.activeServe.line)}</p><p class="muted">Visible impression records after ${Math.round(state.activeServe.minVisibleMs / 1000)} seconds. Open the sponsor link from the Command Palette or status bar.</p></div>`;
+        return `<div class="sponsor"><p class="line">${(0, extension_html_1.escapeHtml)(state.activeServe.line)}</p><p class="muted">Visible impression records after ${Math.round(state.activeServe.minVisibleMs / 1000)} seconds. Open the sponsor link from the Command Palette or status bar.</p></div>`;
     }
     if (state.inventoryStatus === "empty") {
-        return `<p class="notice">No inventory right now. The plugin will keep polling without showing house ads.</p>`;
+        return `<p class="notice">No eligible sponsor right now. This can mean the current campaigns are empty for this install today, including level-based daily exposure limits. The plugin will keep polling without showing house ads. ${extension_wallet_view_1.PUBLISHER_LEVELS_DOCS_LINK}</p>`;
     }
     if (state.inventoryStatus === "polling") {
         return `<p class="notice">Polling for eligible sponsored wait-state inventory.</p>`;
@@ -351,37 +423,7 @@ function renderSponsor(state) {
     if (state.inventoryStatus === "error") {
         return `<p class="notice error">Inventory refresh failed. WaitSpin will retry on the next polling interval.</p>`;
     }
-    return `<p class="notice">Configure the install to start sponsor polling.</p>`;
-}
-function renderWallet(status) {
-    if (!status) {
-        return `<p class="notice">Wallet status is unavailable until a publisher-extension key with <code>wallet:read</code> refreshes successfully.</p>`;
-    }
-    const rows = [
-        ["Available", status.balance.availableMicroUnits],
-        ["Pending maturity", status.balance.maturingMicroUnits],
-        ["Pending payout", status.balance.pendingPayoutMicroUnits],
-        ["Held", status.balance.heldMicroUnits],
-        ["Lifetime earned", status.balance.lifetimeEarnedMicroUnits],
-    ];
-    const blocked = status.payoutBlockedReasons.length
-        ? escapeHtml(status.payoutBlockedReasons.join(", "))
-        : "none";
-    return `<div class="grid">${rows
-        .map(([label, value]) => `<span>${escapeHtml(String(label))}</span><span class="amount">${formatMicroUnits(Number(value))}</span>`)
-        .join("")}</div>
-<p class="muted">Payout eligible: ${status.payoutEligible ? "yes" : "no"}; Connect: ${status.connectConnected ? "connected" : "not connected"}; payouts: ${status.payoutsEnabled ? "enabled" : "disabled"}; blockers: ${blocked}</p>`;
-}
-function renderLedger(entries) {
-    if (!entries.length) {
-        return `<p class="notice">No ledger entries yet.</p>`;
-    }
-    return entries
-        .map((entry) => `<div class="entry">
-        <p><strong>${escapeHtml(entry.eventType)}</strong> <span class="amount">${formatMicroUnits(entry.publisherMicroUnits)}</span></p>
-        <p class="muted">${escapeHtml(new Date(entry.createdAt).toLocaleString())} - gross ${formatMicroUnits(entry.grossMicroUnits)}</p>
-      </div>`)
-        .join("");
+    return `<p class="notice">Connect this publisher install to start sponsor polling.</p>`;
 }
 function objectRecord(value) {
     return value && typeof value === "object"
@@ -400,13 +442,5 @@ function readStringArray(value) {
         return [];
     }
     return value.filter((item) => typeof item === "string");
-}
-function escapeHtml(value) {
-    return value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
 }
 //# sourceMappingURL=extension-core.js.map

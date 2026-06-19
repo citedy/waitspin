@@ -14,3 +14,4 @@ docs/waitspin/private/
 .smoke-state/
 .playwright-mcp/
 extensions/waitspin-vscode/*.vsix
+.tmp-waitspin-*

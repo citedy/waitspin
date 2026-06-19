@@ -8,6 +8,7 @@ import {
   WAITSPIN_SENT_PAYLOADS,
 } from "@/lib/waitspin/public-trust";
 import { Section, WaitSpinLegalPage } from "../legal-content";
+import { PublicSurfaceCopyLabel } from "../public-surface-copy-label";
 
 export const metadata: Metadata = {
   title: "WaitSpin Privacy",
@@ -48,16 +49,42 @@ export default function WaitSpinPrivacyPage() {
 
       <Section title="Publisher Surface Behavior">
         <p>
-          Verified publisher surfaces include VS Code, Claude Code, MiMo Code,
-          OpenCode, and Grok Code CLI. They poll the WaitSpin API for a
-          sponsored message, show it in the relevant wait-state surface, open
-          advertiser destinations only after user action, and report an
-          impression after the required visible interval.
+          Verified publisher surfaces include the VS Code Activity Bar/status-bar
+          extension, Claude Code statusline command, MiMo Code shell hook,
+          OpenCode TUI plugin slot, and Grok Code CLI footer. They poll the
+          WaitSpin API for a sponsored message, show the message in the relevant
+          wait-state surface, open the advertiser destination only after user
+          action, and report an impression after the required visible interval.
+          The documented surfaces do not need source code, keystrokes, editor
+          contents, terminal output, or repository files to serve ads.
+        </p>
+        <p>
+          The VS Code extension connects a publisher install inside VS Code,
+          stores the publisher API key in VS Code SecretStorage, stores the
+          install ID in user-scoped extension state, and polls only the WaitSpin
+          API. Serve polling sends the install ID;
+          impression reporting sends the serve ID, serve receipt, install ID,
+          and visible duration. WaitSpin also receives standard network metadata
+          used for rate limits, abuse prevention, and audit logging.
         </p>
         <ul className="list-disc space-y-2 pl-5">
           {WAITSPIN_PUBLIC_PUBLISHER_TARGETS.map((target) => (
             <li key={target.target}>
-              <strong>{target.label}</strong>: {target.localBehavior}
+              {"href" in target ? (
+                <a
+                  className="underline"
+                  href={target.href}
+                  rel="noopener noreferrer"
+                >
+                  <strong>{target.label}</strong>
+                </a>
+              ) : (
+                <PublicSurfaceCopyLabel
+                  command={target.installCommand}
+                  label={target.label}
+                />
+              )}
+              : {target.localBehavior}
             </li>
           ))}
         </ul>

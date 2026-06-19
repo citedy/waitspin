@@ -71,7 +71,7 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
   {
     method: "GET",
     path: "/v1/wallet/status",
-    auth: "connect:manage",
+    auth: "wallet:read",
     purpose: "Read publisher balances, Connect status, and payout eligibility.",
   },
   {
@@ -83,7 +83,7 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
   {
     method: "GET",
     path: "/v1/wallet/ledger",
-    auth: "analytics:read",
+    auth: "wallet:read",
     purpose: "Read publisher delivery, reversal, hold, and payout ledger rows.",
   },
   {
@@ -139,8 +139,9 @@ Authenticated routes use \`Authorization: Bearer wts_live_...\`.
 Use \`npx --yes waitspin init --email EMAIL --key-profile control\` for
 advertiser/control actions. Use \`--key-profile publisher-extension\` for
 publisher install, serve polling, and impression reporting. Publisher-extension
-keys cannot create campaigns, start Checkout, manage wallet/Connect, list
-ledger rows, or execute payouts.
+keys can register publisher installs, poll serve inventory, report impressions,
+and read wallet/ledger status. They cannot create campaigns, start Checkout,
+manage Connect, or execute payouts.
 
 \`POST /v1/campaigns\` requires an \`Idempotency-Key\` v4 UUID.
 
@@ -153,8 +154,11 @@ ${endpointTable()}
 ## Public Publisher Surface
 
 The verified public publisher targets are:
-VS Code Activity Bar/status-bar extension, installed by
-\`waitspin extension install --target vscode\`; Claude Code statusline command,
+VS Code Activity Bar/status-bar extension, installed from
+https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
+with \`code --install-extension waitspin.waitspin-vscode\` and connected by running
+\`WaitSpin: Connect publisher\` inside VS Code. The CLI fallback is
+\`waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY\`. Claude Code statusline command,
 installed by \`waitspin claude-code install --compose-existing\`; MiMo Code
 shell hook, installed by \`waitspin mimocode install\`; and OpenCode TUI plugin
 slot, installed by \`waitspin opencode install\`; and Grok Code CLI footer,
@@ -226,6 +230,10 @@ waitspin install --all --api-key wts_live_... --compose-existing
 waitspin status --all
 
 # VS Code Activity Bar/status-bar extension
+# Marketplace: https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
+code --install-extension waitspin.waitspin-vscode
+# Then run "WaitSpin: Connect publisher" in VS Code.
+# CLI fallback:
 waitspin extension install --target vscode --api-key wts_live_...
 waitspin extension status --target vscode
 

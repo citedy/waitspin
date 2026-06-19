@@ -2,9 +2,13 @@
 
 import {
   formatMicroUnits,
+  generatePublisherInstallId,
+  hasPublisherExtensionScopes,
   isSafeExternalUrl,
   parseLedgerPayload,
+  parsePublisherRegistrationPayload,
   parseServePayload,
+  parseVerifiedPublisherKeyPayload,
   parseWalletStatusPayload,
   renderPublisherViewHtml,
 } from "../src/extension-core";
@@ -70,6 +74,55 @@ describe("WaitSpin VS Code extension core", () => {
     ).toBeUndefined();
   });
 
+  it("validates extension-owned publisher onboarding payloads", () => {
+    expect(generatePublisherInstallId(() => "12345678-1234-4234-9234-123456789abc")).toBe(
+      "wins_12345678123442349234123456789abc",
+    );
+    expect(
+      hasPublisherExtensionScopes([
+        "publishers:write",
+        "serve:read",
+        "events:write",
+        "wallet:read",
+      ]),
+    ).toBe(true);
+    expect(
+      parseVerifiedPublisherKeyPayload({
+        account_id: "wacc_test",
+        api_key: "wts_live_test_key_value_1234567890",
+        key_profile: "publisher_extension",
+        scopes: [
+          "publishers:write",
+          "serve:read",
+          "events:write",
+          "wallet:read",
+        ],
+      }),
+    ).toMatchObject({
+      apiKey: "wts_live_test_key_value_1234567890",
+      keyProfile: "publisher_extension",
+    });
+    expect(
+      parseVerifiedPublisherKeyPayload({
+        account_id: "wacc_test",
+        api_key: "wts_live_test_key_value_1234567890",
+        key_profile: "publisher_extension",
+        scopes: ["publishers:write", "serve:read", "events:write"],
+      }),
+    ).toBeUndefined();
+    expect(
+      parsePublisherRegistrationPayload({
+        publisher_id: "wpub_test",
+        install_id: "wins_test",
+        target: "status-bar-fallback",
+      }),
+    ).toEqual({
+      publisherId: "wpub_test",
+      installId: "wins_test",
+      target: "status-bar-fallback",
+    });
+  });
+
   it("parses wallet status and ledger entries for publisher visibility", () => {
     expect(
       parseWalletStatusPayload({
@@ -77,22 +130,50 @@ describe("WaitSpin VS Code extension core", () => {
           available_micro_units: 12_000_000,
           maturing_micro_units: 3_000_000,
           held_micro_units: 0,
+          reversal_debt_micro_units: 0,
           pending_payout_micro_units: 1_000_000,
           lifetime_earned_micro_units: 16_000_000,
         },
         connect: { connected: true, payouts_enabled: false },
         payout_policy: {
           eligible: false,
-          blocked_reasons: ["payouts_disabled"],
+          blocked_reasons: [
+            "connect_payouts_not_enabled",
+            "earnings_maturing",
+            "balance_below_minimum",
+          ],
+          transfer_cents: 1200,
+          min_payout_cents: 1000,
+          earning_maturity_hours: 72,
+          next_eligible_at: "2026-06-20T12:00:00.000Z",
+        },
+        publisher_trust: {
+          level: 1,
+          max_level: 10,
+          status: "warming",
+          next_level_at: "2026-06-21T12:00:00.000Z",
         },
       }),
     ).toMatchObject({
       balance: {
         availableMicroUnits: 12_000_000,
         maturingMicroUnits: 3_000_000,
+        reversalDebtMicroUnits: 0,
       },
       connectConnected: true,
-      payoutBlockedReasons: ["payouts_disabled"],
+      payoutBlockedReasons: [
+        "connect_payouts_not_enabled",
+        "earnings_maturing",
+        "balance_below_minimum",
+      ],
+      payoutTransferCents: 1200,
+      minPayoutCents: 1000,
+      earningMaturityHours: 72,
+      nextEligibleAt: "2026-06-20T12:00:00.000Z",
+      publisherTrustLevel: 1,
+      publisherTrustMaxLevel: 10,
+      publisherTrustStatus: "warming",
+      publisherTrustNextLevelAt: "2026-06-21T12:00:00.000Z",
     });
 
     expect(
@@ -157,8 +238,158 @@ describe("WaitSpin VS Code extension core", () => {
       ledgerEntries: [],
     });
 
-    expect(html).toContain("No inventory right now");
+    expect(html).toContain("No eligible sponsor right now");
+    expect(html).toContain("level-based daily exposure limits");
+    expect(html).toContain("https://waitspin.com/docs#publisher-levels-and-limits");
+    expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain("default-src 'none'");
     expect(html).not.toContain("<script");
+  });
+
+  it("renders payout blockers as readable guidance", () => {
+    const html = renderPublisherViewHtml({
+      hasApiKey: true,
+      authStopped: false,
+      installId: "wins_test",
+      apiBase: "https://api.waitspin.com",
+      inventoryStatus: "empty",
+      walletStatus: {
+        balance: {
+          availableMicroUnits: 0,
+          maturingMicroUnits: 40_000,
+          heldMicroUnits: 0,
+          reversalDebtMicroUnits: 0,
+          pendingPayoutMicroUnits: 0,
+          lifetimeEarnedMicroUnits: 40_000,
+        },
+        payoutEligible: false,
+        payoutBlockedReasons: [
+          "connect_account_missing",
+          "earnings_maturing",
+          "balance_below_minimum",
+        ],
+        minPayoutCents: 1000,
+        earningMaturityHours: 72,
+        publisherTrustLevel: 1,
+        publisherTrustMaxLevel: 10,
+        publisherTrustStatus: "downranked",
+        publisherTrustNextLevelAt: "2026-06-21T12:00:00.000Z",
+        connectConnected: false,
+        payoutsEnabled: false,
+      },
+      ledgerEntries: [],
+    });
+
+    expect(html).toContain("Payout status: Not ready yet");
+    expect(html).toContain(
+      "This wallet view loaded through your VS Code publisher install",
+    );
+    expect(html).toContain("Payout account: Not set up");
+    expect(html).toContain("Earnings: Maturing");
+    expect(html).toContain("Publisher level: 1/10, limited after risk signals");
+    expect(html).toContain("Next level window:");
+    expect(html).toContain(
+      "Level limits affect how much one install can receive from a campaign each day",
+    );
+    expect(html).toContain("Publisher levels and limits");
+    expect(html).toContain("https://waitspin.com/docs#publisher-levels-and-limits");
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).toContain("Balance: Below minimum");
+    expect(html).toContain("minimum payout: EUR 10.00");
+    expect(html).toContain("Set up payout account");
+    expect(html).toContain(
+      "https://waitspin.com/wallet/connect?source=vscode&amp;install_id=wins_test",
+    );
+    expect(html).toContain(
+      "https://waitspin.com/docs#publisher-wallet-and-payouts",
+    );
+    expect(html).not.toContain("wts_live_");
+    expect(html).not.toContain("Payout eligible: no; Connect");
+    expect(html).not.toContain("connect_account_missing");
+    expect(html).not.toContain("earnings_maturing");
+    expect(html).not.toContain("balance_below_minimum");
+  });
+
+  it("does not render unknown publisher trust status labels", () => {
+    const html = renderPublisherViewHtml({
+      hasApiKey: true,
+      authStopped: false,
+      installId: "wins_test",
+      apiBase: "https://api.waitspin.com",
+      inventoryStatus: "empty",
+      walletStatus: {
+        balance: {
+          availableMicroUnits: 0,
+          maturingMicroUnits: 40_000,
+          heldMicroUnits: 0,
+          reversalDebtMicroUnits: 0,
+          pendingPayoutMicroUnits: 0,
+          lifetimeEarnedMicroUnits: 40_000,
+        },
+        payoutEligible: false,
+        payoutBlockedReasons: ["earnings_maturing"],
+        earningMaturityHours: 72,
+        publisherTrustLevel: 1,
+        publisherTrustMaxLevel: 10,
+        publisherTrustStatus: "unexpected_backend_status",
+        connectConnected: true,
+        payoutsEnabled: true,
+      },
+      ledgerEntries: [],
+    });
+
+    expect(html).toContain("Publisher level: 1/10.");
+    expect(html).not.toContain("unexpected_backend_status");
+    expect(html).not.toContain("unexpected backend status");
+  });
+
+  it("uses payoutable balance when reversal debt blocks payout minimum", () => {
+    const html = renderPublisherViewHtml({
+      hasApiKey: true,
+      authStopped: false,
+      installId: "wins_test",
+      apiBase: "https://api.waitspin.com",
+      inventoryStatus: "empty",
+      walletStatus: {
+        balance: {
+          availableMicroUnits: 12_000_000,
+          maturingMicroUnits: 0,
+          heldMicroUnits: 0,
+          reversalDebtMicroUnits: 3_000_000,
+          pendingPayoutMicroUnits: 0,
+          lifetimeEarnedMicroUnits: 12_000_000,
+        },
+        payoutEligible: false,
+        payoutBlockedReasons: [
+          "reversal_debt_outstanding",
+          "balance_below_minimum",
+        ],
+        payoutTransferCents: 900,
+        minPayoutCents: 1000,
+        connectConnected: true,
+        payoutsEnabled: true,
+      },
+      ledgerEntries: [],
+    });
+
+    expect(html).toContain("Available</span><span class=\"amount\">EUR 12.00");
+    expect(html).toContain("Reversal debt");
+    expect(html).toContain("Payoutable now: EUR 9.00");
+    expect(html).toContain("minimum payout: EUR 10.00");
+    expect(html).toContain("Reversal debt: EUR 3.00");
+    expect(html).not.toContain("Available now: EUR 12.00");
+  });
+
+  it("renders setup around in-editor connect instead of manual settings", () => {
+    const html = renderPublisherViewHtml({
+      hasApiKey: false,
+      authStopped: false,
+      inventoryStatus: "setup",
+      ledgerEntries: [],
+    });
+
+    expect(html).toContain("WaitSpin: Connect publisher");
+    expect(html).toContain("SecretStorage");
+    expect(html).not.toContain("set User settings");
   });
 });

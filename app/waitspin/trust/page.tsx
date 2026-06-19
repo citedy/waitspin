@@ -10,6 +10,7 @@ import {
   waitSpinPublicTargetsSentence,
 } from "@/lib/waitspin/public-trust";
 import { Section, WaitSpinLegalPage } from "../legal-content";
+import { PublicSurfaceCopyLabel } from "../public-surface-copy-label";
 
 const marketplaceUrl =
   "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode";
@@ -80,16 +81,46 @@ export default function WaitSpinTrustPage() {
         </p>
       </Section>
 
+      <Section title="Client Privacy Boundary">
+        <p>
+          The VS Code extension connects a publisher install inside VS Code,
+          stores the publisher API key in VS Code SecretStorage, stores the
+          install ID in user-scoped extension state, polls the WaitSpin API for a
+          sponsored line, opens advertiser links only after user action, and
+          reports a billable impression after the required visible interval. It
+          does not read workspace files, open editor text, prompts, model
+          responses, integrated terminal output, shell history, repository URLs,
+          or source code.
+        </p>
+      </Section>
+
       <Section title="Supported Public Surfaces">
         <ul className="list-disc space-y-2 pl-5">
           {WAITSPIN_PUBLIC_PUBLISHER_TARGETS.map((target) => (
             <li key={target.target}>
-              <strong>{target.label}</strong>: <code>{target.target}</code>.{" "}
+              {"href" in target ? (
+                <a
+                  className="underline"
+                  href={target.href}
+                  rel="noopener noreferrer"
+                >
+                  <strong>{target.label}</strong>
+                </a>
+              ) : (
+                <PublicSurfaceCopyLabel
+                  command={target.installCommand}
+                  label={target.label}
+                />
+              )}
+              : <code>{target.target}</code>.{" "}
               {target.localBehavior}
             </li>
           ))}
         </ul>
         <p>
+          The current public publisher surfaces are the VS Code Marketplace
+          Activity Bar/status-bar extension, Claude Code statusline command, MiMo
+          Code shell hook, OpenCode TUI plugin slot, and Grok Code CLI footer.
           Native spinner patching beyond these supported status surfaces remains
           outside the public contract until separately shipped and documented.
         </p>

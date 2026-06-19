@@ -10,6 +10,7 @@ describe("waitspin package assets", () => {
     for (const file of [
       "extension.ts",
       "extension-core.ts",
+      "extension-onboarding.ts",
       "extension-surfaces.ts",
       "extension-wallet.ts",
     ]) {
@@ -125,7 +126,7 @@ describe("waitspin package assets", () => {
       contributes: {
         commands: Array<{ command: string }>;
         configuration: { properties: Record<string, unknown> };
-        views: Record<string, Array<{ id: string }>>;
+        views: Record<string, Array<{ id: string; type?: string }>>;
         viewsContainers: { activitybar: Array<{ id: string; icon: string }> };
       };
     };
@@ -134,8 +135,8 @@ describe("waitspin package assets", () => {
     ] as { description?: string } | undefined;
 
     expect(manifest.publisher).toBe("waitspin");
-    expect(manifest.description).toContain("publisher wallet");
-    expect(manifest.description).toContain("sponsored wait-state cards");
+    expect(manifest.description).toContain("Earn from VS Code wait states");
+    expect(manifest.description).toContain("ledger visibility");
     expect(manifest.repository.url).toBe("https://github.com/citedy/waitspin.git");
     expect(manifest.repository.directory).toBe("extensions/waitspin-vscode");
     expect(manifest.description).not.toMatch(/Claude|Codex|patch/i);
@@ -146,11 +147,15 @@ describe("waitspin package assets", () => {
       }),
     ]);
     expect(manifest.contributes.views.waitspin).toEqual([
-      expect.objectContaining({ id: "waitspin.publisherView" }),
+      expect.objectContaining({
+        id: "waitspin.publisherView",
+        type: "webview",
+      }),
     ]);
     expect(manifest.contributes.commands.map((command) => command.command)).toEqual(
       expect.arrayContaining([
         "waitspin.refreshWallet",
+        "waitspin.connectPublisher",
         "waitspin.openDocs",
         "waitspin.openMarket",
         "waitspin.openCliInstallHelp",
@@ -180,5 +185,15 @@ describe("waitspin package assets", () => {
     expect(source).not.toMatch(/workspace\.(textDocuments|workspaceFolders|fs)/);
     expect(source).not.toContain("activeTextEditor");
     expect(source).not.toContain("Terminal.shellIntegration");
+  });
+
+  it("does not expose dev verification codes in VS Code onboarding", async () => {
+    const source = await readFile(
+      path.join(repoRoot, "extensions/waitspin-vscode/src/extension-onboarding.ts"),
+      "utf8",
+    );
+
+    expect(source).not.toContain("verification_debug_code");
+    expect(source).not.toContain("debugCode");
   });
 });

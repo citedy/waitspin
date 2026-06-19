@@ -4,30 +4,39 @@ export const WAITSPIN_PUBLIC_PUBLISHER_TARGETS = [
   {
     label: "VS Code",
     target: "status-bar-fallback",
+    href: "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
     localBehavior:
-      "Uses VS Code SecretStorage for the publisher API key, a global user-settings bootstrap for install ID/API base, and the managed Activity Bar/status-bar fallback surface.",
+      "Uses VS Code SecretStorage for the publisher API key and user-scoped extension state for the install ID. The Marketplace extension provides an Activity Bar publisher view, status-bar mini state, wallet balance, pending balance, recent ledger entries, current sponsor card, no-inventory state, connect/polling/refresh/open commands, and a five-second visible impression hold.",
   },
   {
     label: "Claude Code",
     target: "claude-code",
+    installCommand:
+      "waitspin claude-code install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing",
     localBehavior:
       "Inspects user/scoped Claude settings, manages statusLine.command with --compose-existing support, and stores WaitSpin state/cache under ~/.waitspin.",
   },
   {
     label: "MiMo Code",
     target: "mimocode",
+    installCommand:
+      "waitspin mimocode install --api-key PASTE_PUBLISHER_EXTENSION_KEY",
     localBehavior:
       "Installs a managed runtime under ~/.local/bin, adds a bash hook in ~/.bashrc, and stores WaitSpin state/cache under ~/.waitspin.",
   },
   {
     label: "OpenCode",
     target: "opencode",
+    installCommand:
+      "waitspin opencode install --api-key PASTE_PUBLISHER_EXTENSION_KEY",
     localBehavior:
       "Installs a plugin under ~/.config/opencode/plugins, manages the tui.json plugin entry, and stores WaitSpin state/cache under ~/.waitspin.",
   },
   {
     label: "Grok Code CLI",
     target: "grok",
+    installCommand:
+      "waitspin grok install --api-key PASTE_PUBLISHER_EXTENSION_KEY",
     localBehavior:
       "Uses a managed text-asset footer patch with hash-backed backup/restore plus managed runtime/cache/state; it does not patch native binaries.",
   },

@@ -1,32 +1,55 @@
-# WaitSpin
+# WaitSpin: Sponsored Wait States
 
-WaitSpin is the publisher extension for WaitSpin sponsored wait-state cards in
-VS Code-compatible editors. It connects your local editor surface to the
-WaitSpin API so eligible publisher installs can show sponsored cards, report
-visible impressions, and keep wallet status close at hand.
+WaitSpin lets developers earn from natural wait states in VS Code-compatible
+editors. Advertisers sponsor short cards, payable impressions count only after
+5 seconds visible, and wallet plus ledger status stay in the editor without
+reading workspace files, prompts, terminal output, repository URLs,
+screenshots, or shell history.
 
 ## Features
 
-- Activity Bar publisher view with install status, wallet balance, pending
-  balance, recent ledger entries, current sponsor card, and no-inventory state.
+- Activity Bar view with install status, wallet balance, pending balance,
+  recent ledger entries, current sponsor card, and no-inventory state.
 - Status-bar mini state for setup, wallet, inventory, and active sponsored card
   visibility.
-- Command Palette actions to start polling, refresh wallet, open docs, open the
-  advertiser market, and install or update the WaitSpin CLI helper.
+- Command Palette actions to connect the WaitSpin install, start polling,
+  refresh wallet, open docs, open the advertiser market, and install or update
+  the WaitSpin CLI helper.
 - Five-second visible impression hold before `/v1/events/impression` is sent.
-- Publisher key migration into VS Code SecretStorage; runtime polling uses
-  SecretStorage instead of workspace settings.
+- Developer onboarding inside VS Code. API keys are stored in VS Code
+  SecretStorage; install state is user-scoped and not workspace-scoped.
 
 ## Setup
 
-Install the extension from VS Code Marketplace, then connect a publisher install
-with the WaitSpin CLI:
+Install the extension from VS Code Marketplace:
+
+https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
 
 ```bash
-npx --yes waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
+code --install-extension waitspin.waitspin-vscode
 ```
 
-Copy the generated install ID into VS Code User settings:
+Then run:
+
+```text
+WaitSpin: Connect publisher
+```
+
+The extension can request a WaitSpin extension key by email verification or
+accept an existing WaitSpin extension key. It registers the VS Code install,
+stores the key in VS Code SecretStorage, stores the install ID in global
+extension state, and starts wallet/sponsor polling.
+
+### CLI fallback
+
+The WaitSpin CLI remains available for advanced setup and diagnostics:
+
+```bash
+npx --yes waitspin extension install --target vscode --api-key PASTE_WAITSPIN_EXTENSION_KEY
+```
+
+If you use the CLI fallback, copy the generated install ID into VS Code User
+settings:
 
 ```json
 {
@@ -34,7 +57,7 @@ Copy the generated install ID into VS Code User settings:
 }
 ```
 
-Then add the same publisher-extension key once as a temporary User setting:
+Then add the same WaitSpin extension key once as a temporary User setting:
 
 ```json
 {
@@ -44,7 +67,8 @@ Then add the same publisher-extension key once as a temporary User setting:
 
 On activation, WaitSpin migrates `waitspin.apiKey` into VS Code SecretStorage
 and clears it from settings. To rotate a key, set `waitspin.apiKey` again; the
-extension overwrites the stored secret and clears the setting again.
+extension overwrites the stored secret and clears the setting again. For the
+normal Marketplace path, use `WaitSpin: Connect publisher` instead.
 
 Open the WaitSpin Activity Bar view or run `WaitSpin: Start publisher polling`.
 The extension talks to `https://api.waitspin.com` by default.
@@ -53,15 +77,15 @@ The extension talks to `https://api.waitspin.com` by default.
 
 The extension does not read workspace files, editor text, prompts, terminal
 output, repository URLs, screenshots, shell history, or arbitrary local paths.
-It sends publisher install status, serve/impression event fields, and wallet
-read requests to the WaitSpin API. Sponsored links are opened only through VS
-Code external URL handling.
+It sends install status, serve/impression event fields, and wallet read
+requests to the WaitSpin API. Sponsored links are opened only through VS Code
+external URL handling.
 
 ## Earnings
 
-WaitSpin uses a 60% publisher / 40% platform split. Wallet and ledger values are
-reported by the WaitSpin backend as the source of truth; pending earnings mature
-according to the public WaitSpin payout policy.
+WaitSpin uses a 60% developer / 40% platform split. Wallet and ledger values
+are reported by the WaitSpin backend as the source of truth; pending earnings
+mature according to the public WaitSpin payout policy.
 
 ## Support
 

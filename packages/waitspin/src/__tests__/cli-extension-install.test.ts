@@ -69,7 +69,7 @@ describe("waitspin extension install", () => {
     os.homedir(),
     ".vscode",
     "extensions",
-    "waitspin.waitspin-vscode-0.1.0",
+    "waitspin.waitspin-vscode-0.1.3",
   );
   const claudeStatePath = path.join(
     os.homedir(),
@@ -221,7 +221,7 @@ describe("waitspin extension install", () => {
         return JSON.stringify({
           name: "waitspin-vscode",
           publisher: "waitspin",
-          version: "0.1.0",
+          version: "0.1.3",
         });
       }
       if (filePath.endsWith("waitspin-opencode.plugin.tsx")) {
@@ -325,6 +325,22 @@ describe("waitspin extension install", () => {
     expect(text).not.toContain("cline|kimi|mmx");
     expect(text).not.toContain("Hidden experimental targets");
     expect(text).not.toContain("codex");
+  });
+
+  it("rejects unsupported wallet connect countries before network calls", async () => {
+    const { main } = await import("../cli");
+
+    await expect(
+      main([
+        "wallet",
+        "connect",
+        "--country",
+        "ZZ",
+        "--api-key",
+        "wts_live_test",
+      ]),
+    ).rejects.toThrow("--country ZZ is not a supported payout country");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("prints the exact next command after requesting a publisher-extension email code", async () => {
@@ -1823,7 +1839,7 @@ describe("waitspin extension install", () => {
         return JSON.stringify({
           name: "../waitspin-vscode",
           publisher: "waitspin",
-          version: "0.1.0",
+          version: "0.1.3",
         });
       }
       if (filePath === statePath) {
@@ -1913,7 +1929,7 @@ describe("waitspin extension install", () => {
     expect(cp).toHaveBeenCalledWith(
       expect.stringContaining("package.json"),
       expect.stringContaining(
-        path.join(".vscode", "extensions", "waitspin.waitspin-vscode-0.1.0"),
+        path.join(".vscode", "extensions", "waitspin.waitspin-vscode-0.1.3"),
       ),
       { force: true },
     );
@@ -1923,7 +1939,7 @@ describe("waitspin extension install", () => {
         path.join(
           ".vscode",
           "extensions",
-          "waitspin.waitspin-vscode-0.1.0",
+          "waitspin.waitspin-vscode-0.1.3",
           "out",
         ),
       ),
@@ -1935,7 +1951,7 @@ describe("waitspin extension install", () => {
         path.join(
           ".vscode",
           "extensions",
-          "waitspin.waitspin-vscode-0.1.0",
+          "waitspin.waitspin-vscode-0.1.3",
           "media",
         ),
       ),
@@ -1958,7 +1974,7 @@ describe("waitspin extension install", () => {
     expect(output.publisher_registered).toBe(true);
     expect(output.extension_installed).toBe(true);
     expect(output.installed_extension_path).toContain(
-      path.join(".vscode", "extensions", "waitspin.waitspin-vscode-0.1.0"),
+      path.join(".vscode", "extensions", "waitspin.waitspin-vscode-0.1.3"),
     );
     expect(output.publisher_id).toBe("wpub_test");
     expect(output.install_id).toBe(body.install_id);
@@ -2021,7 +2037,7 @@ describe("waitspin extension install", () => {
           publisher_id: "wpub_test",
           publisher_target: "status-bar-fallback",
           extension: "waitspin-vscode",
-          version: "0.1.0",
+          version: "0.1.3",
           installed_extension_path: installedPath,
         });
       }

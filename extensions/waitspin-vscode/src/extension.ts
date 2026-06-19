@@ -7,12 +7,14 @@ import {
   type PublisherViewState,
   type ServeCreative,
 } from "./extension-core";
+import { PublisherOnboardingController } from "./extension-onboarding";
 import { PublisherSurfaces } from "./extension-surfaces";
 import { PublisherWalletController } from "./extension-wallet";
 
 const POLL_INTERVAL_MS = 15_000;
 const FETCH_TIMEOUT_MS = 10_000;
 const API_KEY_SECRET_STORAGE_KEY = "waitspin.publisherApiKey";
+const INSTALL_ID_GLOBAL_STATE_KEY = "waitspin.publisherInstallId";
 
 type ActiveServe = ServeCreative & {
   shownAt: number;
@@ -24,6 +26,7 @@ let pollTimer: ReturnType<typeof setInterval> | undefined;
 let impressionTimeout: ReturnType<typeof setTimeout> | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
 let secretApiKey: string | undefined;
+let storedInstallId: string | undefined;
 let authPollingStopped = false;
 let isPolling = false;
 let invalidApiBaseWarned = false;
@@ -80,7 +83,7 @@ async function migratePublisherApiKeyToSecretStorage(
 
   if (fromConfig) {
     try {
-      await context.secrets.store(API_KEY_SECRET_STORAGE_KEY, fromConfig);
+      await storePublisherApiKey(context, fromConfig);
     } catch (error) {
       secretApiKey = undefined;
       warnCredentialStorageFailure(
@@ -90,9 +93,6 @@ async function migratePublisherApiKeyToSecretStorage(
       return;
     }
 
-    secretApiKey = fromConfig;
-    getWalletController().reset();
-    refreshConfiguredState();
     try {
       await vscode.workspace
         .getConfiguration("waitspin")
@@ -124,7 +124,65 @@ async function migratePublisherApiKeyToSecretStorage(
   refreshConfiguredState();
 }
 
+async function migratePublisherInstallIdToGlobalState(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  const fromConfig = readGlobalWaitSpinSetting("installId");
+  if (!fromConfig) {
+    return;
+  }
+  if (fromConfig === storedInstallId) {
+    await clearPublisherInstallIdSetting();
+    return;
+  }
+  try {
+    await storePublisherInstallId(context, fromConfig);
+    await clearPublisherInstallIdSetting();
+    logWaitSpin("Migrated waitspin.installId into VS Code global extension state.");
+  } catch (error) {
+    warnCredentialStorageFailure(
+      "Unable to migrate waitspin.installId into VS Code global extension state",
+      error,
+    );
+  }
+}
+
+async function clearPublisherInstallIdSetting(): Promise<void> {
+  try {
+    await vscode.workspace
+      .getConfiguration("waitspin")
+      .update("installId", undefined, vscode.ConfigurationTarget.Global);
+  } catch (error) {
+    warnCredentialStorageFailure(
+      "Unable to clear migrated waitspin.installId from settings",
+      error,
+    );
+  }
+}
+
+async function storePublisherApiKey(
+  context: vscode.ExtensionContext,
+  apiKey: string,
+): Promise<void> {
+  await context.secrets.store(API_KEY_SECRET_STORAGE_KEY, apiKey);
+  secretApiKey = apiKey;
+  getWalletController().reset();
+  refreshConfiguredState();
+}
+
+async function storePublisherInstallId(
+  context: vscode.ExtensionContext,
+  installId: string,
+): Promise<void> {
+  await context.globalState.update(INSTALL_ID_GLOBAL_STATE_KEY, installId);
+  storedInstallId = installId;
+  refreshConfiguredState();
+}
+
 function resolveInstallId(): string | undefined {
+  if (storedInstallId) {
+    return storedInstallId;
+  }
   const fromConfig = readGlobalWaitSpinSetting("installId");
   if (fromConfig) {
     return fromConfig;
@@ -398,6 +456,19 @@ function startPollingIfConfigured(): void {
   }, POLL_INTERVAL_MS);
 }
 
+async function showPublisherSetupPrompt(): Promise<void> {
+  const choice = await vscode.window.showInformationMessage(
+    "WaitSpin needs a connected publisher install before sponsor polling can start.",
+    "Connect publisher",
+    "Open docs",
+  );
+  if (choice === "Connect publisher") {
+    await vscode.commands.executeCommand("waitspin.connectPublisher");
+  } else if (choice === "Open docs") {
+    await vscode.env.openExternal(vscode.Uri.parse("https://waitspin.com/docs"));
+  }
+}
+
 async function recordImpression(
   serveId: string,
   serveReceipt: string,
@@ -464,6 +535,21 @@ async function recordImpression(
 
 export function activate(context: vscode.ExtensionContext): void {
   surfaces.register(context);
+  storedInstallId = context.globalState
+    .get<string>(INSTALL_ID_GLOBAL_STATE_KEY)
+    ?.trim();
+
+  const onboarding = new PublisherOnboardingController({
+    fetchWithTimeout,
+    logWaitSpin,
+    resolveApiBase,
+    resolveApiKey,
+    resolveInstallId,
+    storeApiKey: (apiKey) => storePublisherApiKey(context, apiKey),
+    storeInstallId: (installId) => storePublisherInstallId(context, installId),
+    startPolling: resetPollingAfterConfigChange,
+    updatePublisherState,
+  });
 
   const openAd = vscode.commands.registerCommand("waitspin.openAd", () => {
     const destinationUrl = activeServe?.destinationUrl;
@@ -480,11 +566,21 @@ export function activate(context: vscode.ExtensionContext): void {
       authPollingStopped = false;
       updatePublisherState({ authStopped: false, lastError: undefined });
       refreshConfiguredState();
+      if (!resolveApiKey() || !resolveInstallId()) {
+        void showPublisherSetupPrompt();
+        return;
+      }
       void getWalletController().refresh(false);
       startPollingIfConfigured();
     },
   );
   context.subscriptions.push(activatePublisher);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("waitspin.connectPublisher", () => {
+      void onboarding.connectPublisher();
+    }),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("waitspin.refreshWallet", () => {
@@ -517,7 +613,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   authPollingStopped = false;
   refreshConfiguredState();
-  void migratePublisherApiKeyToSecretStorage(context).finally(() => {
+  void Promise.all([
+    migratePublisherInstallIdToGlobalState(context),
+    migratePublisherApiKeyToSecretStorage(context),
+  ]).finally(() => {
     startPollingIfConfigured();
   });
   context.subscriptions.push(
@@ -527,7 +626,10 @@ export function activate(context: vscode.ExtensionContext): void {
         event.affectsConfiguration("waitspin.installId") ||
         event.affectsConfiguration("waitspin.apiBase")
       ) {
-        void migratePublisherApiKeyToSecretStorage(context).finally(() => {
+        void Promise.all([
+          migratePublisherInstallIdToGlobalState(context),
+          migratePublisherApiKeyToSecretStorage(context),
+        ]).finally(() => {
           resetPollingAfterConfigChange();
         });
       }
