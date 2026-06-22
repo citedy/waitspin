@@ -1,7 +1,6 @@
 ---
 name: waitspin
 description: Use this skill for WaitSpin, the sponsored wait-state ads CLI and API. Trigger when a user wants to create or manage WaitSpin campaigns, buy prepaid impression blocks, inspect the public market, onboard with email OTP keys, install or check earning surfaces for VS Code, Claude Code, MiMo Code, OpenCode, or Grok Code CLI, inspect wallet/ledger/payout status, or reason about WaitSpin public API, trust boundary, privacy, and shipped vs not-shipped capabilities.
-license: AGPL-3.0-or-later
 ---
 
 # WaitSpin
