@@ -230,7 +230,7 @@ describe("WaitSpin public docs contract", () => {
       "app/waitspin/docs/page.tsx",
       "app/waitspin/waitspin-landing-client.tsx",
       "docs/waitspin/PUBLIC_API.md",
-      "waitspin-skill/SKILL.md",
+      "skills/waitspin/SKILL.md",
       "packages/waitspin/README.md",
       "packages/waitspin/src/cli.ts",
     ];
@@ -277,7 +277,7 @@ describe("WaitSpin public docs contract", () => {
       "docs/waitspin/IMPLEMENTATION_STATUS.md",
       "docs/waitspin/V2_ROADMAP.md",
       "docs/waitspin/LAUNCH_EXECUTION_PLAN.md",
-      "waitspin-skill/SKILL.md",
+      "skills/waitspin/SKILL.md",
       "packages/waitspin/README.md",
       "packages/waitspin/src/cli.ts",
     ];
@@ -430,7 +430,7 @@ describe("WaitSpin public docs contract", () => {
     expect(exportScript).toContain("STRIPE_");
     expect(exportScript).toContain("AGPL-3.0-or-later");
     expect(exportScript).toContain("waitspin:trust-boundary");
-    expect(exportScript).toContain("waitspin-skill/SKILL.md");
+    expect(exportScript).toContain("skills/waitspin/SKILL.md");
     expect(exportScript).toContain("npx skills add citedy/waitspin --skill waitspin -g -y");
     expect(exportScript).toContain(
       "Cline, Kimi, and MMX are not public targets",
@@ -449,7 +449,7 @@ describe("WaitSpin public docs contract", () => {
       "docs/waitspin/PRD.md",
       "lib/waitspin/agent-docs.ts",
       "packages/waitspin/README.md",
-      "waitspin-skill/SKILL.md",
+      "skills/waitspin/SKILL.md",
     ];
     const sources = await Promise.all(
       checkedFiles.map((file) => readFile(path.join(repoRoot, file), "utf8")),
@@ -471,7 +471,7 @@ describe("WaitSpin public docs contract", () => {
 
   it("keeps the public skill actionable for agent-led email OTP onboarding", async () => {
     const skill = await readFile(
-      path.join(repoRoot, "waitspin-skill/SKILL.md"),
+      path.join(repoRoot, "skills/waitspin/SKILL.md"),
       "utf8",
     );
 
@@ -803,7 +803,7 @@ describe("WaitSpin public docs contract", () => {
     expect(termsPage).toContain("formatPublisherRevenueSharePercentWords");
     expect(termsPage).toContain("formatPlatformRevenueSharePercentWords");
     expect(llmsRoute).toContain(
-      "https://github.com/citedy/waitspin/blob/main/waitspin-skill/SKILL.md",
+      "https://github.com/citedy/waitspin/blob/main/skills/waitspin/SKILL.md",
     );
     expect(llmsRoute).toContain(
       "npx skills add citedy/waitspin --skill waitspin -g -y",

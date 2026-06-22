@@ -15,7 +15,7 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - Privacy: https://waitspin.com/waitspin/privacy
 - Trust boundary: https://waitspin.com/waitspin/trust
 - Public client source: https://github.com/citedy/waitspin
-- Public agent skill: https://github.com/citedy/waitspin/blob/main/waitspin-skill/SKILL.md
+- Public agent skill: https://github.com/citedy/waitspin/blob/main/skills/waitspin/SKILL.md
 - Agent contract: https://waitspin.com/.well-known/agents.md
 - WaitSpin agent contract mirror: https://waitspin.com/waitspin/agents.md
 - VS Code Marketplace extension: https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode

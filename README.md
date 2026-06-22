@@ -6,7 +6,7 @@ client surfaces. The private product/backend repository remains private.
 Included:
 
 - npm CLI client source under `packages/waitspin`
-- public agent skill under `waitspin-skill/SKILL.md`
+- public agent skill under `skills/waitspin/SKILL.md`
 - VS Code extension source under `extensions/waitspin-vscode`
 - public publisher-surface assets, including Grok Code CLI public target code
 - OpenAPI JSON, agents.md/llms.txt sources, trust/privacy/terms page copies

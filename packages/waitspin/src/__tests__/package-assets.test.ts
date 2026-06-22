@@ -77,7 +77,7 @@ describe("waitspin package assets", () => {
     expect(packageJson.description).toContain("Grok Code CLI");
     expect(packageJson.homepage).toBe("https://waitspin.com");
     expect(packageJson.repository?.url).toBe(
-      "https://github.com/citedy/waitspin.git",
+      "git+https://github.com/citedy/waitspin.git",
     );
     expect(packageJson.repository?.directory).toBe("packages/waitspin");
     expect(packageJson.bugs?.url).toBe(
