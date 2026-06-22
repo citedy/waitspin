@@ -431,6 +431,7 @@ describe("WaitSpin public docs contract", () => {
     expect(exportScript).toContain("AGPL-3.0-or-later");
     expect(exportScript).toContain("waitspin:trust-boundary");
     expect(exportScript).toContain("skills/waitspin/SKILL.md");
+    expect(exportScript).toContain("skills/waitspin/skill-card.md");
     expect(exportScript).toContain("npx skills add citedy/waitspin --skill waitspin -g -y");
     expect(exportScript).toContain(
       "Cline, Kimi, and MMX are not public targets",
