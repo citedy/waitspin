@@ -44,9 +44,12 @@ const INITIAL_PUBLISHER_STATE = {
 };
 class PublisherViewProvider {
     state;
+    onVisibilityChange;
     view;
-    constructor(state) {
+    visibilityListener;
+    constructor(state, onVisibilityChange) {
         this.state = state;
+        this.onVisibilityChange = onVisibilityChange;
     }
     resolveWebviewView(webviewView) {
         this.view = webviewView;
@@ -54,7 +57,10 @@ class PublisherViewProvider {
             enableScripts: false,
             localResourceRoots: [],
         };
+        this.visibilityListener?.dispose();
+        this.visibilityListener = webviewView.onDidChangeVisibility(this.onVisibilityChange);
         this.refresh();
+        this.onVisibilityChange();
     }
     update(state) {
         this.state = state;
@@ -66,6 +72,12 @@ class PublisherViewProvider {
         }
         this.view.webview.html = (0, extension_core_1.renderPublisherViewHtml)(this.state);
     }
+    isVisible() {
+        return this.view?.visible === true;
+    }
+    dispose() {
+        this.visibilityListener?.dispose();
+    }
 }
 function statusBarWalletText(status) {
     if (!status) {
@@ -75,9 +87,11 @@ function statusBarWalletText(status) {
 }
 class PublisherSurfaces {
     statusBarItem;
+    statusBarSponsorVisible = false;
     state = INITIAL_PUBLISHER_STATE;
-    publisherViewProvider = new PublisherViewProvider(this.state);
-    register(context) {
+    publisherViewProvider;
+    register(context, onVisibilityChange) {
+        this.publisherViewProvider = new PublisherViewProvider(this.state, onVisibilityChange);
         context.subscriptions.push(vscode.window.registerWebviewViewProvider("waitspin.publisherView", this.publisherViewProvider));
     }
     updateState(patch) {
@@ -85,11 +99,16 @@ class PublisherSurfaces {
             ...this.state,
             ...patch,
         };
-        this.publisherViewProvider.update(this.state);
+        this.publisherViewProvider?.update(this.state);
         this.updateStatusBarMiniState();
     }
     dispose() {
         this.statusBarItem?.dispose();
+        this.publisherViewProvider?.dispose();
+    }
+    hasVisibleSponsorSurface() {
+        return (this.publisherViewProvider?.isVisible() === true ||
+            this.statusBarSponsorVisible);
     }
     ensureStatusBarFallback() {
         if (!this.statusBarItem) {
@@ -101,23 +120,25 @@ class PublisherSurfaces {
     }
     updateStatusBarMiniState() {
         const item = this.ensureStatusBarFallback();
-        if (this.state.activeServe) {
+        if (this.state.activeServe && this.state.inventoryStatus === "serving") {
             item.text = `$(sync~spin) ${this.state.activeServe.line}`;
             item.tooltip = "WaitSpin sponsored message";
             item.command = "waitspin.openAd";
+            this.statusBarSponsorVisible = true;
             item.show();
             return;
         }
+        this.statusBarSponsorVisible = false;
         if (!this.state.hasApiKey || !this.state.installId) {
             item.text = "$(plug) WaitSpin setup";
-            item.tooltip = "Connect a WaitSpin publisher install";
+            item.tooltip = "Connect WaitSpin to earn while AI responds.";
             item.command = "waitspin.connectPublisher";
             item.show();
             return;
         }
         if (this.state.authStopped) {
             item.text = "$(error) WaitSpin auth";
-            item.tooltip = "Reconnect or rotate the WaitSpin publisher key";
+            item.tooltip = "Reconnect or rotate the WaitSpin extension key";
             item.command = "waitspin.connectPublisher";
             item.show();
             return;
@@ -131,7 +152,7 @@ class PublisherSurfaces {
         else {
             item.text = `$(pulse) ${statusBarWalletText(this.state.walletStatus)}`;
         }
-        item.tooltip = "WaitSpin publisher status";
+        item.tooltip = "WaitSpin wallet and sponsor status";
         item.command = "waitspin.refreshWallet";
         item.show();
     }

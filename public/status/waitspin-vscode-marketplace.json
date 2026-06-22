@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "extension_id": "Waitspin.waitspin-vscode",
+  "marketplace_version": "0.1.12",
+  "marketplace_last_updated": "2026-06-22T10:52:45.587Z",
+  "marketplace_url": "https://marketplace.visualstudio.com/items?itemName=Waitspin.waitspin-vscode",
+  "source_package_version": "0.1.12",
+  "provenance_version": "0.1.12",
+  "publish_state": "published",
+  "checked_at": "2026-06-22T10:59:02.713Z"
+}

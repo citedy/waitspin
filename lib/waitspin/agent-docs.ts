@@ -27,6 +27,13 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
     purpose: "Verify code and receive a wts_live API key.",
   },
   {
+    method: "POST",
+    path: "/v1/list/subscribe",
+    auth: "none",
+    purpose:
+      "Request double opt-in WaitSpin publisher or founding advertiser email updates.",
+  },
+  {
     method: "GET",
     path: "/v1/market",
     auth: "none",
@@ -54,7 +61,7 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
     method: "POST",
     path: "/v1/publishers/register",
     auth: "publishers:write",
-    purpose: "Register a publisher install ID for VS Code Activity Bar/status-bar extension, Claude Code statusline, MiMo Code shell hook, OpenCode TUI slot, or Grok Code CLI footer.",
+    purpose: "Register a user install ID for VS Code Activity Bar/status-bar extension, Claude Code statusline, MiMo Code shell hook, OpenCode TUI slot, or Grok Code CLI footer.",
   },
   {
     method: "POST",
@@ -72,7 +79,7 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
     method: "GET",
     path: "/v1/wallet/status",
     auth: "wallet:read",
-    purpose: "Read publisher balances, Connect status, and payout eligibility.",
+    purpose: "Read user balances, Connect status, and payout eligibility.",
   },
   {
     method: "POST",
@@ -84,13 +91,13 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
     method: "GET",
     path: "/v1/wallet/ledger",
     auth: "wallet:read",
-    purpose: "Read publisher delivery, reversal, hold, and payout ledger rows.",
+    purpose: "Read user delivery, reversal, hold, and payout ledger rows.",
   },
   {
     method: "POST",
     path: "/v1/wallet/payouts",
     auth: "connect:manage",
-    purpose: "Preview or execute a guarded idempotent publisher payout.",
+    purpose: "Preview or execute a guarded idempotent user payout.",
   },
   {
     method: "POST",
@@ -137,9 +144,10 @@ Public paid launch is not marked ready until the operator launch gates pass.
 Authenticated routes use \`Authorization: Bearer wts_live_...\`.
 
 Use \`npx --yes waitspin init --email EMAIL --key-profile control\` for
-advertiser/control actions. Use \`--key-profile publisher-extension\` for
-publisher install, serve polling, and impression reporting. Publisher-extension
-keys can register publisher installs, poll serve inventory, report impressions,
+advertiser/control actions. Use \`--key-profile publisher-extension\` to create
+an extension API key for user install registration, serve polling, and
+impression reporting. Keys from that profile can register user installs, poll
+serve inventory, report impressions,
 and read wallet/ledger status. They cannot create campaigns, start Checkout,
 manage Connect, or execute payouts.
 
@@ -151,13 +159,13 @@ manage Connect, or execute payouts.
 | --- | --- | --- | --- |
 ${endpointTable()}
 
-## Public Publisher Surface
+## Public User Earning Surfaces
 
-The verified public publisher targets are:
+The verified public user earning surfaces are:
 VS Code Activity Bar/status-bar extension, installed from
 https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
 with \`code --install-extension waitspin.waitspin-vscode\` and connected by running
-\`WaitSpin: Connect publisher\` inside VS Code. The CLI fallback is
+\`WaitSpin: Connect and earn\` inside VS Code. The CLI fallback is
 \`waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY\`. Claude Code statusline command,
 installed by \`waitspin claude-code install --compose-existing\`; MiMo Code
 shell hook, installed by \`waitspin mimocode install\`; and OpenCode TUI plugin
@@ -194,10 +202,10 @@ ${waitSpinWebMcpToolListMarkdown()}
 
 ## Commission And Fees
 
-${renderPublicCommissionSplitSentence()} Publisher earnings are recorded immediately in the
+${renderPublicCommissionSplitSentence()} User earnings are recorded immediately in the
 delivery ledger, mature for ${WTS_EARNING_MATURITY_HOURS} hours in pending
 balance, and become payout-eligible only after moving into available balance.
-Wallet status also exposes a deterministic 10-day publisher/install trust
+Wallet status also exposes a deterministic 10-day user/install trust
 warmup state with freeze/downrank reasons. Trust warmup never shortens the
 ${WTS_EARNING_MATURITY_HOURS}-hour earning maturity window. Stripe processing
 fees are absorbed from the platform share unless the payment policy changes. Do
@@ -232,7 +240,7 @@ waitspin status --all
 # VS Code Activity Bar/status-bar extension
 # Marketplace: https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
 code --install-extension waitspin.waitspin-vscode
-# Then run "WaitSpin: Connect publisher" in VS Code.
+# Then run "WaitSpin: Connect and earn" in VS Code.
 # CLI fallback:
 waitspin extension install --target vscode --api-key wts_live_...
 waitspin extension status --target vscode

@@ -38,6 +38,12 @@ jest.mock("node:child_process", () => ({
   execFile: (...args: unknown[]) => execFile(...args),
 }));
 
+function withJsonFlag(flags: Map<string, string[]> = new Map()): Map<string, string[]> {
+  const next = new Map(flags);
+  next.set("json", ["true"]);
+  return next;
+}
+
 describe("waitspin extension install", () => {
   const originalFetch = global.fetch;
   const originalBaseUrl = process.env.WAITSPIN_BASE_URL;
@@ -125,6 +131,18 @@ describe("waitspin extension install", () => {
     ".waitspin",
     "mimocode-statusline.json",
   );
+  const mimocodeRuntimePath = path.join(
+    os.homedir(),
+    ".local",
+    "bin",
+    "waitspin-mimocode-runtime",
+  );
+  const mimocodeCachePath = path.join(
+    os.homedir(),
+    ".waitspin",
+    "mimocode-statusline-cache.json",
+  );
+  const mimocodeBashrcPath = path.join(os.homedir(), ".bashrc");
   const experimentalPatchPaths = {
     grok: path.join(os.tmpdir(), "waitspin-grok-app.tsx"),
     cline: path.join(os.tmpdir(), "waitspin-cline-status-bar.tsx"),
@@ -305,7 +323,7 @@ describe("waitspin extension install", () => {
     }
   });
 
-  it("lists public publisher install paths including install-all", async () => {
+  it("lists public user install paths including install-all", async () => {
     const { usageText } = await import("../cli");
     const text = usageText();
     expect(text).toContain("waitspin install --all");
@@ -328,7 +346,8 @@ describe("waitspin extension install", () => {
   });
 
   it("rejects unsupported wallet connect countries before network calls", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
 
     await expect(
       main([
@@ -344,7 +363,8 @@ describe("waitspin extension install", () => {
   });
 
   it("prints the exact next command after requesting a publisher-extension email code", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -393,8 +413,9 @@ describe("waitspin extension install", () => {
     expect(output).not.toHaveProperty("debug_code_available");
   });
 
-  it("prints safe publisher install next commands after OTP verification", async () => {
-    const { main } = await import("../cli");
+  it("prints safe user install next commands after OTP verification", async () => {
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -437,7 +458,8 @@ describe("waitspin extension install", () => {
       "waitspin install --all --compose-existing",
       "waitspin status --all",
     ]);
-    expect(output.human_message).toContain("publisher-extension key");
+    expect(output.human_message).toContain("extension API key");
+    expect(output.human_message).toContain("user install setup");
     expect(JSON.stringify(output.next_commands)).not.toContain(
       "wts_live_test_key_value_1234567890",
     );
@@ -451,7 +473,8 @@ describe("waitspin extension install", () => {
 
   it("dry-runs install-all as a structured advanced agent command", async () => {
     enableGrokPatchEnv();
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -496,7 +519,8 @@ describe("waitspin extension install", () => {
   });
 
   it("skips unsupported Grok layouts during install-all dry-run", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -532,7 +556,8 @@ describe("waitspin extension install", () => {
 
   it("reports unexpected install-all preflight failures without treating them as not detected", async () => {
     enableGrokPatchEnv();
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -573,7 +598,8 @@ describe("waitspin extension install", () => {
   });
 
   it("aggregates status-all without running target installs", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -611,7 +637,8 @@ describe("waitspin extension install", () => {
   });
 
   it("includes hidden experimental targets only when install-all opts in", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     enableExperimentalPatchEnv();
     const stdout: string[] = [];
     jest
@@ -667,7 +694,8 @@ describe("waitspin extension install", () => {
   });
 
   it("rejects non-dry-run install-all with hidden experimental targets", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
 
     await expect(
       main(["install", "--all", "--include-experimental"]),
@@ -677,7 +705,8 @@ describe("waitspin extension install", () => {
   });
 
   it("installs a hidden experimental patch target without printing the API key", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     enableExperimentalPatchEnv();
     const stdout: string[] = [];
     jest
@@ -791,7 +820,8 @@ describe("waitspin extension install", () => {
   });
 
   it("requires explicit opt-in for hidden experimental patch-file overrides", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     process.env.WAITSPIN_GROK_PATCH_FILE = experimentalPatchPaths.grok;
 
     await expect(main(["grok", "install", "--dry-run"])).rejects.toThrow(
@@ -803,7 +833,8 @@ describe("waitspin extension install", () => {
   });
 
   it("confines hidden experimental patch-file overrides to local roots", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const outsidePath = path.join(
       path.parse(os.homedir()).root,
       "usr",
@@ -822,7 +853,8 @@ describe("waitspin extension install", () => {
   });
 
   it("rejects symlinked hidden experimental patch-file overrides outside local roots", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const symlinkPath = path.join(os.tmpdir(), "waitspin-grok-symlink.tsx");
     const outsideRealPath = path.join(
       path.parse(os.homedir()).root,
@@ -845,7 +877,8 @@ describe("waitspin extension install", () => {
   });
 
   it("does not treat filesystem root cwd as an experimental patch override sandbox", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const originalCwd = process.cwd;
     const outsidePath = path.join(
       path.parse(os.homedir()).root,
@@ -870,7 +903,8 @@ describe("waitspin extension install", () => {
   });
 
   it("dry-runs unsupported experimental layouts without registering a publisher", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const unsupportedPath = path.join(os.tmpdir(), "waitspin-grok-unsupported.ts");
     process.env.WAITSPIN_ALLOW_EXPERIMENTAL_PATCH_FILE = "1";
     process.env.WAITSPIN_GROK_PATCH_FILE = unsupportedPath;
@@ -904,7 +938,8 @@ describe("waitspin extension install", () => {
   });
 
   it("explains standalone Cline CLI native-layout support instead of generic patch failure", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -946,7 +981,8 @@ describe("waitspin extension install", () => {
   });
 
   it("fails closed on ambiguous experimental patch anchors", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const ambiguousPath = path.join(os.tmpdir(), "waitspin-grok-ambiguous.js");
     process.env.WAITSPIN_ALLOW_EXPERIMENTAL_PATCH_FILE = "1";
     process.env.WAITSPIN_GROK_PATCH_FILE = ambiguousPath;
@@ -980,7 +1016,8 @@ describe("waitspin extension install", () => {
   });
 
   it("recognizes the compiled Grok OpenTUI footer anchor", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const compiledGrokPath = path.join(os.tmpdir(), "waitspin-grok-app.js");
     process.env.WAITSPIN_ALLOW_EXPERIMENTAL_PATCH_FILE = "1";
     process.env.WAITSPIN_GROK_PATCH_FILE = compiledGrokPath;
@@ -1035,7 +1072,8 @@ describe("waitspin extension install", () => {
   });
 
   it("resolves Windows npm cmd shims that target package node_modules", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const originalPlatform = process.platform;
     Object.defineProperty(process, "platform", {
       configurable: true,
@@ -1106,7 +1144,8 @@ describe("waitspin extension install", () => {
   });
 
   it("preserves compiled directive prologues when injecting the helper", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const compiledGrokPath = path.join(os.tmpdir(), "waitspin-grok-strict.js");
     process.env.WAITSPIN_ALLOW_EXPERIMENTAL_PATCH_FILE = "1";
     process.env.WAITSPIN_GROK_PATCH_FILE = compiledGrokPath;
@@ -1142,7 +1181,8 @@ describe("waitspin extension install", () => {
   });
 
   it("preserves the original backup path when reinstalling an already managed experimental target", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const previousBackupPath = path.join(
       os.homedir(),
       ".waitspin",
@@ -1204,7 +1244,8 @@ describe("waitspin extension install", () => {
   });
 
   it("rolls back the previous experimental runtime when reinstall registration fails", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const previousBackupPath = path.join(
       os.homedir(),
       ".waitspin",
@@ -1279,7 +1320,8 @@ describe("waitspin extension install", () => {
   });
 
   it("refuses orphaned experimental managed patches without existing state", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     process.env.WAITSPIN_ALLOW_EXPERIMENTAL_PATCH_FILE = "1";
     process.env.WAITSPIN_GROK_PATCH_FILE = experimentalPatchPaths.grok;
     (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
@@ -1312,7 +1354,8 @@ describe("waitspin extension install", () => {
   });
 
   it("fails fast and rolls back unsupported experimental non-dry-run installs before registration", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const unsupportedPath = path.join(os.tmpdir(), "waitspin-grok-unsupported.ts");
     process.env.WAITSPIN_ALLOW_EXPERIMENTAL_PATCH_FILE = "1";
     process.env.WAITSPIN_GROK_PATCH_FILE = unsupportedPath;
@@ -1335,7 +1378,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports and dry-runs uninstall for hidden experimental managed state", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const state = {
       target: "grok",
       install_id: "wins_grok",
@@ -1396,7 +1440,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports corrupted hidden experimental state as not installed", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
       if (filePath === experimentalStatePaths.grok) {
         return JSON.stringify({ target: "grok", install_id: "wins_grok" });
@@ -1421,7 +1466,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports unsafe experimental status paths as not installed", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const state = {
       target: "grok",
       install_id: "wins_grok",
@@ -1462,7 +1508,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports corrupted experimental managed patches as not installed", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const state = {
       target: "grok",
       install_id: "wins_grok",
@@ -1507,7 +1554,8 @@ describe("waitspin extension install", () => {
   });
 
   it("skips restore when the experimental target file no longer has the managed patch", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const backupPath = path.join(
       os.homedir(),
       ".waitspin",
@@ -1569,7 +1617,8 @@ describe("waitspin extension install", () => {
   });
 
   it("skips restore when the experimental target file changes during restore", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const backupPath = path.join(
       os.homedir(),
       ".waitspin",
@@ -1638,7 +1687,8 @@ describe("waitspin extension install", () => {
   });
 
   it("rejects deferred native Claude/Codex patch targets", async () => {
-    const { runExtensionInstall } = await import("../cli");
+    const { runExtensionInstall: rawrunExtensionInstall } = await import("../cli");
+    const runExtensionInstall = (flags: Map<string, string[]> = new Map()) => rawrunExtensionInstall(withJsonFlag(flags));
 
     await expect(
       runExtensionInstall(
@@ -1653,7 +1703,8 @@ describe("waitspin extension install", () => {
   });
 
   it("fails closed before sending credentials to non-production API origins", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
 
     await expect(
       main([
@@ -1669,7 +1720,8 @@ describe("waitspin extension install", () => {
   });
 
   it("allows credentialed loopback API origins only with explicit dev opt-in", async () => {
-    const { main } = await import("../cli");
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -1723,7 +1775,8 @@ describe("waitspin extension install", () => {
   });
 
   it("resolves packaged extension assets by default instead of checkout cwd", async () => {
-    const { runExtensionInstall } = await import("../cli");
+    const { runExtensionInstall: rawrunExtensionInstall } = await import("../cli");
+    const runExtensionInstall = (flags: Map<string, string[]> = new Map()) => rawrunExtensionInstall(withJsonFlag(flags));
     const repoRoot = process.cwd();
     const originalArgv = process.argv;
     process.argv = [
@@ -1766,7 +1819,8 @@ describe("waitspin extension install", () => {
   });
 
   it("requires explicit dev opt-in before using checkout extension assets", async () => {
-    const { runExtensionInstall } = await import("../cli");
+    const { runExtensionInstall: rawrunExtensionInstall } = await import("../cli");
+    const runExtensionInstall = (flags: Map<string, string[]> = new Map()) => rawrunExtensionInstall(withJsonFlag(flags));
     const repoRoot = process.cwd();
     const originalArgv = process.argv;
     process.argv = [
@@ -1833,7 +1887,8 @@ describe("waitspin extension install", () => {
   });
 
   it("validates packaged extension manifest identity before installing", async () => {
-    const { runExtensionInstall } = await import("../cli");
+    const { runExtensionInstall: rawrunExtensionInstall } = await import("../cli");
+    const runExtensionInstall = (flags: Map<string, string[]> = new Map()) => rawrunExtensionInstall(withJsonFlag(flags));
     (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
       if (filePath.endsWith("package.json")) {
         return JSON.stringify({
@@ -1860,7 +1915,8 @@ describe("waitspin extension install", () => {
   });
 
   it("defaults extension install to the VS Code fallback", async () => {
-    const { runExtensionInstall } = await import("../cli");
+    const { runExtensionInstall: rawrunExtensionInstall } = await import("../cli");
+    const runExtensionInstall = (flags: Map<string, string[]> = new Map()) => rawrunExtensionInstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -1889,7 +1945,8 @@ describe("waitspin extension install", () => {
   });
 
   it("registers the publisher and installs the VS Code extension runtime", async () => {
-    const { runExtensionInstall } = await import("../cli");
+    const { runExtensionInstall: rawrunExtensionInstall } = await import("../cli");
+    const runExtensionInstall = (flags: Map<string, string[]> = new Map()) => rawrunExtensionInstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -1992,7 +2049,8 @@ describe("waitspin extension install", () => {
   });
 
   it("validates VS Code media assets before publisher registration", async () => {
-    const { runExtensionInstall } = await import("../cli");
+    const { runExtensionInstall: rawrunExtensionInstall } = await import("../cli");
+    const runExtensionInstall = (flags: Map<string, string[]> = new Map()) => rawrunExtensionInstall(withJsonFlag(flags));
     access.mockImplementation(async (filePath: string) => {
       if (filePath.endsWith(path.join("media", "waitspin-icon.png"))) {
         throw enoent();
@@ -2015,7 +2073,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports VS Code fallback lifecycle status from managed state", async () => {
-    const { runExtensionStatus } = await import("../cli");
+    const { runExtensionStatus: rawrunExtensionStatus } = await import("../cli");
+    const runExtensionStatus = (flags: Map<string, string[]> = new Map()) => rawrunExtensionStatus(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -2065,7 +2124,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports degraded status instead of throwing on a corrupted install marker", async () => {
-    const { runExtensionStatus } = await import("../cli");
+    const { runExtensionStatus: rawrunExtensionStatus } = await import("../cli");
+    const runExtensionStatus = (flags: Map<string, string[]> = new Map()) => rawrunExtensionStatus(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -2108,7 +2168,8 @@ describe("waitspin extension install", () => {
   });
 
   it("uninstalls only the managed VS Code fallback runtime and local state", async () => {
-    const { runExtensionUninstall } = await import("../cli");
+    const { runExtensionUninstall: rawrunExtensionUninstall } = await import("../cli");
+    const runExtensionUninstall = (flags: Map<string, string[]> = new Map()) => rawrunExtensionUninstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -2150,7 +2211,8 @@ describe("waitspin extension install", () => {
   });
 
   it("uninstalls local state instead of throwing on a corrupted install marker", async () => {
-    const { runExtensionUninstall } = await import("../cli");
+    const { runExtensionUninstall: rawrunExtensionUninstall } = await import("../cli");
+    const runExtensionUninstall = (flags: Map<string, string[]> = new Map()) => rawrunExtensionUninstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -2194,7 +2256,8 @@ describe("waitspin extension install", () => {
   });
 
   it("installs Claude Code statusline support without writing secrets to Claude settings", async () => {
-    const { runClaudeCodeInstall } = await import("../cli");
+    const { runClaudeCodeInstall: rawrunClaudeCodeInstall } = await import("../cli");
+    const runClaudeCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeInstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -2245,6 +2308,36 @@ describe("waitspin extension install", () => {
     expect(runtimeWrite?.[1]).toContain("child.unref?.()");
     expect(runtimeWrite?.[1]).toContain("expiresAtMs");
     expect(runtimeWrite?.[1]).toContain("function serveIsExpired");
+    expect(runtimeWrite?.[1]).toContain("--impression-tick");
+    expect(runtimeWrite?.[1]).toContain("heartbeatPathFor");
+    expect(runtimeWrite?.[1]).toContain("heartbeatAlive");
+    expect(runtimeWrite?.[1]).toContain("async function markShown");
+    expect(runtimeWrite?.[1]).toContain("shownHeartbeatPath");
+    expect(runtimeWrite?.[1]).toContain("serve.shownHeartbeatPath !== heartbeatPath");
+    expect(runtimeWrite?.[1]).toContain("recordForegroundImpression");
+    expect(runtimeWrite?.[1]).toContain("recordDelayedImpression");
+    expect(runtimeWrite?.[1]).toContain("const lockedServe = lockedSession.activeServe");
+    expect(runtimeWrite?.[1]).toContain("!serveIsExpired(lockedServe)");
+    expect(runtimeWrite?.[1]).toContain("HEARTBEAT_IMPRESSION_FRESH_MS");
+    expect(runtimeWrite?.[1]).toContain("waitForHeartbeatVisibleAfter");
+    expect(runtimeWrite?.[1]).toContain(
+      "const visibleAt = serve.shownAt + Math.max(serve.minVisibleMs || 5000, 5000)",
+    );
+    expect(runtimeWrite?.[1]).toContain(
+      "await waitForHeartbeatVisibleAfter(heartbeatPath, visibleAt)",
+    );
+    expect(runtimeWrite?.[1]).toContain(
+      "const lockedVisibleAt = lockedServe?.shownAt",
+    );
+    expect(runtimeWrite?.[1]).toContain(
+      "await heartbeatVisibleAfter(heartbeatPath, lockedVisibleAt)",
+    );
+    expect(runtimeWrite?.[1]).toContain("await recordImpression(state, lockedSession);");
+    expect(runtimeWrite?.[1]).toContain("fetchedAt: Date.now()");
+    expect(runtimeWrite?.[1]).toContain("shownAt: 0");
+    expect(runtimeWrite?.[1]).toContain(
+      "session.impressionTickHeartbeatPath === heartbeatPath",
+    );
     expect(runtimeWrite?.[1]).toContain("const shouldFetchNext");
     expect(runtimeWrite?.[1]).toContain(
       "Date.now() - (session.lastFetchAt || 0) >= FETCH_INTERVAL_MS",
@@ -2292,8 +2385,90 @@ describe("waitspin extension install", () => {
     expect(output.api_key_present).toBe(true);
   });
 
+  it("installs MiMo Code statusline support with heartbeat-gated impressions", async () => {
+    const { runMiMoCodeInstall: rawrunMiMoCodeInstall } = await import("../cli");
+    const runMiMoCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunMiMoCodeInstall(withJsonFlag(flags));
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await runMiMoCodeInstall(
+      new Map<string, string[]>([
+        ["api-key", ["wts_live_test_key_value_1234567890"]],
+      ]),
+    );
+
+    const registerBody = JSON.parse(
+      (fetchMock.mock.calls[0]?.[1] as RequestInit).body as string,
+    ) as { install_id: string; target: string };
+    expect(registerBody.target).toBe("mimocode");
+
+    const runtimeWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === mimocodeRuntimePath,
+    );
+    expect(runtimeWrite?.[1]).toContain("/v1/serve/next");
+    expect(runtimeWrite?.[1]).toContain("--impression-tick");
+    expect(runtimeWrite?.[1]).toContain("heartbeatPathFor");
+    expect(runtimeWrite?.[1]).toContain("heartbeatAlive");
+    expect(runtimeWrite?.[1]).toContain("async function markShown");
+    expect(runtimeWrite?.[1]).toContain("shownHeartbeatPath");
+    expect(runtimeWrite?.[1]).toContain("serve.shownHeartbeatPath !== heartbeatPath");
+    expect(runtimeWrite?.[1]).toContain("recordForegroundImpression");
+    expect(runtimeWrite?.[1]).toContain("recordDelayedImpression");
+    expect(runtimeWrite?.[1]).toContain("!serveIsExpired(cache.activeServe)");
+    expect(runtimeWrite?.[1]).toContain("HEARTBEAT_IMPRESSION_FRESH_MS");
+    expect(runtimeWrite?.[1]).toContain("waitForHeartbeatVisibleAfter");
+    expect(runtimeWrite?.[1]).toContain(
+      "const visibleAt = serve.shownAt + Math.max(serve.minVisibleMs || 5000, 5000)",
+    );
+    expect(runtimeWrite?.[1]).toContain(
+      "await waitForHeartbeatVisibleAfter(heartbeatPath, visibleAt)",
+    );
+    expect(runtimeWrite?.[1]).toContain(
+      "const activeVisibleAt = cache.activeServe?.shownAt",
+    );
+    expect(runtimeWrite?.[1]).toContain(
+      "await heartbeatVisibleAfter(heartbeatPath, activeVisibleAt)",
+    );
+    expect(runtimeWrite?.[1]).toContain("await recordImpression(state, cache);");
+    expect(runtimeWrite?.[1]).toContain("fetchedAt: Date.now()");
+    expect(runtimeWrite?.[1]).toContain("shownAt: 0");
+    expect(runtimeWrite?.[1]).toContain(
+      "cache.impressionTickHeartbeatPath === heartbeatPath",
+    );
+    expect(runtimeWrite?.[2]).toEqual(
+      expect.objectContaining({ encoding: "utf8", mode: 0o755 }),
+    );
+    expect(chmod).toHaveBeenCalledWith(mimocodeRuntimePath, 0o755);
+
+    const stateWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === mimocodeStatePath,
+    );
+    expect(stateWrite).toBeTruthy();
+    expect(JSON.parse(stateWrite[1])).toMatchObject({
+      target: "mimocode",
+      install_id: registerBody.install_id,
+      publisher_target: "mimocode",
+      api_key: "wts_live_test_key_value_1234567890",
+      runtime_path: mimocodeRuntimePath,
+      cache_path: mimocodeCachePath,
+      bashrc_path: mimocodeBashrcPath,
+    });
+
+    const output = JSON.parse(stdout.join("")) as Record<string, unknown>;
+    expect(output.publisher_registered).toBe(true);
+    expect(output.publisher_target).toBe("mimocode");
+    expect(output.api_key).toBeUndefined();
+    expect(output.api_key_present).toBe(true);
+  });
+
   it("generates a PowerShell-safe Claude Code statusline command on Windows", async () => {
-    const { runClaudeCodeInstall } = await import("../cli");
+    const { runClaudeCodeInstall: rawrunClaudeCodeInstall } = await import("../cli");
+    const runClaudeCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeInstall(withJsonFlag(flags));
     const originalPlatform = process.platform;
     Object.defineProperty(process, "platform", {
       configurable: true,
@@ -2350,7 +2525,8 @@ describe("waitspin extension install", () => {
   });
 
   it("fails fast when Claude Code already has a non-managed statusline", async () => {
-    const { runClaudeCodeInstall } = await import("../cli");
+    const { runClaudeCodeInstall: rawrunClaudeCodeInstall } = await import("../cli");
+    const runClaudeCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeInstall(withJsonFlag(flags));
     (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
       if (filePath === claudeSettingsPath) {
         return JSON.stringify({
@@ -2380,7 +2556,8 @@ describe("waitspin extension install", () => {
   });
 
   it("dry-runs Claude Code install statusline conflicts without throwing", async () => {
-    const { runClaudeCodeInstall } = await import("../cli");
+    const { runClaudeCodeInstall: rawrunClaudeCodeInstall } = await import("../cli");
+    const runClaudeCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeInstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -2426,7 +2603,8 @@ describe("waitspin extension install", () => {
   });
 
   it("explains production API mismatch when claude-code target is not deployed", async () => {
-    const { runClaudeCodeInstall } = await import("../cli");
+    const { runClaudeCodeInstall: rawrunClaudeCodeInstall } = await import("../cli");
+    const runClaudeCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeInstall(withJsonFlag(flags));
     (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
       if (filePath === claudeSettingsPath || filePath === claudeStatePath) {
         throw enoent();
@@ -2465,7 +2643,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports the next install command when Claude Code status is not installed", async () => {
-    const { runClaudeCodeStatus } = await import("../cli");
+    const { runClaudeCodeStatus: rawrunClaudeCodeStatus } = await import("../cli");
+    const runClaudeCodeStatus = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeStatus(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -2493,7 +2672,8 @@ describe("waitspin extension install", () => {
   });
 
   it("composes and records an existing Claude Code command statusline explicitly", async () => {
-    const { runClaudeCodeInstall } = await import("../cli");
+    const { runClaudeCodeInstall: rawrunClaudeCodeInstall } = await import("../cli");
+    const runClaudeCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeInstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -2545,7 +2725,8 @@ describe("waitspin extension install", () => {
   });
 
   it("rolls back fresh Claude Code install state when settings write fails", async () => {
-    const { runClaudeCodeInstall } = await import("../cli");
+    const { runClaudeCodeInstall: rawrunClaudeCodeInstall } = await import("../cli");
+    const runClaudeCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeInstall(withJsonFlag(flags));
     (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
       if (filePath === claudeSettingsPath || filePath === claudeStatePath) {
         throw enoent();
@@ -2591,7 +2772,8 @@ describe("waitspin extension install", () => {
   });
 
   it("rolls back Claude Code install before writes when the version is unsupported", async () => {
-    const { runClaudeCodeInstall } = await import("../cli");
+    const { runClaudeCodeInstall: rawrunClaudeCodeInstall } = await import("../cli");
+    const runClaudeCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeInstall(withJsonFlag(flags));
     execFile.mockImplementationOnce((_file, _args, _options, callback) => {
       callback(null, "2.1.80 (Claude Code)\n", "");
     });
@@ -2618,7 +2800,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports Claude Code status from managed runtime and settings", async () => {
-    const { runClaudeCodeStatus } = await import("../cli");
+    const { runClaudeCodeStatus: rawrunClaudeCodeStatus } = await import("../cli");
+    const runClaudeCodeStatus = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeStatus(withJsonFlag(flags));
     const managed = {
       type: "command",
       command: `'${process.execPath}' '${claudeRuntimePath}' --state '${claudeStatePath}'`,
@@ -2668,7 +2851,8 @@ describe("waitspin extension install", () => {
   });
 
   it("matches managed Claude Code statusline semantically when JSON key order differs", async () => {
-    const { runClaudeCodeStatus } = await import("../cli");
+    const { runClaudeCodeStatus: rawrunClaudeCodeStatus } = await import("../cli");
+    const runClaudeCodeStatus = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeStatus(withJsonFlag(flags));
     const command = `'${process.execPath}' '${claudeRuntimePath}' --state '${claudeStatePath}'`;
     const managed = {
       type: "command",
@@ -2724,7 +2908,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports a higher-priority Claude Code project statusline override", async () => {
-    const { runClaudeCodeStatus } = await import("../cli");
+    const { runClaudeCodeStatus: rawrunClaudeCodeStatus } = await import("../cli");
+    const runClaudeCodeStatus = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeStatus(withJsonFlag(flags));
     const managed = {
       type: "command",
       command: `'${process.execPath}' '${claudeRuntimePath}' --state '${claudeStatePath}'`,
@@ -2785,7 +2970,8 @@ describe("waitspin extension install", () => {
   });
 
   it("fails fast when current Claude Code project settings override user statusline", async () => {
-    const { runClaudeCodeInstall } = await import("../cli");
+    const { runClaudeCodeInstall: rawrunClaudeCodeInstall } = await import("../cli");
+    const runClaudeCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeInstall(withJsonFlag(flags));
     const projectLocalSettingsPath = path.join(
       process.cwd(),
       ".claude",
@@ -2820,7 +3006,8 @@ describe("waitspin extension install", () => {
   });
 
   it("dry-runs Claude Code uninstall without validating destructive paths", async () => {
-    const { runClaudeCodeUninstall } = await import("../cli");
+    const { runClaudeCodeUninstall: rawrunClaudeCodeUninstall } = await import("../cli");
+    const runClaudeCodeUninstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeUninstall(withJsonFlag(flags));
     const managed = {
       type: "command",
       command: `'${process.execPath}' '${claudeRuntimePath}' --state '${claudeStatePath}'`,
@@ -2887,7 +3074,8 @@ describe("waitspin extension install", () => {
   });
 
   it("removes WaitSpin-managed Claude Code files when user settings changed before uninstall", async () => {
-    const { runClaudeCodeUninstall } = await import("../cli");
+    const { runClaudeCodeUninstall: rawrunClaudeCodeUninstall } = await import("../cli");
+    const runClaudeCodeUninstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeUninstall(withJsonFlag(flags));
     const managed = {
       type: "command",
       command: `'${process.execPath}' '${claudeRuntimePath}' --state '${claudeStatePath}'`,
@@ -2955,7 +3143,8 @@ describe("waitspin extension install", () => {
   });
 
   it("restores the previous Claude Code statusline on uninstall", async () => {
-    const { runClaudeCodeUninstall } = await import("../cli");
+    const { runClaudeCodeUninstall: rawrunClaudeCodeUninstall } = await import("../cli");
+    const runClaudeCodeUninstall = (flags: Map<string, string[]> = new Map()) => rawrunClaudeCodeUninstall(withJsonFlag(flags));
     const previous = { type: "command", command: "custom-statusline" };
     const managed = {
       type: "command",
@@ -3024,7 +3213,8 @@ describe("waitspin extension install", () => {
   // ─── OpenCode ────────────────────────────────────────────
 
   it("installs OpenCode TUI plugin support without writing secrets to log output", async () => {
-    const { runOpencodeInstall } = await import("../cli");
+    const { runOpencodeInstall: rawrunOpencodeInstall } = await import("../cli");
+    const runOpencodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunOpencodeInstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -3120,7 +3310,8 @@ describe("waitspin extension install", () => {
   });
 
   it("dry-runs OpenCode install without side effects", async () => {
-    const { runOpencodeInstall } = await import("../cli");
+    const { runOpencodeInstall: rawrunOpencodeInstall } = await import("../cli");
+    const runOpencodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunOpencodeInstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -3153,7 +3344,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports OpenCode status from managed state, runtime, and plugin files", async () => {
-    const { runOpencodeStatus } = await import("../cli");
+    const { runOpencodeStatus: rawrunOpencodeStatus } = await import("../cli");
+    const runOpencodeStatus = (flags: Map<string, string[]> = new Map()) => rawrunOpencodeStatus(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -3200,7 +3392,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports OpenCode status as degraded when the TUI plugin entry is missing", async () => {
-    const { runOpencodeStatus } = await import("../cli");
+    const { runOpencodeStatus: rawrunOpencodeStatus } = await import("../cli");
+    const runOpencodeStatus = (flags: Map<string, string[]> = new Map()) => rawrunOpencodeStatus(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -3242,7 +3435,8 @@ describe("waitspin extension install", () => {
   });
 
   it("reports OpenCode status as not installed when state file is missing", async () => {
-    const { runOpencodeStatus } = await import("../cli");
+    const { runOpencodeStatus: rawrunOpencodeStatus } = await import("../cli");
+    const runOpencodeStatus = (flags: Map<string, string[]> = new Map()) => rawrunOpencodeStatus(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -3266,7 +3460,8 @@ describe("waitspin extension install", () => {
   });
 
   it("uninstalls OpenCode runtime, cache, state, and plugin files", async () => {
-    const { runOpencodeUninstall } = await import("../cli");
+    const { runOpencodeUninstall: rawrunOpencodeUninstall } = await import("../cli");
+    const runOpencodeUninstall = (flags: Map<string, string[]> = new Map()) => rawrunOpencodeUninstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -3337,7 +3532,8 @@ describe("waitspin extension install", () => {
   });
 
   it("dry-runs OpenCode uninstall without destructive side effects", async () => {
-    const { runOpencodeUninstall } = await import("../cli");
+    const { runOpencodeUninstall: rawrunOpencodeUninstall } = await import("../cli");
+    const runOpencodeUninstall = (flags: Map<string, string[]> = new Map()) => rawrunOpencodeUninstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -3383,7 +3579,8 @@ describe("waitspin extension install", () => {
   });
 
   it("skips unsafe OpenCode state paths while removing managed state", async () => {
-    const { runOpencodeUninstall } = await import("../cli");
+    const { runOpencodeUninstall: rawrunOpencodeUninstall } = await import("../cli");
+    const runOpencodeUninstall = (flags: Map<string, string[]> = new Map()) => rawrunOpencodeUninstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")

@@ -9,7 +9,7 @@ const MICRO_UNITS_PER_CENT = 10_000;
 const MICRO_UNITS_PER_EURO = MICRO_UNITS_PER_CENT * 100;
 const PUBLISHER_LEVELS_DOCS_URL = "https://waitspin.com/docs#publisher-levels-and-limits";
 const PUBLISHER_LEVELS_LINK_TOKEN = "__WAITSPIN_PUBLISHER_LEVELS_LINK__";
-exports.PUBLISHER_LEVELS_DOCS_LINK = `<a href="${PUBLISHER_LEVELS_DOCS_URL}" rel="noopener noreferrer">Publisher levels and limits</a>`;
+exports.PUBLISHER_LEVELS_DOCS_LINK = `<a href="${PUBLISHER_LEVELS_DOCS_URL}" rel="noopener noreferrer">User levels and limits</a>`;
 const WALLET_PAYOUT_DOCS_URL = "https://waitspin.com/docs#publisher-wallet-and-payouts";
 const WALLET_CONNECT_BASE_URL = "https://waitspin.com/wallet/connect";
 function formatMicroUnits(value) {
@@ -19,7 +19,7 @@ function formatMicroUnits(value) {
 }
 function renderWallet(status, installId) {
     if (!status) {
-        return `<p class="notice">Wallet status is unavailable until a publisher-extension key with <code>wallet:read</code> refreshes successfully.</p>`;
+        return `<p class="notice">Wallet status is unavailable until an extension key with <code>wallet:read</code> refreshes successfully.</p>`;
     }
     const rows = [
         ["Available", status.balance.availableMicroUnits],
@@ -51,7 +51,7 @@ function renderPayoutSummary(status, installId) {
     if (status.payoutEligible) {
         return `<div class="notice status"><p class="status-title">Payout status: Ready</p><p>Your matured available balance is eligible for the next payout run.</p><p class="muted"><a href="${WALLET_PAYOUT_DOCS_URL}">Wallet and payout details</a></p></div>`;
     }
-    return `<div class="notice status"><p class="status-title">Payout status: Not ready yet</p><p class="muted">This wallet view loaded through your VS Code publisher install. Payout readiness is separate: earnings must mature, the available balance must reach the minimum, and a payout account may need setup.</p>${renderPayoutReasons(status)}${renderPayoutActions(status, installId)}</div>`;
+    return `<div class="notice status"><p class="status-title">Payout status: Not ready yet</p><p class="muted">This wallet view loaded through your VS Code connection. Payout readiness is separate: earnings must mature, the available balance must reach the minimum, and a payout account may need setup.</p>${renderPayoutReasons(status)}${renderPayoutActions(status, installId)}</div>`;
 }
 function renderPayoutReasons(status) {
     const reasonSet = new Set(status.payoutBlockedReasons);
@@ -105,7 +105,7 @@ function renderPayoutReasons(status) {
     if (reasonSet.has("publisher_quarantined") ||
         reasonSet.has("risk_score_payout_hold") ||
         reasonSet.has("risk_score_quarantine")) {
-        reasons.push("Account review: Payouts are paused while WaitSpin reviews publisher risk signals.");
+        reasons.push("Account review: Payouts are paused while WaitSpin reviews risk signals.");
     }
     if (reasonSet.has("stale_pending_payout")) {
         reasons.push("Payout status: A previous payout is still being reconciled.");
@@ -171,7 +171,7 @@ function renderPublisherLevelSentence(status) {
         ? ` Next level window: ${nextLevelAt}.`
         : " Level can rise by 1 after each clean 24h period of billable activity.";
     const labelText = label ? `, ${label}` : "";
-    return ` Publisher level: ${status.publisherTrustLevel}/${status.publisherTrustMaxLevel}${labelText}.${nextLevel} Level limits affect how much one install can receive from a campaign each day; they do not mean the plugin is disconnected. Details: ${PUBLISHER_LEVELS_LINK_TOKEN}.`;
+    return ` User level: ${status.publisherTrustLevel}/${status.publisherTrustMaxLevel}${labelText}.${nextLevel} Level limits affect how much one install can receive from a campaign each day; they do not mean the plugin is disconnected. Details: ${PUBLISHER_LEVELS_LINK_TOKEN}.`;
 }
 function formatCents(value) {
     return `EUR ${(value / 100).toFixed(2)}`;

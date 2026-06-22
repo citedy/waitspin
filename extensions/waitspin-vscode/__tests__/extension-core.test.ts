@@ -5,12 +5,14 @@ import {
   generatePublisherInstallId,
   hasPublisherExtensionScopes,
   isSafeExternalUrl,
+  isServeExpired,
   parseLedgerPayload,
   parsePublisherRegistrationPayload,
   parseServePayload,
   parseVerifiedPublisherKeyPayload,
   parseWalletStatusPayload,
   renderPublisherViewHtml,
+  serveExpiryDelayMs,
 } from "../src/extension-core";
 
 describe("WaitSpin VS Code extension core", () => {
@@ -36,11 +38,14 @@ describe("WaitSpin VS Code extension core", () => {
   });
 
   it("validates serve payloads and enforces the 5s visible floor", () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
     expect(
       parseServePayload({
         serve_id: "wss_12345678",
         serve_receipt: "wtsr_12345678901234567890123456789012",
+        expires_at: expiresAt,
         creative: {
+          campaign_id: "wcamp_test",
           line: "Ship faster with WaitSpin",
           destination_url: "https://example.com",
         },
@@ -48,12 +53,16 @@ describe("WaitSpin VS Code extension core", () => {
       }),
     ).toMatchObject({
       serveId: "wss_12345678",
+      campaignId: "wcamp_test",
+      expiresAt,
+      expiresAtMs: Date.parse(expiresAt),
       minVisibleMs: 5_000,
     });
     expect(
       parseServePayload({
         serve_id: "wss_12345678",
         serve_receipt: "wtsr_12345678901234567890123456789012",
+        expires_at: expiresAt,
         creative: {
           line: "Ship faster with WaitSpin",
           destination_url: "https://example.com",
@@ -66,12 +75,44 @@ describe("WaitSpin VS Code extension core", () => {
       parseServePayload({
         serve_id: "wss_12345678",
         serve_receipt: "short",
+        expires_at: expiresAt,
         creative: {
           line: "Bad receipt",
           destination_url: "https://example.com",
         },
       }),
     ).toBeUndefined();
+    expect(
+      parseServePayload({
+        serve_id: "wss_12345678",
+        serve_receipt: "wtsr_12345678901234567890123456789012",
+        creative: {
+          line: "Missing expiry",
+          destination_url: "https://example.com",
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseServePayload({
+        serve_id: "wss_12345678",
+        serve_receipt: "wtsr_12345678901234567890123456789012",
+        expires_at: "not-a-date",
+        creative: {
+          line: "Bad expiry",
+          destination_url: "https://example.com",
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("detects expired serve payloads before billing attempts", () => {
+    const serve = { expiresAtMs: 1_000 };
+
+    expect(isServeExpired(serve, 999)).toBe(false);
+    expect(isServeExpired(serve, 1_000)).toBe(true);
+    expect(isServeExpired(serve, 600, 400)).toBe(true);
+    expect(serveExpiryDelayMs(serve, 250)).toBe(750);
+    expect(serveExpiryDelayMs(serve, 1_500)).toBe(0);
   });
 
   it("validates extension-owned publisher onboarding payloads", () => {
@@ -281,17 +322,15 @@ describe("WaitSpin VS Code extension core", () => {
     });
 
     expect(html).toContain("Payout status: Not ready yet");
-    expect(html).toContain(
-      "This wallet view loaded through your VS Code publisher install",
-    );
+    expect(html).toContain("This wallet view loaded through your VS Code connection");
     expect(html).toContain("Payout account: Not set up");
     expect(html).toContain("Earnings: Maturing");
-    expect(html).toContain("Publisher level: 1/10, limited after risk signals");
+    expect(html).toContain("User level: 1/10, limited after risk signals");
     expect(html).toContain("Next level window:");
     expect(html).toContain(
       "Level limits affect how much one install can receive from a campaign each day",
     );
-    expect(html).toContain("Publisher levels and limits");
+    expect(html).toContain("User levels and limits");
     expect(html).toContain("https://waitspin.com/docs#publisher-levels-and-limits");
     expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain("Balance: Below minimum");
@@ -338,7 +377,7 @@ describe("WaitSpin VS Code extension core", () => {
       ledgerEntries: [],
     });
 
-    expect(html).toContain("Publisher level: 1/10.");
+    expect(html).toContain("User level: 1/10.");
     expect(html).not.toContain("unexpected_backend_status");
     expect(html).not.toContain("unexpected backend status");
   });
@@ -388,7 +427,7 @@ describe("WaitSpin VS Code extension core", () => {
       ledgerEntries: [],
     });
 
-    expect(html).toContain("WaitSpin: Connect publisher");
+    expect(html).toContain("WaitSpin: Connect and earn");
     expect(html).toContain("SecretStorage");
     expect(html).not.toContain("set User settings");
   });

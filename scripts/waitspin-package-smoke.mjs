@@ -167,6 +167,7 @@ try {
       "status",
       "--target",
       "vscode",
+      "--json",
     ],
     { cwd: tempRoot, env: smokeEnv },
   );
@@ -182,6 +183,7 @@ try {
     [
       "claude-code",
       "status",
+      "--json",
     ],
     { cwd: tempRoot, env: smokeEnv },
   );
@@ -199,6 +201,7 @@ try {
     [
       "status",
       "--all",
+      "--json",
     ],
     { cwd: tempRoot, env: smokeEnv },
   );
@@ -223,6 +226,7 @@ try {
       "--target",
       "vscode",
       "--dry-run",
+      "--json",
     ],
     { cwd: tempRoot, env: smokeEnv },
   );

@@ -56,19 +56,33 @@ describe("waitspin package assets", () => {
     expect(packageJson.files).not.toContain("assets");
   });
 
-  it("keeps npm metadata scoped to verified publisher targets", async () => {
+  it("keeps npm metadata scoped to verified user targets", async () => {
     const packageJson = JSON.parse(
       await readFile(
         path.join(repoRoot, "packages/waitspin/package.json"),
         "utf8",
       ),
-    ) as { description: string; keywords: string[] };
+    ) as {
+      description: string;
+      homepage?: string;
+      repository?: { url?: string; directory?: string };
+      bugs?: { url?: string };
+      keywords: string[];
+    };
 
     expect(packageJson.description).toContain("VS Code");
     expect(packageJson.description).toContain("Claude Code");
     expect(packageJson.description).toContain("MiMo Code");
     expect(packageJson.description).toContain("OpenCode");
     expect(packageJson.description).toContain("Grok Code CLI");
+    expect(packageJson.homepage).toBe("https://waitspin.com");
+    expect(packageJson.repository?.url).toBe(
+      "https://github.com/citedy/waitspin.git",
+    );
+    expect(packageJson.repository?.directory).toBe("packages/waitspin");
+    expect(packageJson.bugs?.url).toBe(
+      "https://github.com/citedy/waitspin/issues",
+    );
     expect(packageJson.keywords).toContain("vscode");
     expect(packageJson.keywords).toContain("claude-code");
     expect(packageJson.keywords).toContain("mimocode");
@@ -110,7 +124,7 @@ describe("waitspin package assets", () => {
     expect(pluginSource).not.toContain("globalThis");
   });
 
-  it("keeps packaged extension metadata aligned with the first-class publisher plugin", async () => {
+  it("keeps packaged extension metadata aligned with the first-class VS Code plugin", async () => {
     const manifest = JSON.parse(
       await readFile(
         path.join(
@@ -185,6 +199,12 @@ describe("waitspin package assets", () => {
     expect(source).not.toMatch(/workspace\.(textDocuments|workspaceFolders|fs)/);
     expect(source).not.toContain("activeTextEditor");
     expect(source).not.toContain("Terminal.shellIntegration");
+    expect(source).toContain("vscode.window.state.focused");
+    expect(source).toContain("onDidChangeWindowState");
+    expect(source).toContain("visibleStartedAt");
+    expect(source).toContain("hasImpressionVisibilityEvidence");
+    expect(source).toContain("shouldKeepActiveServeBeforeNextFetch");
+    expect(source).toContain("if (shouldKeepActiveServeBeforeNextFetch())");
   });
 
   it("does not expose dev verification codes in VS Code onboarding", async () => {

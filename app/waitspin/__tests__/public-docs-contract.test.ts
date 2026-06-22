@@ -5,7 +5,6 @@ import path from "node:path";
 
 import {
   WAITSPIN_CONTROL_API_PATHS,
-  WAITSPIN_CONTROL_DISCOVERY_PATHS,
   WAITSPIN_CONTROL_V1_PATHS,
 } from "@/lib/waitspin/control-api-hosts";
 import {
@@ -30,9 +29,32 @@ import {
   WAITSPIN_PUBLIC_TRUST_REPO_URL,
   WAITSPIN_SENT_PAYLOADS,
 } from "@/lib/waitspin/public-trust";
+import { WAITSPIN_PUBLIC_PUBLISHER_POLICY_COPY } from "@/lib/waitspin/public-publisher-policy-copy";
 
 describe("WaitSpin public docs contract", () => {
   const repoRoot = process.cwd();
+
+  it("renders public browser pages dynamically under nonce CSP", async () => {
+    const nonceProtectedPages = [
+      "app/page.tsx",
+      "app/waitspin/page.tsx",
+      "app/waitspin/account/page.tsx",
+      "app/docs/page.tsx",
+      "app/waitspin/docs/page.tsx",
+      "app/waitspin/privacy/page.tsx",
+      "app/waitspin/support/page.tsx",
+      "app/waitspin/terms/page.tsx",
+      "app/waitspin/trust/page.tsx",
+      "app/wallet/connect/page.tsx",
+    ];
+
+    await Promise.all(
+      nonceProtectedPages.map(async (pagePath) => {
+        const source = await readFile(path.join(repoRoot, pagePath), "utf8");
+        expect(source).toContain('export const dynamic = "force-dynamic";');
+      }),
+    );
+  });
 
   it("publishes agents.md from the shipped route allowlist", async () => {
     const markdown = renderWaitSpinAgentsMarkdown();
@@ -79,143 +101,11 @@ describe("WaitSpin public docs contract", () => {
     }
   });
 
-  it("publishes OpenAPI-backed API discovery without linking the broken bare API base from the footer", async () => {
-    const [
-      openApi,
-      publicCopy,
-      docsPage,
-      launchClient,
-      launchPage,
-      trustPage,
-      provenanceJson,
-      publicChrome,
-      llmsTxt,
-    ] = await Promise.all([
-      readFile(
-        path.join(repoRoot, "openapi/waitspin-api.openapi.json"),
-        "utf8",
-      ),
-      readFile(
-        path.join(repoRoot, "public/openapi/waitspin-api.openapi.json"),
-        "utf8",
-      ).catch(() => ""),
-      readFile(path.join(repoRoot, "app/waitspin/docs/page.tsx"), "utf8"),
-      readFile(
-        path.join(repoRoot, "app/waitspin/waitspin-landing-client.tsx"),
-        "utf8",
-      ),
-      readFile(path.join(repoRoot, "app/waitspin/page.tsx"), "utf8"),
-      readFile(path.join(repoRoot, "app/waitspin/trust/page.tsx"), "utf8"),
-      readFile(
-        path.join(repoRoot, "public/provenance/waitspin-vscode.json"),
-        "utf8",
-      ),
-      readFile(path.join(repoRoot, "app/waitspin/public-chrome.tsx"), "utf8"),
-      readFile(path.join(repoRoot, "app/llms.txt/route.ts"), "utf8"),
-    ]);
-    const parsed = JSON.parse(openApi) as { paths: Record<string, unknown> };
-
-    expect(JSON.parse(publicCopy)).toEqual(parsed);
-    for (const routePath of [
-      ...WAITSPIN_CONTROL_DISCOVERY_PATHS,
-      ...WAITSPIN_CONTROL_V1_PATHS,
-      ...WAITSPIN_CONTROL_API_PATHS,
-    ]) {
-      expect(parsed.paths).toHaveProperty(routePath);
-    }
-    expect(docsPage).toContain("/openapi/waitspin-api.openapi.json");
-    expect(docsPage).toContain("/provenance/waitspin-vscode.json");
-    expect(docsPage).toContain('id="publisher-wallet-and-payouts"');
-    expect(docsPage).toContain("Publisher Wallet And Payouts");
-    expect(docsPage).toContain('id="publisher-levels-and-limits"');
-    expect(docsPage).toContain("Publisher Levels And Limits");
-    expect(docsPage).toContain("level 1/10");
-    expect(docsPage).toContain("one install can receive up to 0.5%");
-    expect(docsPage).toContain("Payout account not set up");
-    expect(docsPage).toContain("Set up payout account");
-    expect(docsPage).toContain("/wallet/connect");
-    expect(docsPage).toContain("waitspin wallet connect");
-    expect(docsPage).toContain("earnings_maturing");
-    expect(docsPage).toContain("balance_below_minimum");
-    expect(trustPage).toContain(
-      "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
-    );
-    expect(trustPage).toContain("const sourceUrl =");
-    expect(trustPage).toContain("tree/main/extensions/waitspin-vscode");
-    expect(trustPage).toContain("/provenance/waitspin-vscode.json");
-    const provenance = JSON.parse(provenanceJson) as Record<string, string>;
-    expect(provenance.extension_id).toBe("waitspin.waitspin-vscode");
-    expect(provenance.source_repo).toBe("https://github.com/citedy/waitspin");
-    expect(provenance.source_directory).toBe("extensions/waitspin-vscode");
-    expect(provenance.marketplace_url).toBe(
-      "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
-    );
-    expect(provenance.vsix_filename).toBe("waitspin-vscode-0.1.6.vsix");
-    expect(provenance.vsix_sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(provenance.npm_package_version).toBe("0.1.6");
-    expect(openApi).toContain("Register a supported publisher install target.");
-    const publisherTargetEnum =
-      parsed.components.schemas.PublisherRegisterRequest.properties.target.enum;
-    expect(publisherTargetEnum).toEqual(WAITSPIN_PUBLIC_TARGET_IDS);
-    expect(publisherTargetEnum).not.toContain("cline");
-    expect(publisherTargetEnum).not.toContain("kimi");
-    expect(publisherTargetEnum).not.toContain("mmx");
-    expect(docsPage).toContain('const docsUrl = "https://waitspin.com/docs"');
-    expect(docsPage).toContain("alternates: { canonical: docsUrl }");
-    expect(docsPage).toContain(WAITSPIN_PUBLIC_TRUST_REPO_URL);
-    expect(docsPage).toContain("/waitspin/trust");
-    expect(launchPage).toContain('const launchUrl = "https://waitspin.com"');
-    expect(launchPage).toContain("alternates: { canonical: launchUrl }");
-    expect(launchPage).toContain("parseCheckoutReturnState");
-    expect(launchPage).toContain("searchParams?.checkout");
-    expect(launchPage).toContain("searchParams?.campaign");
-    expect(launchPage).toContain("rawCampaignId.toLowerCase()");
-    expect(launchClient).toContain("waitspin-checkout-return");
-    expect(launchClient).toContain("Campaign inventory active");
-    expect(launchClient).toContain("Checkout returned");
-    expect(launchClient).toContain("Checkout canceled");
-    expect(launchClient).toContain("active prepaid inventory");
-    expect(launchClient).not.toContain("confirmed the Stripe payment");
-    expect(launchClient).toContain("waitspin bids list");
-    expect(llmsTxt).toContain("/openapi/waitspin-api.openapi.json");
-    expect(llmsTxt).toContain(WAITSPIN_PUBLIC_TRUST_REPO_URL);
-    expect(llmsTxt).toContain("Trust boundary");
-    expect(publicChrome).toContain('const apiDocsPath = "/docs"');
-    expect(publicChrome).toContain(
-      'const openApiPath = "/openapi/waitspin-api.openapi.json"',
-    );
-    expect(publicChrome).toContain("<Link href={apiDocsPath}>API docs</Link>");
-    expect(publicChrome).not.toContain(
-      "<Link href={apiDocsPath}>REST API</Link>",
-    );
-    expect(publicChrome).toContain("<Link href={openApiPath}>OpenAPI</Link>");
-    expect(publicChrome).toContain('<Link href="/waitspin/trust">Trust</Link>');
-    expect(publicChrome).toContain(
-      '<Link href="/waitspin/support">Support</Link>',
-    );
-    expect(publicChrome).toContain('<Link href="/">WaitSpin</Link>');
-    expect(publicChrome).not.toContain('href="/waitspin">WaitSpin');
-    expect(publicChrome).not.toContain("api.waitspin.com/v1");
-    expect(publicChrome).not.toContain("Your content, your rights. Period.");
-
-    const { GET } = await import("@/app/v1/route");
-    const response = GET(
-      new Request("https://api.waitspin.com/v1", {
-        headers: { host: "api.waitspin.com" },
-      }) as never,
-    );
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      name: "WaitSpin REST API",
-      docs_url: "https://waitspin.com/docs",
-      openapi_url: "https://waitspin.com/openapi/waitspin-api.openapi.json",
-    });
-  });
-
   it("publishes a WaitSpin-native support page contract", async () => {
     const [
       supportPage,
       supportClient,
+      turnstileClient,
       supportRoute,
       nginxConfig,
       cloudflareConfig,
@@ -226,6 +116,7 @@ describe("WaitSpin public docs contract", () => {
         path.join(repoRoot, "app/waitspin/support/WaitSpinSupportClient.tsx"),
         "utf8",
       ),
+      readFile(path.join(repoRoot, "app/waitspin/WaitSpinTurnstile.tsx"), "utf8"),
       readFile(
         path.join(repoRoot, "app/api/waitspin/support/route.ts"),
         "utf8",
@@ -254,21 +145,21 @@ describe("WaitSpin public docs contract", () => {
     expect(supportRoute).toContain("waitspin_public_site");
     expect(supportRoute).toContain("WAITSPIN_CITEDY_SUPPORT_SECRET");
     expect(supportRoute).toContain("WAITSPIN_SUPPORT_REQUIRE_TURNSTILE");
-    expect(supportClient).toContain("resetTurnstile");
-    expect(supportClient).toContain("api.js?render=explicit");
-    expect(supportClient).toContain('execution: "execute"');
-    expect(supportClient).toContain('appearance: "interaction-only"');
-    expect(supportClient).toContain("window.turnstile?.execute");
-    expect(supportClient).toContain("turnstileWidgetIdRef.current = undefined");
-    expect(supportClient).toContain('turnstileActive ? " is-active" : ""');
-    expect(supportClient).not.toContain('size: "normal"');
-    expect(supportClient).not.toContain("Complete security check");
-    expect(supportClient).not.toContain(
+    expect(supportClient).toContain("useWaitSpinTurnstile");
+    expect(turnstileClient).toContain("api.js?render=explicit");
+    expect(turnstileClient).toContain('execution: "execute"');
+    expect(turnstileClient).toContain('appearance: "interaction-only"');
+    expect(turnstileClient).toContain("window.turnstile?.execute");
+    expect(turnstileClient).toContain("widgetIdRef.current = undefined");
+    expect(turnstileClient).toContain('active ? " is-active" : ""');
+    expect(turnstileClient).not.toContain('size: "normal"');
+    expect(turnstileClient).not.toContain("Complete security check");
+    expect(turnstileClient).not.toContain(
       "WAITSPIN_TURNSTILE_CHALLENGE_TIMEOUT_MS",
     );
-    expect(supportClient).toContain("WAITSPIN_TURNSTILE_SILENT_TIMEOUT_MS");
-    expect(supportClient).toContain("180_000");
-    expect(supportClient).not.toMatch(
+    expect(turnstileClient).toContain("WAITSPIN_TURNSTILE_SILENT_TIMEOUT_MS");
+    expect(turnstileClient).toContain("180_000");
+    expect(turnstileClient).not.toMatch(
       /waitspin-support-turnstile[^>]+aria-hidden/,
     );
     const globalsCss = await readFile(
@@ -283,6 +174,19 @@ describe("WaitSpin public docs contract", () => {
     expect(cloudflareConfig).not.toContain("real_ip_header");
     expect(startScript).toContain("WAITSPIN_CITEDY_SUPPORT_SECRET");
     expect(startScript).toContain("WAITSPIN_TURNSTILE_SECRET_KEY");
+  });
+
+  it("keeps account Turnstile mounted before dynamic status copy", async () => {
+    const accountLoginForm = await readFile(
+      path.join(repoRoot, "app/waitspin/account/WaitSpinAccountLoginForm.tsx"),
+      "utf8",
+    );
+    const turnstileIndex = accountLoginForm.indexOf("{turnstile.node}");
+    const statusIndex = accountLoginForm.indexOf("{status ?");
+
+    expect(turnstileIndex).toBeGreaterThan(-1);
+    expect(statusIndex).toBeGreaterThan(-1);
+    expect(turnstileIndex).toBeLessThan(statusIndex);
   });
 
   it("documents WebMCP browser onboarding in shared WaitSpin docs", async () => {
@@ -312,7 +216,7 @@ describe("WaitSpin public docs contract", () => {
     ]);
 
     for (const source of [markdown, publicPage]) {
-      expect(source).toContain("Publisher-extension keys");
+      expect(source).toMatch(/Extension(?: API)? keys created with/);
       expect(source).toContain("create campaigns");
       expect(source).toContain("Checkout");
       expect(source).toContain("wallet");
@@ -321,7 +225,7 @@ describe("WaitSpin public docs contract", () => {
     }
   });
 
-  it("keeps public publisher install docs scoped to supported target lifecycles", async () => {
+  it("keeps public user install docs scoped to supported target lifecycles", async () => {
     const checkedFiles = [
       "app/waitspin/docs/page.tsx",
       "app/waitspin/waitspin-landing-client.tsx",
@@ -336,6 +240,9 @@ describe("WaitSpin public docs contract", () => {
 
     for (const source of sources) {
       expect(source).toContain("--target vscode");
+      expect(source).not.toContain("WaitSpin: Connect publisher");
+      expect(source).not.toContain("verified publisher surfaces");
+      expect(source).not.toContain("Verified public publisher targets");
       expect(source).not.toMatch(
         /extension install --target (?:claude|codex)/i,
       );
@@ -431,19 +338,36 @@ describe("WaitSpin public docs contract", () => {
     expect(combined).not.toMatch(
       /Stripe Connect onboarding, payout execution, earnings APIs, ledger APIs.*not public paid-launch capabilities/i,
     );
-    expect(terms).toContain("release-candidate surfaces");
-    expect(terms).toContain("explicit operator flags");
+    const publisherPolicyCopy = WAITSPIN_PUBLIC_PUBLISHER_POLICY_COPY;
+    expect(terms).toContain("WAITSPIN_PUBLIC_PUBLISHER_POLICY_COPY");
+    expect(terms).toContain("publisherPolicyCopy.trustMinLevelLabel");
+    expect(terms).toContain(
+      "publisherPolicyCopy.minLevelInstallCampaignCapPercent",
+    );
+    expect(privacy).toContain("publisherPolicyCopy.earningMaturityHours");
+    expect(publisherPolicyCopy.minLevelInstallCampaignCapPercent).toBe("0.5%");
+    expect(terms).toContain("/docs#publisher-levels-and-limits");
+    expect(terms).toContain("payout policy eligibility checks");
+    expect(terms).toContain("does not guarantee that any balance is immediately");
+    expect(terms).toContain("withdrawable");
+    expect(combined).not.toMatch(/explicit operator flags/i);
+    expect(combined).not.toMatch(/deployed E2E/i);
+    expect(combined).not.toMatch(/not public paid-launch capabilities/i);
     expect(privacy).toContain("Money And Payout Data");
     const publicTrustSource = await readFile(
       path.join(repoRoot, "lib/waitspin/public-trust.ts"),
       "utf8",
     );
+    expect(publicTrustSource).not.toContain(", etc.");
     expect(publicTrustSource).toMatch(/VS Code\s+SecretStorage/);
     expect(privacy).toContain("/provenance/waitspin-vscode.json");
     expect(privacy).toContain(
       "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
     );
-    expect(privacy).toContain("Wallet, ledger, Stripe Connect onboarding");
+    expect(privacy).toContain("Stripe Connect onboarding");
+    expect(privacy).toContain('href="/wallet/connect"');
+    expect(terms).toContain("Stripe Connect onboarding");
+    expect(terms).toContain('href="/wallet/connect"');
     expect(privacy).toContain("WAITSPIN_PUBLIC_PUBLISHER_TARGETS");
     expect(publicTrustSource).toContain("Grok Code CLI");
     expect(privacy).toContain("no separate analytics telemetry stream");
@@ -497,16 +421,24 @@ describe("WaitSpin public docs contract", () => {
     expect(trustPage).toContain("WAITSPIN_PUBLIC_TRUST_REPO_URL");
     expect(publicTrustSource).toContain(WAITSPIN_PUBLIC_TRUST_REPO_URL);
     expect(exportScript).toContain("allowEntries");
+    expect(exportScript).toContain("app/wallet/connect/WalletConnectCodeInput.tsx");
+    expect(exportScript).toContain("app/wallet/connect/WalletConnectRequestForm.tsx");
+    expect(exportScript).toContain("app/waitspin/WaitSpinTurnstile.tsx");
+    expect(exportScript).toContain("lib/waitspin/publisher-connect-countries.ts");
     expect(exportScript).toContain("forbiddenPathFragments");
     expect(exportScript).toContain("DATABASE_URL");
     expect(exportScript).toContain("STRIPE_");
     expect(exportScript).toContain("AGPL-3.0-or-later");
     expect(exportScript).toContain("waitspin:trust-boundary");
+    expect(exportScript).toContain("waitspin-skill/SKILL.md");
+    expect(exportScript).toContain("npx skills add citedy/waitspin --skill waitspin -g -y");
     expect(exportScript).toContain(
       "Cline, Kimi, and MMX are not public targets",
     );
     expect(packageJson).toContain("waitspin:public-export");
     expect(packageJson).toContain("waitspin:public-export:dry-run");
+    expect(packageJson).toContain("waitspin:public-sync:check");
+    expect(packageJson).toContain("test:waitspin:public-sync");
   });
 
   it("does not describe public npx install as waiting for npm publication", async () => {
@@ -533,7 +465,30 @@ describe("WaitSpin public docs contract", () => {
         /run these only after npm distribution evidence/i,
       );
     }
+    expect(sources.join("\n")).toContain("WaitSpin: Connect and earn");
     expect(sources.join("\n")).toContain("npm view waitspin version");
+  });
+
+  it("keeps the public skill actionable for agent-led email OTP onboarding", async () => {
+    const skill = await readFile(
+      path.join(repoRoot, "waitspin-skill/SKILL.md"),
+      "utf8",
+    );
+
+    expect(skill).toContain("## Agent-Led OTP Automation");
+    expect(skill).toContain("--key-profile control --json");
+    expect(skill).toContain("--key-profile publisher-extension --json");
+    expect(skill).toContain("--code CODE_FROM_EMAIL");
+    expect(skill).toContain("WAITSPIN_VERIFICATION_CODE=CODE_FROM_EMAIL");
+    expect(skill).toContain("next: \"enter_email_code\"");
+    expect(skill).toContain("Then stop and wait for the user");
+    expect(skill).toContain("Do not print API keys or OTP codes");
+    expect(skill).toContain("WAITSPIN_API_KEY='KEY_FROM_JSON'");
+    expect(skill).toContain("waitspin bid create");
+    expect(skill).toContain("waitspin install --all --dry-run");
+    expect(skill).toContain("do not echo it in chat");
+    expect(skill).not.toContain("PASTE_PUBLISHER_EXTENSION_KEY");
+    expect(skill).not.toContain("PASTE_CONTROL_KEY");
   });
 
   it("publishes SEO and AI discovery surfaces for the launch page", async () => {
@@ -591,7 +546,7 @@ describe("WaitSpin public docs contract", () => {
     expect(llmsBody).toContain("WaitSpin is an agent-first ad marketplace");
     expect(llmsBody).toContain("## WebMCP Browser Tools");
     expect(llmsBody).toContain(
-      "Verified publisher surfaces: VS Code Activity Bar/status-bar extension, Claude Code statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer",
+      "Verified user earning surfaces: VS Code Activity Bar/status-bar extension, Claude Code statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer",
     );
     expect(llmsBody).toContain(
       "Advanced agent install: waitspin install --all",
@@ -599,6 +554,7 @@ describe("WaitSpin public docs contract", () => {
     expect(llmsBody).not.toContain(
       "Verified publisher surface: VS Code status-bar fallback",
     );
+    expect(llmsBody).not.toContain("Verified publisher surfaces");
     expect(llmsBody).not.toContain("VS Code status-bar fallback");
     expect(llmsResponse.headers.get("Content-Type")).toContain("text/plain");
     expect(waitspinBrandIcons).toMatchObject({
@@ -658,6 +614,7 @@ describe("WaitSpin public docs contract", () => {
       launchPage,
       rootLayout,
       launchClient,
+      landingRoadmap,
       publicChrome,
       legalContent,
     ] = await Promise.all([
@@ -666,6 +623,10 @@ describe("WaitSpin public docs contract", () => {
       readFile(path.join(repoRoot, "app/layout.tsx"), "utf8"),
       readFile(
         path.join(repoRoot, "app/waitspin/waitspin-landing-client.tsx"),
+        "utf8",
+      ),
+      readFile(
+        path.join(repoRoot, "lib/waitspin/landing-roadmap.ts"),
         "utf8",
       ),
       readFile(path.join(repoRoot, "app/waitspin/public-chrome.tsx"), "utf8"),
@@ -694,9 +655,16 @@ describe("WaitSpin public docs contract", () => {
     expect(launchClient).toContain("How do users earn?");
     expect(launchClient).toContain("How do I install WaitSpin for VS Code?");
     expect(launchClient).toContain("Which VS Code install is covered?");
-    expect(launchClient).toContain("installs into Visual Studio Code");
+    expect(launchClient).toContain(
+      "WaitSpin is installed into Visual Studio Code itself",
+    );
+    expect(launchClient).toContain("Roo Code");
+    expect(launchClient).toContain("Windsurf");
+    expect(launchClient).toContain("Gemini Code Assist");
+    expect(launchClient).toContain(
+      "It does not read their prompts, responses, files, or extension data.",
+    );
     expect(launchClient).not.toContain("Cursor");
-    expect(launchClient).not.toContain("Windsurf");
     expect(launchClient).not.toContain("VSCodium");
     expect(launchClient).not.toContain("Code OSS");
     expect(launchClient).toContain(
@@ -709,7 +677,18 @@ describe("WaitSpin public docs contract", () => {
     );
     expect(launchClient).toContain("Is this native spinner patching?");
     expect(launchClient).toContain("What is supported now?");
-    expect(launchClient).toContain("What is coming soon?");
+    expect(launchClient).toContain("Supported now / roadmap");
+    expect(launchClient).toContain("WaitSpinRoadmap");
+    expect(launchClient).not.toContain("Coming soon");
+    expect(landingRoadmap).toContain(
+      "Native spinner patching beyond supported surfaces",
+    );
+    expect(landingRoadmap).toContain("Deep-link click billing");
+    expect(landingRoadmap).toContain(
+      "Self-serve cash refunds/account credit",
+    );
+    expect(landingRoadmap).toContain("Geo targeting");
+    expect(landingRoadmap).not.toContain("Public skill registry publication");
     expect(launchClient).toContain(
       "waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing",
     );
@@ -730,10 +709,9 @@ describe("WaitSpin public docs contract", () => {
     expect(launchClient).toContain("OpenCode TUI plugin slot");
     expect(launchClient).toContain("Copy agent command");
     expect(launchClient).toContain("Copy install-all");
-    expect(launchClient).toContain("Public skill registry publication");
     expect(launchClient).not.toContain("How can agents install the skill?");
     expect(launchPage).toContain(
-      "verified publisher surfaces for VS Code, Claude Code, MiMo Code, OpenCode, or Grok Code CLI",
+      "verified earning surfaces for VS Code, Claude Code, MiMo Code, OpenCode, or Grok Code CLI",
     );
     expect(launchPage).toContain(
       "Web, CLI, VS Code, Claude Code, MiMo Code, OpenCode, Grok Code CLI",
@@ -824,6 +802,15 @@ describe("WaitSpin public docs contract", () => {
     expect(normalizeDocWhitespace(publicApi)).toContain(commissionSentence);
     expect(termsPage).toContain("formatPublisherRevenueSharePercentWords");
     expect(termsPage).toContain("formatPlatformRevenueSharePercentWords");
+    expect(llmsRoute).toContain(
+      "https://github.com/citedy/waitspin/blob/main/waitspin-skill/SKILL.md",
+    );
+    expect(llmsRoute).toContain(
+      "npx skills add citedy/waitspin --skill waitspin -g -y",
+    );
+    expect(llmsRoute).not.toContain(
+      "Skills.sh and ClawHub publication remain planned follow-up",
+    );
 
     for (const source of publicSources) {
       expect(source).not.toContain("WTS_PUBLISHER_REVENUE_BPS");

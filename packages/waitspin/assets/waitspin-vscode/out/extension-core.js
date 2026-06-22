@@ -9,6 +9,8 @@ exports.isLoopbackApiHostname = isLoopbackApiHostname;
 exports.normalizeTrustedApiBase = normalizeTrustedApiBase;
 exports.isSafeExternalUrl = isSafeExternalUrl;
 exports.parseServePayload = parseServePayload;
+exports.isServeExpired = isServeExpired;
+exports.serveExpiryDelayMs = serveExpiryDelayMs;
 exports.parseWalletStatusPayload = parseWalletStatusPayload;
 exports.parseLedgerPayload = parseLedgerPayload;
 exports.renderPublisherViewHtml = renderPublisherViewHtml;
@@ -217,6 +219,7 @@ function parseServePayload(payload) {
         return undefined;
     }
     const creativeRecord = creative;
+    const campaignId = creativeRecord.campaign_id;
     const line = creativeRecord.line;
     const destinationUrl = creativeRecord.destination_url;
     if (typeof line !== "string" || line.trim().length === 0) {
@@ -232,13 +235,32 @@ function parseServePayload(payload) {
         record.min_visible_ms >= exports.MIN_VISIBLE_MS
         ? record.min_visible_ms
         : exports.MIN_VISIBLE_MS;
+    const expiresAt = record.expires_at;
+    if (typeof expiresAt !== "string" || expiresAt.trim().length === 0) {
+        return undefined;
+    }
+    const expiresAtMs = Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs)) {
+        return undefined;
+    }
     return {
         serveId: serveId.trim(),
+        campaignId: typeof campaignId === "string" && campaignId.trim().length > 0
+            ? campaignId.trim()
+            : undefined,
         line: line.trim(),
         destinationUrl: destinationUrl.trim(),
         serveReceipt: serveReceipt.trim(),
+        expiresAt: new Date(expiresAtMs).toISOString(),
+        expiresAtMs,
         minVisibleMs,
     };
+}
+function isServeExpired(serve, nowMs = Date.now(), safetyMs = 0) {
+    return nowMs + safetyMs >= serve.expiresAtMs;
+}
+function serveExpiryDelayMs(serve, nowMs = Date.now()) {
+    return Math.max(0, serve.expiresAtMs - nowMs);
 }
 function parseWalletStatusPayload(payload) {
     if (!payload || typeof payload !== "object") {
@@ -387,7 +409,7 @@ function renderPublisherViewHtml(state) {
   </style>
 </head>
 <body>
-  <h2>WaitSpin Publisher</h2>
+  <h2>WaitSpin</h2>
   ${status}
   ${error}
   <h3>Sponsor</h3>
@@ -402,10 +424,10 @@ function renderPublisherViewHtml(state) {
 }
 function renderInstallStatus(state) {
     if (state.authStopped) {
-        return `<p class="notice error">Authentication stopped. Run <code>WaitSpin: Connect publisher</code> to rotate or reconnect the publisher-extension key.</p>`;
+        return `<p class="notice error">Authentication stopped. Run <code>WaitSpin: Connect and earn</code> to rotate or reconnect the extension key.</p>`;
     }
     if (!state.hasApiKey || !state.installId) {
-        return `<p class="notice">Install status: setup required. Run <code>WaitSpin: Connect publisher</code> to register this VS Code install and store the publisher key in SecretStorage.</p>`;
+        return `<p class="notice">Install status: setup required. Run <code>WaitSpin: Connect and earn</code> to connect this VS Code install and store the extension key in SecretStorage.</p>`;
     }
     const apiBase = state.apiBase ? (0, extension_html_1.escapeHtml)(state.apiBase) : "trusted API";
     return `<p class="notice">Install status: active for <code>${(0, extension_html_1.escapeHtml)(state.installId)}</code> on ${apiBase}.</p>`;
@@ -423,7 +445,7 @@ function renderSponsor(state) {
     if (state.inventoryStatus === "error") {
         return `<p class="notice error">Inventory refresh failed. WaitSpin will retry on the next polling interval.</p>`;
     }
-    return `<p class="notice">Connect this publisher install to start sponsor polling.</p>`;
+    return `<p class="notice">Connect WaitSpin to start sponsor polling.</p>`;
 }
 function objectRecord(value) {
     return value && typeof value === "object"

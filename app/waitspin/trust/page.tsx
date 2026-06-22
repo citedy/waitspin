@@ -9,6 +9,13 @@ import {
   WAITSPIN_SENT_PAYLOADS,
   waitSpinPublicTargetsSentence,
 } from "@/lib/waitspin/public-trust";
+import {
+  WTS_VSCODE_MARKETPLACE_STATUS,
+  WTS_VSCODE_MARKETPLACE_STATUS_PATH,
+  waitSpinVscodeMarketplaceStateLabel,
+  waitSpinVscodeMarketplaceVersionLabel,
+  waitSpinVscodeProvenanceVersionLabel,
+} from "@/lib/waitspin/vscode-marketplace-status";
 import { Section, WaitSpinLegalPage } from "../legal-content";
 import { PublicSurfaceCopyLabel } from "../public-surface-copy-label";
 
@@ -20,8 +27,10 @@ const provenancePath = "/provenance/waitspin-vscode.json";
 export const metadata: Metadata = {
   title: "WaitSpin Trust",
   description:
-    "WaitSpin client trust boundary, VS Code Marketplace provenance, public source links, and privacy guarantees for supported publisher surfaces.",
+    "WaitSpin client trust boundary, VS Code Marketplace provenance, public source links, and privacy guarantees for supported user earning surfaces.",
 };
+
+export const dynamic = "force-dynamic";
 
 export default function WaitSpinTrustPage() {
   return (
@@ -37,7 +46,7 @@ export default function WaitSpinTrustPage() {
           impression after the visible interval.
         </p>
         <p>
-          Public publisher targets: {waitSpinPublicTargetsSentence()}.
+          Public user surfaces: {waitSpinPublicTargetsSentence()}.
         </p>
       </Section>
 
@@ -79,12 +88,40 @@ export default function WaitSpinTrustPage() {
           . The repository does not track VSIX binaries; release automation
           packages them and records the SHA256 in the manifest.
         </p>
+        <p>
+          Published version:{" "}
+          <code>
+            {waitSpinVscodeMarketplaceVersionLabel(
+              WTS_VSCODE_MARKETPLACE_STATUS,
+            )}
+          </code>
+          . Provenance version:{" "}
+          <code>
+            {waitSpinVscodeProvenanceVersionLabel(
+              WTS_VSCODE_MARKETPLACE_STATUS,
+            )}
+          </code>
+          . State:{" "}
+          <code>
+            {waitSpinVscodeMarketplaceStateLabel(
+              WTS_VSCODE_MARKETPLACE_STATUS,
+            )}
+          </code>
+          . Live Marketplace status is published at{" "}
+          <Link
+            className="underline"
+            href={WTS_VSCODE_MARKETPLACE_STATUS_PATH}
+          >
+            {WTS_VSCODE_MARKETPLACE_STATUS_PATH}
+          </Link>
+          .
+        </p>
       </Section>
 
       <Section title="Client Privacy Boundary">
         <p>
-          The VS Code extension connects a publisher install inside VS Code,
-          stores the publisher API key in VS Code SecretStorage, stores the
+          The VS Code extension connects a user install inside VS Code, stores
+          the extension API key in VS Code SecretStorage, stores the
           install ID in user-scoped extension state, polls the WaitSpin API for a
           sponsored line, opens advertiser links only after user action, and
           reports a billable impression after the required visible interval. It
@@ -118,7 +155,7 @@ export default function WaitSpinTrustPage() {
           ))}
         </ul>
         <p>
-          The current public publisher surfaces are the VS Code Marketplace
+          The current public user earning surfaces are the VS Code Marketplace
           Activity Bar/status-bar extension, Claude Code statusline command, MiMo
           Code shell hook, OpenCode TUI plugin slot, and Grok Code CLI footer.
           Native spinner patching beyond these supported status surfaces remains

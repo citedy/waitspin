@@ -10,6 +10,7 @@ const sourceSchema = z
 const emailSchema = z.string().trim().email().max(320).transform((value) =>
   value.toLowerCase(),
 );
+const optionalEmailSchema = emailSchema.optional().catch(undefined);
 const installIdSchema = z
   .string()
   .trim()
@@ -19,7 +20,7 @@ const installIdSchema = z
   .optional()
   .catch(undefined);
 const errorSchema = z
-  .enum(["request_failed", "verify_failed", "country_mismatch"])
+  .enum(["request_failed", "verify_failed", "country_mismatch", "connect_failed"])
   .optional()
   .catch(undefined);
 const countrySchema = z
@@ -59,6 +60,7 @@ export type PayoutConnectPageState = {
   source?: string;
   installId?: string;
   countryCode?: string;
+  email?: string;
   sent: boolean;
   connectState?: "return" | "refresh";
   error?: string;
@@ -70,6 +72,10 @@ export type PayoutConnectRedirectContext = {
   countryCode?: string;
 };
 
+export const WTS_PAYOUT_CONNECT_EMAIL_COOKIE =
+  "waitspin_payout_connect_email";
+export const WTS_PAYOUT_CONNECT_EMAIL_COOKIE_MAX_AGE_SECONDS = 15 * 60;
+
 export function parsePayoutConnectRequestForm(formData: FormData): PayoutConnectForm {
   return {
     email: emailSchema.parse(requiredFormString(formData, "email")),
@@ -77,6 +83,25 @@ export function parsePayoutConnectRequestForm(formData: FormData): PayoutConnect
     source: sourceSchema.parse(optionalFormString(formData, "source")),
     installId: installIdSchema.parse(optionalFormString(formData, "install_id")),
   };
+}
+
+export function payoutConnectTurnstileTokenFromFormData(
+  formData: FormData,
+): string | undefined {
+  return optionalFormString(formData, "turnstile_token");
+}
+
+export function payoutConnectEmailFromCookieValue(
+  value: string | undefined,
+): string | undefined {
+  if (value === undefined) return undefined;
+  const parsed = emailSchema.safeParse(cookieEmailCandidate(value));
+  if (parsed.success) return parsed.data;
+  return undefined;
+}
+
+export function payoutConnectVerifyUsesLockedContext(formData: FormData): boolean {
+  return optionalFormString(formData, "sent") === "1";
 }
 
 export function payoutConnectRedirectContextFromFormData(
@@ -94,11 +119,7 @@ export function parsePayoutConnectVerifyForm(
 ): PayoutConnectVerifyForm {
   return {
     ...parsePayoutConnectRequestForm(formData),
-    code: z
-      .string()
-      .trim()
-      .regex(/^\d{6}$/)
-      .parse(requiredFormString(formData, "code")),
+    code: requiredVerificationCode(formData),
   };
 }
 
@@ -122,6 +143,7 @@ export function payoutConnectRedirectUrl(params: {
 
 export function payoutConnectPageState(
   searchParams: Record<string, string | string[] | undefined> | undefined,
+  options: { email?: string } = {},
 ): PayoutConnectPageState {
   return {
     source: sourceSchema.parse(optionalSearchString(searchParams, "source")),
@@ -129,6 +151,7 @@ export function payoutConnectPageState(
     countryCode: optionalCountrySchema.parse(
       optionalSearchString(searchParams, "country"),
     ),
+    email: optionalEmailSchema.parse(options.email),
     sent: optionalSearchString(searchParams, "sent") === "1",
     connectState: z
       .enum(["return", "refresh"])
@@ -155,6 +178,33 @@ function optionalFormString(formData: FormData, key: string): string | undefined
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed || undefined;
+}
+
+function decodeCookieValue(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function cookieEmailCandidate(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed.includes("@") ? trimmed : decodeCookieValue(trimmed);
+}
+
+function requiredVerificationCode(formData: FormData): string {
+  const hiddenCode = optionalFormString(formData, "code");
+  if (hiddenCode && /^\d{6}$/.test(hiddenCode)) return hiddenCode;
+  return z
+    .string()
+    .regex(/^\d{6}$/)
+    .parse(
+      Array.from({ length: 6 }, (_, index) =>
+        optionalFormString(formData, `code_digit_${index + 1}`) ?? "",
+      ).join(""),
+    );
 }
 
 function optionalSearchString(

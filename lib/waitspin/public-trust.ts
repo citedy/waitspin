@@ -6,7 +6,7 @@ export const WAITSPIN_PUBLIC_PUBLISHER_TARGETS = [
     target: "status-bar-fallback",
     href: "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
     localBehavior:
-      "Uses VS Code SecretStorage for the publisher API key and user-scoped extension state for the install ID. The Marketplace extension provides an Activity Bar publisher view, status-bar mini state, wallet balance, pending balance, recent ledger entries, current sponsor card, no-inventory state, connect/polling/refresh/open commands, and a five-second visible impression hold.",
+      "Uses VS Code SecretStorage for the extension API key and user-scoped extension state for the install ID. The Marketplace extension provides an Activity Bar user view, status-bar mini state, wallet balance, pending balance, recent ledger entries, current sponsor card, no-inventory state, connect/polling/refresh/open commands, and a five-second visible impression hold.",
   },
   {
     label: "Claude Code",
@@ -61,7 +61,7 @@ export const WAITSPIN_NEVER_SENT_DATA = [
 ] as const;
 
 export const WAITSPIN_SENT_PAYLOADS = [
-  "publisher registration: {install_id,target}",
+  "user install registration: {install_id,target}",
   "serve polling: {install_id}",
   "impression event: {serve_id,serve_receipt,install_id,visible_ms}",
   "standard network metadata used for rate limits, fraud controls, abuse response, and audit logs",

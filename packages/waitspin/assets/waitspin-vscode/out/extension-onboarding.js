@@ -41,7 +41,7 @@ async function readJsonBody(response, log, label = "WaitSpin") {
         return await response.json();
     }
     catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = sanitizeSetupErrorMessage(error instanceof Error ? error.message : String(error));
         log?.(`${label} JSON parse failed: ${message}`);
         return undefined;
     }
@@ -82,7 +82,7 @@ class PublisherOnboardingController {
     }
     async connectPublisher() {
         if (this.connectInFlight) {
-            await vscode.window.showInformationMessage("WaitSpin publisher setup is already running.");
+            await vscode.window.showInformationMessage("WaitSpin setup is already running.");
             return;
         }
         this.connectInFlight = true;
@@ -96,7 +96,7 @@ class PublisherOnboardingController {
     async connectPublisherOnce() {
         const apiBase = this.host.resolveApiBase();
         if (!apiBase || !isTrustedOnboardingApiBase(apiBase)) {
-            await vscode.window.showErrorMessage("WaitSpin needs the trusted API base https://api.waitspin.com before publisher setup can continue.");
+            await vscode.window.showErrorMessage("WaitSpin needs the trusted API base https://api.waitspin.com before setup can continue.");
             return;
         }
         const storedApiKey = this.host.resolveApiKey();
@@ -107,7 +107,7 @@ class PublisherOnboardingController {
         try {
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: "Connecting WaitSpin publisher",
+                title: "Connecting WaitSpin",
                 cancellable: false,
             }, async () => {
                 const apiKey = mode === "email"
@@ -120,17 +120,17 @@ class PublisherOnboardingController {
                 }
                 if (mode === "email") {
                     await this.host.storeApiKey(apiKey);
-                    this.host.logWaitSpin("Stored newly issued publisher key before registration retry points.");
+                    this.host.logWaitSpin("Stored newly issued extension key before registration retry points.");
                 }
                 await this.registerAndStorePublisher(apiBase, apiKey, mode);
             });
         }
         catch (error) {
             const message = sanitizeSetupErrorMessage(error instanceof Error ? error.message : String(error));
-            this.host.logWaitSpin(`Publisher setup failed: ${message}`);
+            this.host.logWaitSpin(`WaitSpin setup failed: ${message}`);
             this.host.updatePublisherState({
                 inventoryStatus: "setup",
-                lastError: `Publisher setup failed: ${message}`,
+                lastError: `WaitSpin setup failed: ${message}`,
             });
             await vscode.window.showErrorMessage(`WaitSpin setup failed: ${message}`);
         }
@@ -140,32 +140,32 @@ class PublisherOnboardingController {
             ...(hasStoredApiKey
                 ? [
                     {
-                        label: "Use stored publisher key",
+                        label: "Use stored extension key",
                         description: "Reuse the key already stored in VS Code SecretStorage",
                         mode: "stored-key",
                     },
                 ]
                 : []),
             {
-                label: "Create publisher key by email",
+                label: "Create extension key by email",
                 description: "Receive a 6-digit code, then connect this VS Code install",
                 mode: "email",
             },
             {
-                label: "Use existing publisher key",
-                description: "Paste a publisher-extension key once; it is stored in SecretStorage",
+                label: "Use existing extension key",
+                description: "Paste an extension API key once; it is stored in SecretStorage",
                 mode: "existing-key",
             },
         ], {
-            title: "Connect WaitSpin publisher",
+            title: "Connect WaitSpin",
             placeHolder: "Choose how to connect this VS Code install",
         });
         return selected?.mode;
     }
     async verifyPublisherKeyByEmail(apiBase) {
         const email = await vscode.window.showInputBox({
-            title: "WaitSpin publisher email",
-            prompt: "Enter the email that should own this publisher-extension key.",
+            title: "WaitSpin account email",
+            prompt: "Enter the email that should own this extension key.",
             ignoreFocusOut: true,
             validateInput: (value) => isValidEmail(value) ? undefined : "Enter a valid email address.",
         });
@@ -206,19 +206,19 @@ class PublisherOnboardingController {
         }
         const verified = (0, extension_core_1.parseVerifiedPublisherKeyPayload)(await readJsonBody(verifyResponse, this.host.logWaitSpin, "Key verification"));
         if (!verified) {
-            throw new Error("Verification did not return a publisher-extension key with wallet:read.");
+            throw new Error("Verification did not return an extension key with wallet:read.");
         }
         return verified.apiKey;
     }
     async readExistingPublisherKey() {
         const apiKey = await vscode.window.showInputBox({
-            title: "WaitSpin publisher-extension key",
-            prompt: "Paste a publisher-extension key. WaitSpin stores it in VS Code SecretStorage.",
+            title: "WaitSpin extension key",
+            prompt: "Paste an extension API key. WaitSpin stores it in VS Code SecretStorage.",
             password: true,
             ignoreFocusOut: true,
             validateInput: (value) => isPublisherKeyLike(value)
                 ? undefined
-                : "Enter a publisher-extension key beginning with wts_live_.",
+                : "Enter an extension API key beginning with wts_live_.",
         });
         return apiKey?.trim();
     }
@@ -262,11 +262,11 @@ class PublisherOnboardingController {
             }),
         });
         if (!registrationResponse.ok) {
-            throw httpError("Publisher registration failed", registrationResponse);
+            throw httpError("Install registration failed", registrationResponse);
         }
-        const registration = (0, extension_core_1.parsePublisherRegistrationPayload)(await readJsonBody(registrationResponse, this.host.logWaitSpin, "Publisher registration"));
+        const registration = (0, extension_core_1.parsePublisherRegistrationPayload)(await readJsonBody(registrationResponse, this.host.logWaitSpin, "Install registration"));
         if (!registration) {
-            throw new Error("Publisher registration response failed validation.");
+            throw new Error("Install registration response failed validation.");
         }
         await this.host.storeInstallId(registration.installId);
         await this.host.storeApiKey(apiKey);
@@ -278,14 +278,14 @@ class PublisherOnboardingController {
             inventoryStatus: "polling",
             lastError: walletReadable
                 ? undefined
-                : "Publisher connected. Wallet and ledger need a key with wallet:read.",
+                : "WaitSpin connected. Wallet and ledger need a key with wallet:read.",
             lastUpdatedAt: new Date().toISOString(),
         });
-        this.host.logWaitSpin(`Publisher install connected for ${registration.installId}.`);
+        this.host.logWaitSpin(`WaitSpin connected for ${registration.installId}.`);
         this.host.startPolling();
         await vscode.window.showInformationMessage(walletReadable
-            ? "WaitSpin publisher connected. Wallet and sponsor polling are starting."
-            : "WaitSpin publisher connected. Sponsor polling is starting; rotate the key to enable wallet reads.", "Open WaitSpin").then((choice) => {
+            ? "WaitSpin connected. Wallet and sponsor polling are starting."
+            : "WaitSpin connected. Sponsor polling is starting; rotate the key to enable wallet reads.", "Open WaitSpin").then((choice) => {
             if (choice === "Open WaitSpin") {
                 void vscode.commands.executeCommand("workbench.view.extension.waitspin");
             }
@@ -300,7 +300,7 @@ class PublisherOnboardingController {
             if (allowLegacyPublisherKey) {
                 return false;
             }
-            throw new Error("Publisher key cannot read wallet status. Create or rotate a publisher-extension key with wallet:read.");
+            throw new Error("Extension key cannot read wallet status. Create or rotate an extension key with wallet:read.");
         }
         if (!response.ok) {
             throw httpError("Wallet validation failed", response);

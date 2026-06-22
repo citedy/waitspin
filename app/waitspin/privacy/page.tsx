@@ -7,20 +7,25 @@ import {
   WAITSPIN_PUBLIC_TRUST_REPO_URL,
   WAITSPIN_SENT_PAYLOADS,
 } from "@/lib/waitspin/public-trust";
+import { WAITSPIN_PUBLIC_PUBLISHER_POLICY_COPY } from "@/lib/waitspin/public-publisher-policy-copy";
 import { Section, WaitSpinLegalPage } from "../legal-content";
 import { PublicSurfaceCopyLabel } from "../public-surface-copy-label";
+
+const publisherPolicyCopy = WAITSPIN_PUBLIC_PUBLISHER_POLICY_COPY;
 
 export const metadata: Metadata = {
   title: "WaitSpin Privacy",
   description:
-    "Privacy notice for WaitSpin email verification, API keys, advertiser blocks, publisher installs, extension telemetry, payments, and fraud controls.",
+    "Privacy notice for WaitSpin email verification, API keys, advertiser blocks, user installs, extension telemetry, payments, and fraud controls.",
 };
+
+export const dynamic = "force-dynamic";
 
 export default function WaitSpinPrivacyPage() {
   return (
     <WaitSpinLegalPage
       title="WaitSpin Privacy"
-      description="This notice explains the data WaitSpin uses to operate the API, marketplace, publisher extension surface, billing, fraud controls, support, and monitoring."
+      description="This notice explains the data WaitSpin uses to operate the API, marketplace, user earning surfaces, billing, fraud controls, support, and monitoring."
     >
       <Section title="Data We Process">
         <ul className="list-disc space-y-2 pl-5">
@@ -35,7 +40,7 @@ export default function WaitSpinPrivacyPage() {
             Stripe payment identifiers, and webhook event IDs.
           </li>
           <li>
-            Publisher install data, including install ID, target, status, serve
+            User install data, including install ID, target, status, serve
             sessions, impression events, visible time, timestamps, user-agent,
             IP-derived rate-limit and fraud signals, and audit events.
           </li>
@@ -47,9 +52,9 @@ export default function WaitSpinPrivacyPage() {
         </ul>
       </Section>
 
-      <Section title="Publisher Surface Behavior">
+      <Section title="User Surface Behavior">
         <p>
-          Verified publisher surfaces include the VS Code Activity Bar/status-bar
+          Verified user earning surfaces include the VS Code Activity Bar/status-bar
           extension, Claude Code statusline command, MiMo Code shell hook,
           OpenCode TUI plugin slot, and Grok Code CLI footer. They poll the
           WaitSpin API for a sponsored message, show the message in the relevant
@@ -59,8 +64,8 @@ export default function WaitSpinPrivacyPage() {
           contents, terminal output, or repository files to serve ads.
         </p>
         <p>
-          The VS Code extension connects a publisher install inside VS Code,
-          stores the publisher API key in VS Code SecretStorage, stores the
+          The VS Code extension connects a user install inside VS Code, stores
+          the extension API key in VS Code SecretStorage, stores the
           install ID in user-scoped extension state, and polls only the WaitSpin
           API. Serve polling sends the install ID;
           impression reporting sends the serve ID, serve receipt, install ID,
@@ -112,7 +117,7 @@ export default function WaitSpinPrivacyPage() {
         </p>
       </Section>
 
-      <Section title="What Publisher Clients Do Not Send">
+      <Section title="What User Clients Do Not Send">
         <p>
           WaitSpin is designed to measure wait-state ad visibility, not your
           work. The public clients do not send:
@@ -183,12 +188,25 @@ export default function WaitSpinPrivacyPage() {
 
       <Section title="Money And Payout Data">
         <p>
-          Wallet, ledger, Stripe Connect onboarding, payout dry-run, and guarded
-          payout execution are release-candidate surfaces. They process payout,
-          tax, compliance, account, balance, ledger, and Stripe Connect status
-          data when used. Public payout promises and live transfers remain gated
-          until deployed E2E, legal approval, test-transfer proof, and explicit
-          operator flags are complete. Account-credit redemption and self-serve
+          Wallet, ledger,{" "}
+          <Link className="underline" href="/wallet/connect">
+            Stripe Connect onboarding
+          </Link>
+          , payout dry-run, and payout execution process payout, tax, compliance,
+          account, balance, ledger, trust level and warmup status, and Stripe
+          Connect status data when used. Trust level starts at{" "}
+          {publisherPolicyCopy.trustMinLevelLabel} and can rise by one level
+          after each clean {publisherPolicyCopy.trustCleanPeriodWords} period of
+          billable activity, up to {publisherPolicyCopy.trustMaxLevelLabel},
+          while daily exposure limits scale with that level. Earnings mature for{" "}
+          {publisherPolicyCopy.earningMaturityHours} hours before becoming
+          withdrawable; trust warmup controls paid inventory exposure, not payout
+          maturity. Live transfers execute only when payout policy eligibility
+          checks pass. See{" "}
+          <Link className="underline" href="/docs#publisher-levels-and-limits">
+            User levels and limits
+          </Link>{" "}
+          for the public cap tables. Account-credit redemption and self-serve
           refund workflows are not shipped; if they are added later, updated
           public docs will describe the additional data they require.
         </p>

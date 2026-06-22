@@ -1,8 +1,8 @@
 {
   "name": "waitspin-vscode",
   "displayName": "WaitSpin: Sponsored Wait States",
-  "description": "Get paid for VS Code wait states by viewing short sponsored cards, with wallet and ledger status in-editor and no access to your code.",
-  "version": "0.1.9",
+  "description": "Earn from VS Code wait states with sponsored cards, wallet status, and ledger visibility without giving WaitSpin access to your code.",
+  "version": "0.1.12",
   "publisher": "waitspin",
   "license": "AGPL-3.0-or-later",
   "icon": "media/waitspin-icon.png",
@@ -19,8 +19,7 @@
   ],
   "keywords": [
     "waitspin",
-    "developer-rewards",
-    "advertiser",
+    "developer-earnings",
     "sponsored-cards",
     "wallet",
     "ledger",
@@ -56,11 +55,11 @@
     "commands": [
       {
         "command": "waitspin.connectPublisher",
-        "title": "WaitSpin: Connect publisher"
+        "title": "WaitSpin: Connect and earn"
       },
       {
         "command": "waitspin.activatePublisher",
-        "title": "WaitSpin: Start publisher polling"
+        "title": "WaitSpin: Start sponsor polling"
       },
       {
         "command": "waitspin.refreshWallet",
@@ -96,7 +95,7 @@
       "waitspin": [
         {
           "id": "waitspin.publisherView",
-          "name": "Publisher",
+          "name": "WaitSpin",
           "type": "webview"
         }
       ]
@@ -107,12 +106,12 @@
         "waitspin.apiKey": {
           "type": "string",
           "default": "",
-          "description": "One-time bootstrap publisher-scoped WaitSpin API key. On activation the extension migrates this setting into VS Code SecretStorage; runtime polling uses SecretStorage only."
+          "description": "One-time bootstrap WaitSpin extension API key. On activation the extension migrates this setting into VS Code SecretStorage; runtime polling uses SecretStorage only."
         },
         "waitspin.installId": {
           "type": "string",
           "default": "",
-          "description": "Optional fallback publisher install ID. The WaitSpin: Connect publisher command stores the install ID in VS Code global extension state."
+          "description": "Optional fallback WaitSpin install ID. The WaitSpin: Connect and earn command stores the install ID in VS Code global extension state."
         },
         "waitspin.apiBase": {
           "type": "string",

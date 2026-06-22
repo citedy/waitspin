@@ -6,6 +6,7 @@ client surfaces. The private product/backend repository remains private.
 Included:
 
 - npm CLI client source under `packages/waitspin`
+- public agent skill under `waitspin-skill/SKILL.md`
 - VS Code extension source under `extensions/waitspin-vscode`
 - public publisher-surface assets, including Grok Code CLI public target code
 - OpenAPI JSON, agents.md/llms.txt sources, trust/privacy/terms page copies
@@ -22,3 +23,11 @@ Not included:
 License: AGPL-3.0-or-later for the published client/trust code only. Citedy
 operates a proprietary hosted backend that is not part of this public client
 license.
+
+Agent skill install:
+
+```bash
+npx skills add citedy/waitspin --skill waitspin -g -y
+npx skills add citedy/waitspin --skill waitspin -a '*' -g -y
+npx skills use citedy/waitspin@waitspin
+```

@@ -15,8 +15,12 @@ const INITIAL_PUBLISHER_STATE: PublisherViewState = {
 
 class PublisherViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
+  private visibilityListener: vscode.Disposable | undefined;
 
-  constructor(private state: PublisherViewState) {}
+  constructor(
+    private state: PublisherViewState,
+    private readonly onVisibilityChange: () => void,
+  ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -24,7 +28,12 @@ class PublisherViewProvider implements vscode.WebviewViewProvider {
       enableScripts: false,
       localResourceRoots: [],
     };
+    this.visibilityListener?.dispose();
+    this.visibilityListener = webviewView.onDidChangeVisibility(
+      this.onVisibilityChange,
+    );
     this.refresh();
+    this.onVisibilityChange();
   }
 
   update(state: PublisherViewState): void {
@@ -38,6 +47,14 @@ class PublisherViewProvider implements vscode.WebviewViewProvider {
     }
     this.view.webview.html = renderPublisherViewHtml(this.state);
   }
+
+  isVisible(): boolean {
+    return this.view?.visible === true;
+  }
+
+  dispose(): void {
+    this.visibilityListener?.dispose();
+  }
 }
 
 function statusBarWalletText(status: WalletStatus | undefined): string {
@@ -49,10 +66,15 @@ function statusBarWalletText(status: WalletStatus | undefined): string {
 
 export class PublisherSurfaces {
   private statusBarItem: vscode.StatusBarItem | undefined;
+  private statusBarSponsorVisible = false;
   private state: PublisherViewState = INITIAL_PUBLISHER_STATE;
-  private readonly publisherViewProvider = new PublisherViewProvider(this.state);
+  private publisherViewProvider: PublisherViewProvider | undefined;
 
-  register(context: vscode.ExtensionContext): void {
+  register(context: vscode.ExtensionContext, onVisibilityChange: () => void): void {
+    this.publisherViewProvider = new PublisherViewProvider(
+      this.state,
+      onVisibilityChange,
+    );
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(
         "waitspin.publisherView",
@@ -66,12 +88,20 @@ export class PublisherSurfaces {
       ...this.state,
       ...patch,
     };
-    this.publisherViewProvider.update(this.state);
+    this.publisherViewProvider?.update(this.state);
     this.updateStatusBarMiniState();
   }
 
   dispose(): void {
     this.statusBarItem?.dispose();
+    this.publisherViewProvider?.dispose();
+  }
+
+  hasVisibleSponsorSurface(): boolean {
+    return (
+      this.publisherViewProvider?.isVisible() === true ||
+      this.statusBarSponsorVisible
+    );
   }
 
   private ensureStatusBarFallback(): vscode.StatusBarItem {
@@ -89,17 +119,19 @@ export class PublisherSurfaces {
   private updateStatusBarMiniState(): void {
     const item = this.ensureStatusBarFallback();
 
-    if (this.state.activeServe) {
+    if (this.state.activeServe && this.state.inventoryStatus === "serving") {
       item.text = `$(sync~spin) ${this.state.activeServe.line}`;
       item.tooltip = "WaitSpin sponsored message";
       item.command = "waitspin.openAd";
+      this.statusBarSponsorVisible = true;
       item.show();
       return;
     }
 
+    this.statusBarSponsorVisible = false;
     if (!this.state.hasApiKey || !this.state.installId) {
       item.text = "$(plug) WaitSpin setup";
-      item.tooltip = "Connect a WaitSpin publisher install";
+      item.tooltip = "Connect WaitSpin to earn while AI responds.";
       item.command = "waitspin.connectPublisher";
       item.show();
       return;
@@ -107,7 +139,7 @@ export class PublisherSurfaces {
 
     if (this.state.authStopped) {
       item.text = "$(error) WaitSpin auth";
-      item.tooltip = "Reconnect or rotate the WaitSpin publisher key";
+      item.tooltip = "Reconnect or rotate the WaitSpin extension key";
       item.command = "waitspin.connectPublisher";
       item.show();
       return;
@@ -120,7 +152,7 @@ export class PublisherSurfaces {
     } else {
       item.text = `$(pulse) ${statusBarWalletText(this.state.walletStatus)}`;
     }
-    item.tooltip = "WaitSpin publisher status";
+    item.tooltip = "WaitSpin wallet and sponsor status";
     item.command = "waitspin.refreshWallet";
     item.show();
   }

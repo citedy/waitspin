@@ -27,6 +27,24 @@ import {
   type ExperimentalCliDeps,
   type ExperimentalCliTargetName,
 } from "./targets/experimental-cli.js";
+import {
+  formatBidCheckoutResult,
+  formatBidsListResult,
+  formatCampaignCreateResult,
+  formatInitResult,
+  formatInstallAllResult,
+  formatMarketResult,
+  formatStatusAllResult,
+  formatTargetInstallResult,
+  formatTargetStatusResult,
+  formatTargetUninstallResult,
+  formatWalletConnectResult,
+} from "./cli-format.js";
+import {
+  formatWalletLedger,
+  formatWalletPayout,
+  formatWalletStatus,
+} from "./wallet-format.js";
 
 type JsonValue =
   | string
@@ -108,37 +126,37 @@ export function usageText(): string {
     [
       "Usage:",
       "  waitspin init --email you@example.com [--code CODE] [--key-profile control|publisher-extension] [--base-url URL]",
-      "  waitspin bid create --line TEXT --url https://example.com --price-per-block CENTS --blocks N [--base-url URL] [--api-key KEY]",
-      "  waitspin bids list [--base-url URL] [--api-key KEY]",
-      "  waitspin bid checkout <campaign-id> [--base-url URL] [--api-key KEY]",
-      "  waitspin market [--base-url URL]",
-      "  waitspin wallet status [--base-url URL] [--api-key KEY]",
-      "  waitspin wallet connect [--country US] [--base-url URL] [--api-key KEY]",
-      "  waitspin wallet ledger [--limit N] [--base-url URL] [--api-key KEY]",
-      "  waitspin wallet payout --dry-run [--base-url URL] [--api-key KEY]",
-      "  waitspin wallet payout --confirm-test-transfer [--base-url URL] [--api-key KEY]",
-      "  waitspin extension install [--target vscode] [--base-url URL] [--api-key KEY] [--dry-run]",
-      "  waitspin extension status [--target vscode]",
-      "  waitspin extension uninstall [--target vscode] [--dry-run]",
-      "  waitspin install --all [--api-key KEY] [--compose-existing] [--dry-run]",
-      "  waitspin status --all",
-      "  waitspin claude-code install [--api-key KEY] [--compose-existing] [--dry-run]",
-      "  waitspin claude-code status",
-      "  waitspin claude-code uninstall [--dry-run]",
-      "  waitspin mimocode install [--api-key KEY] [--dry-run]",
-      "  waitspin mimocode status",
-      "  waitspin mimocode uninstall [--dry-run]",
-      "  waitspin opencode install [--api-key KEY] [--dry-run]",
-      "  waitspin opencode status",
-      "  waitspin opencode uninstall [--dry-run]",
-      "  waitspin grok install [--api-key KEY] [--dry-run]",
-      "  waitspin grok status",
-      "  waitspin grok uninstall [--dry-run]",
+      "  waitspin bid create --line TEXT --url https://example.com --price-per-block CENTS --blocks N [--json] [--base-url URL] [--api-key KEY]",
+      "  waitspin bids list [--json] [--base-url URL] [--api-key KEY]",
+      "  waitspin bid checkout <campaign-id> [--json] [--base-url URL] [--api-key KEY]",
+      "  waitspin market [--json] [--base-url URL]",
+      "  waitspin wallet status [--json] [--base-url URL] [--api-key KEY]",
+      "  waitspin wallet connect [--country US] [--json] [--base-url URL] [--api-key KEY]",
+      "  waitspin wallet ledger [--limit N] [--json] [--base-url URL] [--api-key KEY]",
+      "  waitspin wallet payout --dry-run [--json] [--base-url URL] [--api-key KEY]",
+      "  waitspin wallet payout --confirm-test-transfer [--json] [--base-url URL] [--api-key KEY]",
+      "  waitspin extension install [--target vscode] [--json] [--base-url URL] [--api-key KEY] [--dry-run]",
+      "  waitspin extension status [--target vscode] [--json]",
+      "  waitspin extension uninstall [--target vscode] [--json] [--dry-run]",
+      "  waitspin install --all [--json] [--api-key KEY] [--compose-existing] [--dry-run]",
+      "  waitspin status --all [--json]",
+      "  waitspin claude-code install [--json] [--api-key KEY] [--compose-existing] [--dry-run]",
+      "  waitspin claude-code status [--json]",
+      "  waitspin claude-code uninstall [--json] [--dry-run]",
+      "  waitspin mimocode install [--json] [--api-key KEY] [--dry-run]",
+      "  waitspin mimocode status [--json]",
+      "  waitspin mimocode uninstall [--json] [--dry-run]",
+      "  waitspin opencode install [--json] [--api-key KEY] [--dry-run]",
+      "  waitspin opencode status [--json]",
+      "  waitspin opencode uninstall [--json] [--dry-run]",
+      "  waitspin grok install [--json] [--api-key KEY] [--dry-run]",
+      "  waitspin grok status [--json]",
+      "  waitspin grok uninstall [--json] [--dry-run]",
       "",
       "Defaults:",
       "  API base: https://api.waitspin.com",
       "  API key: WAITSPIN_API_KEY env var",
-      "  Public publisher targets: status-bar-fallback, claude-code, mimocode, opencode, grok",
+      "  Public user targets: status-bar-fallback, claude-code, mimocode, opencode, grok",
     ].join("\n") + "\n"
   );
 }
@@ -185,6 +203,7 @@ function parseArgs(argv: string[]) {
       key === "confirm-test-transfer" ||
       key === "compose-existing" ||
       key === "include-experimental" ||
+      key === "json" ||
       key === "all"
     ) {
       flags.set(key, ["true"]);
@@ -382,6 +401,30 @@ function printJson(value: unknown) {
   jsonPrinter(value);
 }
 
+function sanitizeTerminalText(value: string): string {
+  return value
+    .replace(/\u001B\][\s\S]*?(?:\u0007|\u001B\\)/g, "")
+    .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, "");
+}
+
+function printText(value: string) {
+  const safe = sanitizeTerminalText(value);
+  process.stdout.write(safe.endsWith("\n") ? safe : `${safe}\n`);
+}
+
+function printCliOutput(
+  flags: Map<string, string[]>,
+  json: unknown,
+  text: string,
+) {
+  if (booleanFlag(flags, "json")) {
+    printJson(json);
+    return;
+  }
+  printText(text);
+}
+
 async function capturePrintedJson<T>(fn: () => Promise<void>): Promise<T> {
   const previousPrinter = jsonPrinter;
   let captured: unknown;
@@ -448,7 +491,7 @@ function nextCommandsForVerifiedKey(input: {
         "waitspin status --all",
       ],
       human_message:
-        "Use this publisher-extension key only for publisher install, serve polling, and impressions. Rotate it if it appears in logs.",
+        "Use this extension API key only for user install setup, serve polling, and impressions. Rotate it if it appears in logs.",
     };
   }
 
@@ -487,7 +530,7 @@ async function runInit(flags: Map<string, string[]>) {
         ...(intendedUse ? { intended_use: intendedUse } : {}),
       }),
     });
-    printJson({
+    const output = {
       ok: true,
       base_url: baseUrl,
       ...body,
@@ -495,7 +538,8 @@ async function runInit(flags: Map<string, string[]>) {
         intendedUse,
         scopes: body?.scopes,
       }),
-    });
+    };
+    printCliOutput(flags, output, formatInitResult(output));
     return;
   }
 
@@ -518,7 +562,7 @@ async function runInit(flags: Map<string, string[]>) {
     process.env.WAITSPIN_ALLOW_DEBUG_CODE_AUTO_VERIFY === "1";
 
   if (!code || !allowDebugAutoVerify) {
-    printJson({
+    const output = {
       ok: true,
       next: "enter_email_code",
       delivery: requestResult?.delivery,
@@ -528,7 +572,8 @@ async function runInit(flags: Map<string, string[]>) {
       human_message:
         "Check your email for the 6-digit WaitSpin code. Paste it as CODE_FROM_EMAIL.",
       ...(code ? { debug_code_available: true } : {}),
-    });
+    };
+    printCliOutput(flags, output, formatInitResult(output));
     return;
   }
 
@@ -546,7 +591,7 @@ async function runInit(flags: Map<string, string[]>) {
       ...(intendedUse ? { intended_use: intendedUse } : {}),
     }),
   });
-  printJson({
+  const output = {
     ok: true,
     base_url: baseUrl,
     ...verifyResult,
@@ -554,7 +599,8 @@ async function runInit(flags: Map<string, string[]>) {
       intendedUse,
       scopes: verifyResult?.scopes,
     }),
-  });
+  };
+  printCliOutput(flags, output, formatInitResult(output));
 }
 
 async function runBidCreate(flags: Map<string, string[]>) {
@@ -589,7 +635,8 @@ async function runBidCreate(flags: Map<string, string[]>) {
       }),
     },
   );
-  printJson({ ok: true, ...body });
+  const output = { ok: true, ...body };
+  printCliOutput(flags, output, formatCampaignCreateResult(output));
 }
 
 async function runBidsList(flags: Map<string, string[]>) {
@@ -602,7 +649,8 @@ async function runBidsList(flags: Map<string, string[]>) {
       headers: { Authorization: `Bearer ${apiKey}` },
     },
   );
-  printJson({ ok: true, campaigns: body?.campaigns ?? [] });
+  const output = { ok: true, campaigns: body?.campaigns ?? [] };
+  printCliOutput(flags, output, formatBidsListResult(output));
 }
 
 async function runBidCheckout(
@@ -626,7 +674,7 @@ async function runBidCheckout(
       body: JSON.stringify({ campaign_id: campaignId }),
     },
   );
-  printJson({
+  const output = {
     ok: true,
     ...body,
     checkout_disclosure: {
@@ -635,7 +683,8 @@ async function runBidCheckout(
       refund_policy:
         "Unused prepaid block handling is support-reviewed. No automated account-credit balance, redemption flow, or self-serve cash refund request flow is shipped.",
     },
-  });
+  };
+  printCliOutput(flags, output, formatBidCheckoutResult(output));
 }
 
 async function runMarket(flags: Map<string, string[]>) {
@@ -644,7 +693,8 @@ async function runMarket(flags: Map<string, string[]>) {
     `${baseUrl}/v1/market`,
     { method: "GET" },
   );
-  printJson({ ok: true, ...body });
+  const output = { ok: true, ...body };
+  printCliOutput(flags, output, formatMarketResult(output));
 }
 
 async function runWalletStatus(flags: Map<string, string[]>) {
@@ -657,7 +707,8 @@ async function runWalletStatus(flags: Map<string, string[]>) {
       headers: { Authorization: `Bearer ${apiKey}` },
     },
   );
-  printJson({ ok: true, ...body });
+  const output = { ok: true, ...body };
+  printCliOutput(flags, output, formatWalletStatus(output));
 }
 
 async function runWalletConnect(flags: Map<string, string[]>) {
@@ -676,7 +727,8 @@ async function runWalletConnect(flags: Map<string, string[]>) {
       ...(requestBody ? { body: requestBody } : {}),
     },
   );
-  printJson({ ok: true, ...body });
+  const output = { ok: true, ...body };
+  printCliOutput(flags, output, formatWalletConnectResult(output));
 }
 
 function optionalCountryFlag(
@@ -706,7 +758,8 @@ async function runWalletLedger(flags: Map<string, string[]>) {
     method: "GET",
     headers: { Authorization: `Bearer ${apiKey}` },
   });
-  printJson({ ok: true, ...body });
+  const output = { ok: true, ...body };
+  printCliOutput(flags, output, formatWalletLedger(output));
 }
 
 async function runWalletPayout(flags: Map<string, string[]>) {
@@ -740,7 +793,8 @@ async function runWalletPayout(flags: Map<string, string[]>) {
       }),
     },
   );
-  printJson({ ok: true, ...body });
+  const output = { ok: true, ...body };
+  printCliOutput(flags, output, formatWalletPayout(output));
 }
 
 export function generateInstallId(): string {
@@ -1076,10 +1130,10 @@ export async function runExtensionInstall(flags: Map<string, string[]>) {
     install_id: installId,
     publisher_target: publisherTarget,
     state_path: statePath,
-    note: "CLI fallback for installing the WaitSpin VS Code publisher extension with Activity Bar wallet and sponsor surfaces.",
+    note: "CLI fallback for installing the WaitSpin VS Code user extension with Activity Bar wallet and sponsor surfaces.",
     next: {
       marketplace_setup:
-        "Preferred public setup: code --install-extension waitspin.waitspin-vscode, then run WaitSpin: Connect publisher inside VS Code.",
+        "Preferred public setup: code --install-extension waitspin.waitspin-vscode, then run WaitSpin: Connect and earn inside VS Code.",
       create_publisher_key:
         "waitspin init --email you@example.com --key-profile publisher-extension",
       set_vscode_settings: {
@@ -1094,7 +1148,8 @@ export async function runExtensionInstall(flags: Map<string, string[]>) {
   };
 
   if (booleanFlag(flags, "dry-run")) {
-    printJson({ ...summary, dry_run: true, publisher_registered: false });
+    const output = { ...summary, dry_run: true, publisher_registered: false };
+    printCliOutput(flags, output, formatTargetInstallResult(output));
     return;
   }
 
@@ -1142,13 +1197,14 @@ export async function runExtensionInstall(flags: Map<string, string[]>) {
     "utf8",
   );
 
-  printJson({
+  const output = {
     ...summary,
     ...installState,
     extension_installed: Boolean(installedExtensionPath),
     installed_extension_path: installedExtensionPath,
     publisher_registered: true,
-  });
+  };
+  printCliOutput(flags, output, formatTargetInstallResult(output));
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -1190,7 +1246,7 @@ export async function runExtensionStatus(flags: Map<string, string[]>) {
     ? await pathExists(path.join(installedExtensionPath, "package.json"))
     : false;
 
-  printJson({
+  const output = {
     ok: true,
     target,
     mode: "status-bar-fallback",
@@ -1208,7 +1264,8 @@ export async function runExtensionStatus(flags: Map<string, string[]>) {
     marker_path: markerPath,
     installed_extension_path: installedExtensionPath,
     install_marker_error: installedPathStatus.error,
-  });
+  };
+  printCliOutput(flags, output, formatTargetStatusResult(output));
 }
 
 export async function runExtensionUninstall(flags: Map<string, string[]>) {
@@ -1224,13 +1281,14 @@ export async function runExtensionUninstall(flags: Map<string, string[]>) {
   }
 
   if (booleanFlag(flags, "dry-run")) {
-    printJson({
+    const output = {
       ok: true,
       target,
       dry_run: true,
       would_remove: removePaths,
       install_marker_error: installedPathStatus.error,
-    });
+    };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
     return;
   }
 
@@ -1239,13 +1297,14 @@ export async function runExtensionUninstall(flags: Map<string, string[]>) {
       rm(filePath, { force: true, recursive: true }),
     ),
   );
-  printJson({
+  const output = {
     ok: true,
     target,
     uninstalled: true,
     removed: removePaths,
     install_marker_error: installedPathStatus.error,
-  });
+  };
+  printCliOutput(flags, output, formatTargetUninstallResult(output));
 }
 
 type ClaudeCodeSettings = Record<string, JsonValue>;
@@ -1631,7 +1690,9 @@ function redactedClaudeCodeState(
 
 function claudeCodeStatuslineRuntimeSource(): string {
   return String.raw`#!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
+import path from "node:path";
 import {
   mkdir,
   readFile,
@@ -1645,6 +1706,9 @@ const FETCH_INTERVAL_MS = 15_000;
 const FETCH_TIMEOUT_MS = 2_500;
 const PREVIOUS_TIMEOUT_MS = 1_000;
 const MAX_ACTIVE_AGE_MS = 60_000;
+const HEARTBEAT_FRESH_MS = 3_000;
+const HEARTBEAT_IMPRESSION_FRESH_MS = 7_000;
+const HEARTBEAT_IMPRESSION_WAIT_MS = 2_500;
 const LOCK_RETRY_MS = 40;
 const LOCK_TIMEOUT_MS = 2_000;
 const LOCK_STALE_MS = 10_000;
@@ -1675,6 +1739,14 @@ async function writeJson(filePath, value) {
     mode: 0o600,
   });
   await rename(tmp, filePath);
+}
+
+async function writeHeartbeat(filePath) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, String(Date.now()) + "\n", {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 }
 
 function sleep(ms) {
@@ -1800,7 +1872,8 @@ function parseServe(payload) {
     serveId: payload.serve_id,
     serveReceipt: payload.serve_receipt,
     line,
-    shownAt: Date.now(),
+    fetchedAt: Date.now(),
+    shownAt: 0,
     expiresAtMs: Number.isFinite(parsedExpiresAt)
       ? parsedExpiresAt
       : Date.now() + MAX_ACTIVE_AGE_MS,
@@ -1813,10 +1886,69 @@ function parseServe(payload) {
 }
 
 function serveIsExpired(serve) {
+  const ageStart = Number(serve.shownAt || serve.fetchedAt || Date.now());
   return (
     Date.now() >= (serve.expiresAtMs || 0) ||
-    Date.now() - serve.shownAt > MAX_ACTIVE_AGE_MS
+    Date.now() - ageStart > MAX_ACTIVE_AGE_MS
   );
+}
+
+function heartbeatPathFor(cachePath, key) {
+  const digest = createHash("sha256").update(String(key)).digest("hex").slice(0, 24);
+  return cachePath + "." + digest + ".heartbeat";
+}
+
+async function heartbeatAlive(heartbeatPath) {
+  if (!heartbeatPath) return false;
+  try {
+    const current = await stat(heartbeatPath);
+    return Date.now() - current.mtimeMs <= HEARTBEAT_FRESH_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function heartbeatVisibleAfter(heartbeatPath, shownAt) {
+  if (!heartbeatPath || !shownAt) return false;
+  try {
+    const current = await stat(heartbeatPath);
+    return (
+      current.mtimeMs > shownAt &&
+      Date.now() - current.mtimeMs <= HEARTBEAT_IMPRESSION_FRESH_MS
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function waitForHeartbeatVisibleAfter(heartbeatPath, shownAt) {
+  const deadline = Date.now() + HEARTBEAT_IMPRESSION_WAIT_MS;
+  do {
+    if (await heartbeatVisibleAfter(heartbeatPath, shownAt)) return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(250);
+  } while (true);
+}
+
+async function markShown(session, heartbeatPath) {
+  const serve = session.activeServe;
+  if (!serve || serve.impressionRecorded || !heartbeatPath) return false;
+  if (
+    serve.shownAt &&
+    serve.shownHeartbeatPath &&
+    serve.shownHeartbeatPath !== heartbeatPath &&
+    (await heartbeatAlive(serve.shownHeartbeatPath))
+  ) {
+    return false;
+  }
+  if (!serve.shownAt || serve.shownHeartbeatPath !== heartbeatPath) {
+    serve.shownAt = Date.now();
+    serve.shownHeartbeatPath = heartbeatPath;
+    delete session.impressionTickServeId;
+    delete session.impressionTickScheduledAt;
+    delete session.impressionTickHeartbeatPath;
+  }
+  return true;
 }
 
 async function fetchNextServe(state, session) {
@@ -1840,7 +1972,7 @@ async function fetchNextServe(state, session) {
 
 async function recordImpression(state, session) {
   const serve = session.activeServe;
-  if (!serve || serve.impressionRecorded) return;
+  if (!serve || serve.impressionRecorded || !serve.shownAt) return;
   const visibleMs = Date.now() - serve.shownAt;
   if (visibleMs < serve.minVisibleMs) return;
   const response = await waitspinFetch(state.base_url + "/v1/events/impression", {
@@ -1857,6 +1989,108 @@ async function recordImpression(state, session) {
     }),
   });
   if (response.ok) serve.impressionRecorded = true;
+}
+
+async function recordForegroundImpression(state, session, heartbeatPath) {
+  const serve = session.activeServe;
+  if (!serve || serve.shownHeartbeatPath !== heartbeatPath) return;
+  if (!(await heartbeatAlive(heartbeatPath))) return;
+  await recordImpression(state, session);
+}
+
+async function scheduleImpressionTick(statePath, heartbeatPath, session) {
+  const serve = session.activeServe;
+  if (!statePath || !serve || serve.impressionRecorded || !serve.shownAt) {
+    return false;
+  }
+  if (!heartbeatPath || serve.shownHeartbeatPath !== heartbeatPath) return false;
+  if (
+    session.impressionTickServeId === serve.serveId &&
+    session.impressionTickHeartbeatPath === heartbeatPath
+  ) {
+    return false;
+  }
+  session.impressionTickServeId = serve.serveId;
+  session.impressionTickScheduledAt = Date.now();
+  session.impressionTickHeartbeatPath = heartbeatPath;
+  try {
+    const child = spawn(process.execPath, [
+      process.argv[1],
+      "--state",
+      statePath,
+      "--impression-tick",
+      "--serve-id",
+      serve.serveId,
+      "--heartbeat",
+      heartbeatPath,
+    ], {
+      detached: true,
+      env: {
+        HOME: process.env.HOME || "",
+        PATH: process.env.PATH || "",
+        TMPDIR: process.env.TMPDIR || "",
+        USERPROFILE: process.env.USERPROFILE || "",
+      },
+      stdio: "ignore",
+    });
+    child.unref();
+  } catch {
+    delete session.impressionTickServeId;
+    delete session.impressionTickScheduledAt;
+    delete session.impressionTickHeartbeatPath;
+    return false;
+  }
+  return true;
+}
+
+async function recordDelayedImpression() {
+  const statePath = argValue("--state");
+  const expectedServeId = argValue("--serve-id");
+  const heartbeatPath = argValue("--heartbeat");
+  if (!statePath || !expectedServeId || !heartbeatPath) return;
+  const state = await readJson(statePath, null);
+  if (!state?.api_key || !state.install_id || !state.base_url || !state.cache_path) {
+    return;
+  }
+  const cache = await readJson(state.cache_path, { sessions: {} });
+  const session = Object.values(cache.sessions || {}).find(
+    (candidate) =>
+      candidate?.activeServe?.serveId === expectedServeId &&
+      candidate.activeServe.shownHeartbeatPath === heartbeatPath,
+  );
+  const serve = session?.activeServe;
+  if (!serve || serve.impressionRecorded || !serve.shownAt) return;
+  const visibleAt = serve.shownAt + Math.max(serve.minVisibleMs || 5000, 5000);
+  const dueAt = visibleAt + 250;
+  if (Date.now() < dueAt) await sleep(dueAt - Date.now());
+  if (!(await waitForHeartbeatVisibleAfter(heartbeatPath, visibleAt))) return;
+  await withCacheLock(state.cache_path, async () => {
+    const lockedCache = await readJson(state.cache_path, { sessions: {} });
+    const lockedSession = Object.values(lockedCache.sessions || {}).find(
+      (candidate) =>
+        candidate?.activeServe?.serveId === expectedServeId &&
+        candidate.activeServe.shownHeartbeatPath === heartbeatPath,
+    );
+    if (!lockedSession) return;
+    const lockedServe = lockedSession.activeServe;
+    const lockedVisibleAt = lockedServe?.shownAt
+      ? lockedServe.shownAt + Math.max(lockedServe.minVisibleMs || 5000, 5000)
+      : 0;
+    if (
+      lockedServe &&
+      !lockedServe.impressionRecorded &&
+      lockedServe.shownAt &&
+      lockedServe.shownHeartbeatPath === heartbeatPath &&
+      !serveIsExpired(lockedServe) &&
+      (await heartbeatVisibleAfter(heartbeatPath, lockedVisibleAt))
+    ) {
+      await recordImpression(state, lockedSession);
+    }
+    delete lockedSession.impressionTickServeId;
+    delete lockedSession.impressionTickScheduledAt;
+    delete lockedSession.impressionTickHeartbeatPath;
+    await writeJson(state.cache_path, lockedCache);
+  });
 }
 
 function sessionKey(inputJson) {
@@ -1906,17 +2140,23 @@ async function main() {
       const session = cache.sessions[key] || {};
       session.lastSeenAt = Date.now();
       cache.sessions[key] = session;
+      const heartbeatPath = heartbeatPathFor(state.cache_path, key);
+      await writeHeartbeat(heartbeatPath);
 
       if (session.activeServe && serveIsExpired(session.activeServe)) {
         session.activeServe = null;
       }
-      await recordImpression(state, session);
+      await recordForegroundImpression(state, session, heartbeatPath);
       const shouldFetchNext = !session.activeServe
         ? Date.now() - (session.lastFetchAt || 0) >= FETCH_INTERVAL_MS
         : session.activeServe.impressionRecorded &&
           Date.now() - (session.lastFetchAt || 0) >= FETCH_INTERVAL_MS;
       if (shouldFetchNext) {
         await fetchNextServe(state, session);
+      }
+      if (session.activeServe && !session.activeServe.impressionRecorded) {
+        await markShown(session, heartbeatPath);
+        await scheduleImpressionTick(statePath, heartbeatPath, session);
       }
       pruneSessions(cache);
       await writeJson(state.cache_path, cache);
@@ -1933,7 +2173,10 @@ async function main() {
   if (lines.length > 0) process.stdout.write(lines.join("\n"));
 }
 
-main().catch(() => {});
+const task = process.argv.includes("--impression-tick")
+  ? recordDelayedImpression()
+  : main();
+task.catch(() => {});
 `;
 }
 
@@ -2019,7 +2262,7 @@ export async function runClaudeCodeInstall(flags: Map<string, string[]>) {
   if (dryRun) {
     const blockedReason =
       settingsBlockedReason ?? scopedStatusLineBlockedReason;
-    printJson({
+    const output = {
       ...summary,
       dry_run: true,
       publisher_registered: false,
@@ -2051,7 +2294,8 @@ export async function runClaudeCodeInstall(flags: Map<string, string[]>) {
                 }),
           }
         : {}),
-    });
+    };
+    printCliOutput(flags, output, formatTargetInstallResult(output));
     return;
   }
 
@@ -2105,7 +2349,7 @@ export async function runClaudeCodeInstall(flags: Map<string, string[]>) {
     throw error;
   }
 
-  printJson({
+  const output = {
     ...summary,
     ...redactedClaudeCodeState(installState),
     publisher_registered: true,
@@ -2114,10 +2358,13 @@ export async function runClaudeCodeInstall(flags: Map<string, string[]>) {
     next_command: "claude",
     acceptance_hint:
       "Keep the sponsored line visible for at least 5 seconds, then verify an impression.",
-  });
+  };
+  printCliOutput(flags, output, formatTargetInstallResult(output));
 }
 
-export async function runClaudeCodeStatus() {
+export async function runClaudeCodeStatus(
+  flags: Map<string, string[]> = new Map(),
+) {
   const state = await loadClaudeCodeInstallState();
   const settings = await loadClaudeCodeSettings();
   const managedStatusLine = state?.managed_status_line ?? null;
@@ -2140,7 +2387,7 @@ export async function runClaudeCodeStatus() {
   const installed = Boolean(
     state && runtimeInstalled && effectiveStatusLineConfigured,
   );
-  printJson({
+  const output = {
     ok: true,
     target: CLAUDE_CODE_PUBLISHER_TARGET,
     mode: "statusline-command",
@@ -2182,7 +2429,8 @@ export async function runClaudeCodeStatus() {
             ? "Claude Code WaitSpin support is installed in user settings, but a higher-priority project/local statusLine overrides it in this directory."
             : "Claude Code WaitSpin statusline support is not installed for this user.",
         }),
-  });
+  };
+  printCliOutput(flags, output, formatTargetStatusResult(output));
 }
 
 export async function runClaudeCodeUninstall(flags: Map<string, string[]>) {
@@ -2222,7 +2470,7 @@ export async function runClaudeCodeUninstall(flags: Map<string, string[]>) {
   }
 
   if (dryRun) {
-    printJson({
+    const output = {
       ok: true,
       target: CLAUDE_CODE_PUBLISHER_TARGET,
       dry_run: true,
@@ -2235,7 +2483,8 @@ export async function runClaudeCodeUninstall(flags: Map<string, string[]>) {
             settings_warning: settingsWarning,
           }
         : {}),
-    });
+    };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
     return;
   }
 
@@ -2255,14 +2504,15 @@ export async function runClaudeCodeUninstall(flags: Map<string, string[]>) {
       rm(filePath, { force: true, recursive: true }),
     ),
   );
-  printJson({
+  const output = {
     ok: true,
     target: CLAUDE_CODE_PUBLISHER_TARGET,
     uninstalled: true,
     settings_action: settingsAction,
     removed: removePaths,
     ...(settingsWarning ? { settings_warning: settingsWarning } : {}),
-  });
+  };
+  printCliOutput(flags, output, formatTargetUninstallResult(output));
 }
 
 // --- MiMo Code Publisher Support ---
@@ -2311,6 +2561,7 @@ const MIMOCODE_BASHRC_END_MARKER =
 
 function miMoCodeStatuslineRuntimeSource(): string {
   return String.raw`#!/usr/bin/env node
+import { spawn } from "node:child_process";
 import {
   mkdir,
   readFile,
@@ -2325,6 +2576,9 @@ import path from "node:path";
 const FETCH_INTERVAL_MS = 15_000;
 const FETCH_TIMEOUT_MS = 2_500;
 const MAX_ACTIVE_AGE_MS = 60_000;
+const HEARTBEAT_FRESH_MS = 3_000;
+const HEARTBEAT_IMPRESSION_FRESH_MS = 7_000;
+const HEARTBEAT_IMPRESSION_WAIT_MS = 2_500;
 const LOCK_RETRY_MS = 40;
 const LOCK_TIMEOUT_MS = 2_000;
 const LOCK_STALE_MS = 10_000;
@@ -2349,6 +2603,14 @@ async function writeJson(filePath, value) {
     mode: 0o600,
   });
   await rename(tmp, filePath);
+}
+
+async function writeHeartbeat(filePath) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, String(Date.now()) + "\n", {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 }
 
 function sleep(ms) {
@@ -2431,7 +2693,8 @@ function parseServe(payload) {
     serveId: payload.serve_id,
     serveReceipt: payload.serve_receipt,
     line,
-    shownAt: Date.now(),
+    fetchedAt: Date.now(),
+    shownAt: 0,
     expiresAtMs: Number.isFinite(parsedExpiresAt)
       ? parsedExpiresAt
       : Date.now() + MAX_ACTIVE_AGE_MS,
@@ -2444,10 +2707,68 @@ function parseServe(payload) {
 }
 
 function serveIsExpired(serve) {
+  const ageStart = Number(serve.shownAt || serve.fetchedAt || Date.now());
   return (
     Date.now() >= (serve.expiresAtMs || 0) ||
-    Date.now() - serve.shownAt > MAX_ACTIVE_AGE_MS
+    Date.now() - ageStart > MAX_ACTIVE_AGE_MS
   );
+}
+
+function heartbeatPathFor(cachePath) {
+  return cachePath + ".heartbeat";
+}
+
+async function heartbeatAlive(heartbeatPath) {
+  if (!heartbeatPath) return false;
+  try {
+    const current = await stat(heartbeatPath);
+    return Date.now() - current.mtimeMs <= HEARTBEAT_FRESH_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function heartbeatVisibleAfter(heartbeatPath, shownAt) {
+  if (!heartbeatPath || !shownAt) return false;
+  try {
+    const current = await stat(heartbeatPath);
+    return (
+      current.mtimeMs > shownAt &&
+      Date.now() - current.mtimeMs <= HEARTBEAT_IMPRESSION_FRESH_MS
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function waitForHeartbeatVisibleAfter(heartbeatPath, shownAt) {
+  const deadline = Date.now() + HEARTBEAT_IMPRESSION_WAIT_MS;
+  do {
+    if (await heartbeatVisibleAfter(heartbeatPath, shownAt)) return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(250);
+  } while (true);
+}
+
+async function markShown(cache, heartbeatPath) {
+  const serve = cache.activeServe;
+  if (!serve || serve.impressionRecorded || !heartbeatPath) return false;
+  if (
+    serve.shownAt &&
+    serve.shownHeartbeatPath &&
+    serve.shownHeartbeatPath !== heartbeatPath &&
+    (await heartbeatAlive(serve.shownHeartbeatPath))
+  ) {
+    return false;
+  }
+  if (!serve.shownAt || serve.shownHeartbeatPath !== heartbeatPath) {
+    serve.shownAt = Date.now();
+    serve.shownHeartbeatPath = heartbeatPath;
+    delete cache.impressionTickServeId;
+    delete cache.impressionTickScheduledAt;
+    delete cache.impressionTickHeartbeatPath;
+  }
+  return true;
 }
 
 async function fetchNextServe(state, cache) {
@@ -2471,7 +2792,7 @@ async function fetchNextServe(state, cache) {
 
 async function recordImpression(state, cache) {
   const serve = cache.activeServe;
-  if (!serve || serve.impressionRecorded) return;
+  if (!serve || serve.impressionRecorded || !serve.shownAt) return;
   const visibleMs = Date.now() - serve.shownAt;
   if (visibleMs < serve.minVisibleMs) return;
   const response = await waitspinFetch(state.base_url + "/v1/events/impression", {
@@ -2494,15 +2815,114 @@ async function recordImpression(state, cache) {
   }
 }
 
+async function recordForegroundImpression(state, cache, heartbeatPath) {
+  const serve = cache.activeServe;
+  if (!serve || serve.shownHeartbeatPath !== heartbeatPath) return;
+  if (!(await heartbeatAlive(heartbeatPath))) return;
+  await recordImpression(state, cache);
+}
+
+async function scheduleImpressionTick(statePath, heartbeatPath, cache) {
+  const serve = cache.activeServe;
+  if (!statePath || !serve || serve.impressionRecorded || !serve.shownAt) {
+    return false;
+  }
+  if (!heartbeatPath || serve.shownHeartbeatPath !== heartbeatPath) return false;
+  if (
+    cache.impressionTickServeId === serve.serveId &&
+    cache.impressionTickHeartbeatPath === heartbeatPath
+  ) {
+    return false;
+  }
+  cache.impressionTickServeId = serve.serveId;
+  cache.impressionTickScheduledAt = Date.now();
+  cache.impressionTickHeartbeatPath = heartbeatPath;
+  try {
+    const child = spawn(process.execPath, [
+      process.argv[1],
+      "--impression-tick",
+      "--serve-id",
+      serve.serveId,
+      "--heartbeat",
+      heartbeatPath,
+    ], {
+      detached: true,
+      env: {
+        HOME: process.env.HOME || "",
+        PATH: process.env.PATH || "",
+        TMPDIR: process.env.TMPDIR || "",
+        USERPROFILE: process.env.USERPROFILE || "",
+      },
+      stdio: "ignore",
+    });
+    child.unref();
+  } catch {
+    delete cache.impressionTickServeId;
+    delete cache.impressionTickScheduledAt;
+    delete cache.impressionTickHeartbeatPath;
+    return false;
+  }
+  return true;
+}
+
+async function recordDelayedImpression() {
+  const expectedServeId = process.argv.includes("--serve-id")
+    ? process.argv[process.argv.indexOf("--serve-id") + 1]
+    : "";
+  const heartbeatPath = process.argv.includes("--heartbeat")
+    ? process.argv[process.argv.indexOf("--heartbeat") + 1]
+    : "";
+  if (!expectedServeId || !heartbeatPath) return;
+  const state = await readJson(STATE_FILE, null);
+  if (!state?.api_key || !state.install_id || !state.base_url) return;
+  const cachePath = state.cache_path || DEFAULT_CACHE_FILE;
+  const firstCache = await readJson(cachePath, {});
+  const serve = firstCache.activeServe;
+  if (
+    !serve ||
+    serve.serveId !== expectedServeId ||
+    serve.impressionRecorded ||
+    !serve.shownAt ||
+    serve.shownHeartbeatPath !== heartbeatPath
+  ) {
+    return;
+  }
+  const visibleAt = serve.shownAt + Math.max(serve.minVisibleMs || 5000, 5000);
+  const dueAt = visibleAt + 250;
+  if (Date.now() < dueAt) await sleep(dueAt - Date.now());
+  if (!(await waitForHeartbeatVisibleAfter(heartbeatPath, visibleAt))) return;
+  await withCacheLock(cachePath, async () => {
+    const cache = await readJson(cachePath, {});
+    const activeVisibleAt = cache.activeServe?.shownAt
+      ? cache.activeServe.shownAt +
+        Math.max(cache.activeServe.minVisibleMs || 5000, 5000)
+      : 0;
+    if (
+      cache.activeServe?.serveId === expectedServeId &&
+      cache.activeServe.shownHeartbeatPath === heartbeatPath &&
+      !serveIsExpired(cache.activeServe) &&
+      (await heartbeatVisibleAfter(heartbeatPath, activeVisibleAt))
+    ) {
+      await recordImpression(state, cache);
+      delete cache.impressionTickServeId;
+      delete cache.impressionTickScheduledAt;
+      delete cache.impressionTickHeartbeatPath;
+      await writeJson(cachePath, cache);
+    }
+  });
+}
+
 async function renderSponsorLine(state) {
   const cachePath = state.cache_path || DEFAULT_CACHE_FILE;
+  const heartbeatPath = heartbeatPathFor(cachePath);
+  await writeHeartbeat(heartbeatPath);
   return await withCacheLock(cachePath, async () => {
     const cache = await readJson(cachePath, {});
     if (cache.activeServe && serveIsExpired(cache.activeServe)) {
       cache.activeServe = null;
     }
 
-    await recordImpression(state, cache);
+    await recordForegroundImpression(state, cache, heartbeatPath);
 
     const shouldFetchNext = !cache.activeServe
       ? Date.now() - (cache.lastFetchAt || 0) >= FETCH_INTERVAL_MS
@@ -2510,6 +2930,10 @@ async function renderSponsorLine(state) {
         Date.now() - (cache.lastFetchAt || 0) >= FETCH_INTERVAL_MS;
     if (shouldFetchNext) {
       await fetchNextServe(state, cache);
+    }
+    if (cache.activeServe && !cache.activeServe.impressionRecorded) {
+      await markShown(cache, heartbeatPath);
+      await scheduleImpressionTick(STATE_FILE, heartbeatPath, cache);
     }
 
     await writeJson(cachePath, cache);
@@ -2529,7 +2953,10 @@ async function main() {
   }
 }
 
-main().catch(() => {});
+const task = process.argv.includes("--impression-tick")
+  ? recordDelayedImpression()
+  : main();
+task.catch(() => {});
 `;
 }
 
@@ -2682,13 +3109,14 @@ export async function runMiMoCodeInstall(flags: Map<string, string[]>) {
       .then((c) => c.includes(MIMOCODE_BASHRC_MARKER))
       .catch(() => false);
 
-    printJson({
+    const output = {
       ...summary,
       dry_run: true,
       publisher_registered: false,
       bashrc_hook_exists: hookExists,
       would_write: [statePath, runtimePath],
-    });
+    };
+    printCliOutput(flags, output, formatTargetInstallResult(output));
     return;
   }
 
@@ -2736,7 +3164,7 @@ export async function runMiMoCodeInstall(flags: Map<string, string[]>) {
     throw error;
   }
 
-  printJson({
+  const output = {
     ...summary,
     ...redactedMiMoCodeState(installState),
     publisher_registered: true,
@@ -2744,10 +3172,13 @@ export async function runMiMoCodeInstall(flags: Map<string, string[]>) {
     next_command: "waitspin-mimocode-runtime",
     acceptance_hint:
       "Run 'source ~/.bashrc' or restart your shell, then keep the sponsored line visible for at least 5 seconds.",
-  });
+  };
+  printCliOutput(flags, output, formatTargetInstallResult(output));
 }
 
-export async function runMiMoCodeStatus() {
+export async function runMiMoCodeStatus(
+  flags: Map<string, string[]> = new Map(),
+) {
   const state = await loadMiMoCodeInstallState();
   const runtimePath = state?.runtime_path ?? miMoCodeRuntimePath();
   const cachePath = state?.cache_path ?? miMoCodeCachePath();
@@ -2759,7 +3190,7 @@ export async function runMiMoCodeStatus() {
 
   const installed = Boolean(state && runtimeInstalled);
 
-  printJson({
+  const output = {
     ok: true,
     target: MIMOCODE_PUBLISHER_TARGET,
     mode: "shell-hook",
@@ -2786,7 +3217,8 @@ export async function runMiMoCodeStatus() {
           next: "install_mimocode",
           next_command: "waitspin mimocode install",
         }),
-  });
+  };
+  printCliOutput(flags, output, formatTargetStatusResult(output));
 }
 
 export async function runMiMoCodeUninstall(flags: Map<string, string[]>) {
@@ -2803,7 +3235,7 @@ export async function runMiMoCodeUninstall(flags: Map<string, string[]>) {
   ];
 
   if (dryRun) {
-    printJson({
+    const output = {
       ok: true,
       target: MIMOCODE_PUBLISHER_TARGET,
       dry_run: true,
@@ -2812,7 +3244,8 @@ export async function runMiMoCodeUninstall(flags: Map<string, string[]>) {
       bashrc_hook: await readFile(bashrcPath, "utf8")
         .then((c) => c.includes(MIMOCODE_BASHRC_MARKER))
         .catch(() => false),
-    });
+    };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
     return;
   }
 
@@ -2840,7 +3273,7 @@ export async function runMiMoCodeUninstall(flags: Map<string, string[]>) {
     ),
   );
 
-  printJson({
+  const output = {
     ok: true,
     target: MIMOCODE_PUBLISHER_TARGET,
     uninstalled: true,
@@ -2849,7 +3282,8 @@ export async function runMiMoCodeUninstall(flags: Map<string, string[]>) {
     ...(skippedUnsafePaths.length > 0
       ? { skipped_unsafe_paths: skippedUnsafePaths }
       : {}),
-  });
+  };
+  printCliOutput(flags, output, formatTargetUninstallResult(output));
 }
 
 function assertSafeMiMoCodeRuntimePath(filePath: string): string {
@@ -3239,11 +3673,12 @@ export async function runOpencodeInstall(flags: Map<string, string[]>) {
   };
 
   if (dryRun) {
-    printJson({
+    const output = {
       ...summary,
       dry_run: true,
       publisher_registered: false,
-    });
+    };
+    printCliOutput(flags, output, formatTargetInstallResult(output));
     return;
   }
 
@@ -3303,7 +3738,7 @@ export async function runOpencodeInstall(flags: Map<string, string[]>) {
     throw error;
   }
 
-  printJson({
+  const output = {
     ...summary,
     ...redactedOpencodeState(installState),
     publisher_registered: true,
@@ -3311,10 +3746,13 @@ export async function runOpencodeInstall(flags: Map<string, string[]>) {
     next_command: "opencode",
     acceptance_hint:
       "Restart OpenCode to load the TUI plugin. The sponsored line appears in the app_bottom slot.",
-  });
+  };
+  printCliOutput(flags, output, formatTargetInstallResult(output));
 }
 
-export async function runOpencodeStatus() {
+export async function runOpencodeStatus(
+  flags: Map<string, string[]> = new Map(),
+) {
   const state = await loadOpencodeInstallState();
   const runtimePath = state?.runtime_path ?? opencodeRuntimePath();
   const cachePath = state?.cache_path ?? opencodeCachePath();
@@ -3358,7 +3796,7 @@ export async function runOpencodeStatus() {
     state && runtimeInstalled && pluginInstalled && tuiPluginConfigured,
   );
 
-  printJson({
+  const output = {
     ok: true,
     target: OPENCODE_PUBLISHER_TARGET,
     mode: "tui-plugin-slot",
@@ -3390,7 +3828,8 @@ export async function runOpencodeStatus() {
           next: "install_opencode",
           next_command: "waitspin opencode install",
         }),
-  });
+  };
+  printCliOutput(flags, output, formatTargetStatusResult(output));
 }
 
 export async function runOpencodeUninstall(flags: Map<string, string[]>) {
@@ -3408,14 +3847,15 @@ export async function runOpencodeUninstall(flags: Map<string, string[]>) {
     : [opencodeStatePath()];
 
   if (dryRun) {
-    printJson({
+    const output = {
       ok: true,
       target: OPENCODE_PUBLISHER_TARGET,
       dry_run: true,
       installed: Boolean(state),
       would_remove: declaredRemovePaths,
       would_update: [tuiConfigPath],
-    });
+    };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
     return;
   }
 
@@ -3460,7 +3900,7 @@ export async function runOpencodeUninstall(flags: Map<string, string[]>) {
     ),
   );
 
-  printJson({
+  const output = {
     ok: true,
     target: OPENCODE_PUBLISHER_TARGET,
     uninstalled: true,
@@ -3472,7 +3912,8 @@ export async function runOpencodeUninstall(flags: Map<string, string[]>) {
     ...(skippedUnsafePaths.length > 0
       ? { skipped_unsafe_paths: skippedUnsafePaths }
       : {}),
-  });
+  };
+  printCliOutput(flags, output, formatTargetUninstallResult(output));
 }
 
 type PublicAllInstallTarget = {
@@ -3498,6 +3939,12 @@ function cloneFlags(flags: Map<string, string[]>): Map<string, string[]> {
   return new Map(
     Array.from(flags.entries()).map(([key, values]) => [key, [...values]]),
   );
+}
+
+function jsonFlags(flags: Map<string, string[]>): Map<string, string[]> {
+  const next = cloneFlags(flags);
+  next.set("json", ["true"]);
+  return next;
 }
 
 function extensionAllFlags(flags: Map<string, string[]>): Map<string, string[]> {
@@ -3559,6 +4006,7 @@ function experimentalCliDeps(): ExperimentalCliDeps {
     registerPublisherInstall,
     generateInstallId,
     printJson,
+    printCliOutput,
   };
 }
 
@@ -3579,7 +4027,7 @@ function allInstallTargets(flags: Map<string, string[]>): AllInstallTarget[] {
       statusCommand: "waitspin claude-code status",
       preflight: preflightClaudeCode,
       install: runClaudeCodeInstall,
-      status: () => runClaudeCodeStatus(),
+      status: runClaudeCodeStatus,
     },
     {
       target: MIMOCODE_PUBLISHER_TARGET,
@@ -3587,7 +4035,7 @@ function allInstallTargets(flags: Map<string, string[]>): AllInstallTarget[] {
       statusCommand: "waitspin mimocode status",
       preflight: preflightMiMoCode,
       install: runMiMoCodeInstall,
-      status: () => runMiMoCodeStatus(),
+      status: runMiMoCodeStatus,
     },
     {
       target: OPENCODE_PUBLISHER_TARGET,
@@ -3595,7 +4043,7 @@ function allInstallTargets(flags: Map<string, string[]>): AllInstallTarget[] {
       statusCommand: "waitspin opencode status",
       preflight: preflightOpenCode,
       install: runOpencodeInstall,
-      status: () => runOpencodeStatus(),
+      status: runOpencodeStatus,
     },
     experimentalInstallTarget("grok", experimentalDeps),
   ];
@@ -3678,6 +4126,7 @@ export async function runInstallAll(flags: Map<string, string[]>) {
       "--include-experimental is only available with install --all --dry-run. Use explicit waitspin <target> install commands for hidden experimental targets.",
     );
   }
+  const internalJsonFlags = jsonFlags(flags);
   const installed: AllTargetSummary[] = [];
   const wouldInstall: AllTargetSummary[] = [];
   const skippedNotDetected: AllTargetSummary[] = [];
@@ -3703,7 +4152,7 @@ export async function runInstallAll(flags: Map<string, string[]>) {
 
     try {
       const result = await capturePrintedJson<unknown>(() =>
-        target.install(flags),
+        target.install(internalJsonFlags),
       );
       const conflictReason = dryRunConflictReason(result);
       if (conflictReason) {
@@ -3756,7 +4205,7 @@ export async function runInstallAll(flags: Map<string, string[]>) {
     }
   }
 
-  printJson({
+  const output = {
     ok: failedRollback.length === 0,
     command: "install --all",
     dry_run: dryRun,
@@ -3773,10 +4222,12 @@ export async function runInstallAll(flags: Map<string, string[]>) {
       : "waitspin status --all",
     human_message:
       "Install-all is an advanced agent command. Explicit target commands remain the canonical debug path.",
-  });
+  };
+  printCliOutput(flags, output, formatInstallAllResult(output));
 }
 
 export async function runStatusAll(flags: Map<string, string[]>) {
+  const internalJsonFlags = jsonFlags(flags);
   const statuses: AllTargetSummary[] = [];
   const installed: AllTargetSummary[] = [];
   const failedStatus: AllTargetSummary[] = [];
@@ -3784,7 +4235,7 @@ export async function runStatusAll(flags: Map<string, string[]>) {
   for (const target of allInstallTargets(flags)) {
     try {
       const result = await capturePrintedJson<unknown>(() =>
-        target.status(flags),
+        target.status(internalJsonFlags),
       );
       const summary = {
         target: target.target,
@@ -3804,14 +4255,15 @@ export async function runStatusAll(flags: Map<string, string[]>) {
     }
   }
 
-  printJson({
+  const output = {
     ok: failedStatus.length === 0,
     command: "status --all",
     include_experimental: booleanFlag(flags, "include-experimental"),
     installed,
     statuses,
     failed_status: failedStatus,
-  });
+  };
+  printCliOutput(flags, output, formatStatusAllResult(output));
 }
 
 export async function main(argv: string[] = process.argv.slice(2)) {
@@ -3893,7 +4345,7 @@ export async function main(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === "claude-code" && positionals[0] === "status") {
-    await runClaudeCodeStatus();
+    await runClaudeCodeStatus(flags);
     return;
   }
 
@@ -3908,7 +4360,7 @@ export async function main(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === "mimocode" && positionals[0] === "status") {
-    await runMiMoCodeStatus();
+    await runMiMoCodeStatus(flags);
     return;
   }
 
@@ -3923,7 +4375,7 @@ export async function main(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === "opencode" && positionals[0] === "status") {
-    await runOpencodeStatus();
+    await runOpencodeStatus(flags);
     return;
   }
 
@@ -3944,6 +4396,7 @@ export async function main(argv: string[] = process.argv.slice(2)) {
   if (isExperimentalCliTargetName(command) && positionals[0] === "status") {
     await runExperimentalCliTargetStatus(
       command as ExperimentalCliTargetName,
+      flags,
       experimentalCliDeps(),
     );
     return;

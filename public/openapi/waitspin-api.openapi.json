@@ -20,13 +20,14 @@
   "tags": [
     { "name": "Discovery", "description": "API discovery metadata." },
     { "name": "Keys", "description": "Email verification and API-key issuance." },
+    { "name": "List", "description": "Opt-in WaitSpin launch email subscription." },
     { "name": "Market", "description": "Public active campaign inventory." },
     { "name": "Campaigns", "description": "Advertiser campaign management." },
     { "name": "Blocks", "description": "Stripe Checkout for prepaid impression blocks." },
-    { "name": "Publishers", "description": "Publisher install registration." },
+    { "name": "User Installs", "description": "User install registration." },
     { "name": "Serve", "description": "Sponsored wait-state message serving." },
-    { "name": "Events", "description": "Publisher impression events." },
-    { "name": "Wallet", "description": "Publisher wallet, ledger, Connect, and payout operations." },
+    { "name": "Events", "description": "User impression events." },
+    { "name": "Wallet", "description": "User wallet, ledger, Connect, and payout operations." },
     { "name": "Webhooks", "description": "Stripe webhook ingestion." }
   ],
   "paths": {
@@ -98,6 +99,35 @@
             }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/v1/list/subscribe": {
+      "post": {
+        "tags": ["List"],
+        "operationId": "subscribeWaitSpinList",
+        "summary": "Request double opt-in subscription to WaitSpin launch emails.",
+        "description": "Creates or refreshes a non-account marketing-list subscriber and sends a confirmation email. This route does not issue API keys; /list/confirm and /list/unsubscribe are browser/email-link routes and are intentionally not API-key routes.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ListSubscribeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmation email accepted or subscriber already confirmed.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListSubscribeResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "429": { "$ref": "#/components/responses/RateLimited" }
         }
       }
@@ -203,7 +233,7 @@
       "post": {
         "tags": ["Publishers"],
         "operationId": "registerWaitSpinPublisher",
-        "summary": "Register a supported publisher install target.",
+        "summary": "Register a supported user install target.",
         "security": [{ "WaitSpinApiKey": [] }],
         "requestBody": {
           "required": true,
@@ -215,7 +245,7 @@
         },
         "responses": {
           "201": {
-            "description": "Publisher registered.",
+            "description": "User install registered.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/PublisherRegisterResponse" }
@@ -233,7 +263,7 @@
       "post": {
         "tags": ["Serve"],
         "operationId": "serveNextWaitSpinMessage",
-        "summary": "Return the next sponsored message for a publisher install.",
+        "summary": "Return the next sponsored message for a user install.",
         "security": [{ "WaitSpinApiKey": [] }],
         "requestBody": {
           "required": true,
@@ -293,7 +323,7 @@
       "get": {
         "tags": ["Wallet"],
         "operationId": "getWaitSpinWalletStatus",
-        "summary": "Read publisher balance, trust state, Connect status, and payout eligibility.",
+        "summary": "Read user balance, trust state, Connect status, and payout eligibility.",
         "security": [{ "WaitSpinApiKey": [] }],
         "responses": {
           "200": {
@@ -343,7 +373,7 @@
       "get": {
         "tags": ["Wallet"],
         "operationId": "listWaitSpinWalletLedger",
-        "summary": "Read publisher delivery, reversal, hold, and payout ledger rows.",
+        "summary": "Read user delivery, reversal, hold, and payout ledger rows.",
         "security": [{ "WaitSpinApiKey": [] }],
         "parameters": [
           {
@@ -371,7 +401,7 @@
       "post": {
         "tags": ["Wallet"],
         "operationId": "createWaitSpinWalletPayout",
-        "summary": "Preview or execute a guarded idempotent publisher payout.",
+        "summary": "Preview or execute a guarded idempotent user payout.",
         "security": [{ "WaitSpinApiKey": [] }],
         "parameters": [{ "$ref": "#/components/parameters/OptionalIdempotencyKey" }],
         "requestBody": {
@@ -595,6 +625,48 @@
           "key_profile": { "type": "string", "enum": ["control", "publisher_extension"] }
         },
         "additionalProperties": true
+      },
+      "ListSubscribeRequest": {
+        "type": "object",
+        "required": ["email", "segment"],
+        "properties": {
+          "email": { "type": "string", "format": "email", "maxLength": 254 },
+          "segment": {
+            "type": "string",
+            "enum": ["publisher", "advertiser"]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "landing_hero",
+              "exit_intent",
+              "footer",
+              "post_apikey",
+              "post_checkout",
+              "cli_output",
+              "launch_asset",
+              "manual_import"
+            ]
+          },
+          "turnstileToken": { "type": "string", "maxLength": 2048 },
+          "company": {
+            "type": "string",
+            "maxLength": 0,
+            "description": "Honeypot field; must be omitted or empty."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ListSubscribeResponse": {
+        "type": "object",
+        "required": ["ok", "already_subscribed", "expires_in_seconds", "delivery"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "already_subscribed": { "type": "boolean" },
+          "expires_in_seconds": { "type": "integer", "minimum": 0 },
+          "delivery": { "type": "string", "enum": ["email", "debug"] }
+        },
+        "additionalProperties": false
       },
       "Scope": {
         "type": "string",
@@ -885,7 +957,7 @@
         "properties": {
           "country": {
             "type": "string",
-            "description": "Two-letter publisher payout country for new Stripe Express accounts.",
+            "description": "Two-letter user payout country for new Stripe Express accounts.",
             "enum": ["US", "AU", "AT", "BE", "BG", "CA", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GI", "GR", "HK", "HU", "IE", "IT", "JP", "LV", "LI", "LT", "LU", "MT", "MX", "NL", "NZ", "NO", "PL", "PT", "RO", "SG", "SK", "SI", "ES", "SE", "CH", "TH", "AE", "GB"]
           }
         },

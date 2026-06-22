@@ -81,7 +81,7 @@ class PublisherWalletController {
                 headers: { Authorization: `Bearer ${apiKey}` },
             });
             if (this.host.isAuthError(statusResponse.status)) {
-                this.stopForAuth(`Wallet auth failed (HTTP ${statusResponse.status}). Create a publisher-extension key with wallet:read and update WaitSpin settings.`, showMessage);
+                this.stopForAuth(`Wallet auth failed (HTTP ${statusResponse.status}). Create an extension key with wallet:read and update WaitSpin settings.`, showMessage);
                 return;
             }
             if (!statusResponse.ok) {
@@ -102,7 +102,7 @@ class PublisherWalletController {
                 headers: { Authorization: `Bearer ${apiKey}` },
             });
             if (this.host.isAuthError(ledgerResponse.status)) {
-                this.stopForAuth(`Wallet ledger auth failed (HTTP ${ledgerResponse.status}). Create a publisher-extension key with wallet:read and update WaitSpin settings.`, showMessage);
+                this.stopForAuth(`Wallet ledger auth failed (HTTP ${ledgerResponse.status}). Create an extension key with wallet:read and update WaitSpin settings.`, showMessage);
                 return;
             }
             if (!ledgerResponse.ok) {

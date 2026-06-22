@@ -7,7 +7,7 @@ wait-state ads for verified developer surfaces.
 
 Run after `npm view waitspin version` succeeds in launch evidence:
 
-Before install, publisher registration, or Checkout, review:
+Before install, user registration, or Checkout, review:
 
 - Public API and agent docs: `https://waitspin.com/docs`
 - Agent markdown: `https://waitspin.com/.well-known/agents.md`
@@ -26,9 +26,9 @@ waitspin bid create --line "Your ad" --url https://example.com --price-per-block
 waitspin bid checkout CAMPAIGN_ID
 npx --yes waitspin init --email you@example.com --key-profile publisher-extension
 
-# First-class VS Code publisher path
+# First-class VS Code user path
 code --install-extension waitspin.waitspin-vscode
-# Then run "WaitSpin: Connect publisher" inside VS Code.
+# Then run "WaitSpin: Connect and earn" inside VS Code.
 
 # Advanced agent install for every detected supported target
 waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
@@ -64,17 +64,17 @@ waitspin grok status
 - `waitspin bid checkout CAMPAIGN_ID` — Stripe Checkout for blocks
 - `waitspin market` — public leaderboard
 - `waitspin wallet connect --country US` — Stripe Connect Express onboarding
-- `waitspin wallet status` — publisher balance, payout, and Connect status
-- `waitspin wallet ledger` — publisher delivery ledger
+- `waitspin wallet status` — user balance, payout, and Connect status
+- `waitspin wallet ledger` — user delivery ledger
 - `waitspin wallet payout --dry-run` — payout eligibility preview
 - `code --install-extension waitspin.waitspin-vscode` — install the public VS Code Marketplace extension
-- `WaitSpin: Connect publisher` — connect the VS Code extension from inside the editor
+- `WaitSpin: Connect and earn` — connect the VS Code extension from inside the editor
 - `waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY` — advanced CLI fallback for VS Code extension setup
 - `waitspin extension status --target vscode` — inspect managed VS Code extension lifecycle state
 - `waitspin extension uninstall --target vscode` — remove the managed VS Code extension runtime and local state
-- `waitspin install --all --dry-run` — preview detected publisher targets without file changes
-- `waitspin install --all` — install every detected supported publisher target
-- `waitspin status --all` — aggregate lifecycle status for every publisher target
+- `waitspin install --all --dry-run` — preview detected user surfaces without file changes
+- `waitspin install --all` — install every detected supported user surface
+- `waitspin status --all` — aggregate lifecycle status for every user surface
 - `waitspin claude-code install --compose-existing` — install the Claude Code statusline command
 - `waitspin claude-code status` — inspect managed Claude Code runtime state
 - `waitspin claude-code uninstall` — restore Claude Code statusline settings and remove managed local state
@@ -90,7 +90,7 @@ waitspin grok status
 
 API base: `https://api.waitspin.com`
 
-The public package installs five verified publisher targets: the VS Code
+The public package installs five verified user earning surfaces: the VS Code
 Activity Bar/status-bar extension, the Claude Code statusline command, the MiMo
 Code shell hook, the OpenCode TUI plugin slot, and the Grok Code CLI footer.
 Claude Code support uses the official `statusLine.command` path and does not
@@ -114,14 +114,15 @@ Native spinner patches beyond supported status surfaces, account-credit
 redemption, cash refund self-service, and click billing are not public
 paid-launch capabilities yet.
 
-## Publisher credentials
+## User install credentials
 
-Use a publisher-extension key for publisher polling/events:
+Use an extension API key created with `--key-profile publisher-extension` for
+user install polling/events:
 
 ```bash
 npx waitspin init --email you@example.com --key-profile publisher-extension
 code --install-extension waitspin.waitspin-vscode
-# Then run "WaitSpin: Connect publisher" inside VS Code.
+# Then run "WaitSpin: Connect and earn" inside VS Code.
 npx waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
 npx waitspin install --all --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
 npx waitspin status --all
@@ -132,14 +133,14 @@ npx waitspin opencode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 npx waitspin grok install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 ```
 
-- `WAITSPIN_API_KEY` — temporary publisher-extension key for CLI fallback flows
+- `WAITSPIN_API_KEY` — temporary extension API key for CLI fallback flows
 - `WAITSPIN_INSTALL_ID` — from `waitspin extension install` or `waitspin claude-code install`
 
 The VS Code Marketplace extension should normally be connected through
-`WaitSpin: Connect publisher`, which stores the publisher key in VS Code
+`WaitSpin: Connect and earn`, which stores the extension key in VS Code
 SecretStorage and stores the install ID in user-scoped extension state. The
 legacy `waitspin.apiKey` User setting is still migrated into SecretStorage for
-fallback/rotation, but normal publisher operation does not require copying
+fallback/rotation, but normal user operation does not require copying
 install IDs or broad control keys into workspace settings.
 
 The Claude Code installer writes a managed statusline runtime/state under

@@ -40,6 +40,12 @@ function enoent() {
   return error;
 }
 
+function withJsonFlag(flags: Map<string, string[]> = new Map()): Map<string, string[]> {
+  const next = new Map(flags);
+  next.set("json", ["true"]);
+  return next;
+}
+
 describe("MiMo Code CLI commands", () => {
   const originalFetch = global.fetch;
   const statePath = path.join(
@@ -99,7 +105,8 @@ describe("MiMo Code CLI commands", () => {
   });
 
   it("dry-run install shows planned actions without changes", async () => {
-    const { runMiMoCodeInstall } = await import("../cli");
+    const { runMiMoCodeInstall: rawrunMiMoCodeInstall } = await import("../cli");
+    const runMiMoCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunMiMoCodeInstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -122,7 +129,8 @@ describe("MiMo Code CLI commands", () => {
   });
 
   it("install writes state and runtime files", async () => {
-    const { runMiMoCodeInstall } = await import("../cli");
+    const { runMiMoCodeInstall: rawrunMiMoCodeInstall } = await import("../cli");
+    const runMiMoCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunMiMoCodeInstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -199,7 +207,8 @@ describe("MiMo Code CLI commands", () => {
   });
 
   it("install does not duplicate an existing bash hook", async () => {
-    const { runMiMoCodeInstall } = await import("../cli");
+    const { runMiMoCodeInstall: rawrunMiMoCodeInstall } = await import("../cli");
+    const runMiMoCodeInstall = (flags: Map<string, string[]> = new Map()) => rawrunMiMoCodeInstall(withJsonFlag(flags));
     jest
       .spyOn(process.stdout, "write")
       .mockImplementation(() => true);
@@ -225,7 +234,8 @@ describe("MiMo Code CLI commands", () => {
   });
 
   it("uninstall removes managed files", async () => {
-    const { runMiMoCodeUninstall } = await import("../cli");
+    const { runMiMoCodeUninstall: rawrunMiMoCodeUninstall } = await import("../cli");
+    const runMiMoCodeUninstall = (flags: Map<string, string[]> = new Map()) => rawrunMiMoCodeUninstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -270,7 +280,8 @@ describe("MiMo Code CLI commands", () => {
   });
 
   it("uninstall dry-run shows what would be removed", async () => {
-    const { runMiMoCodeUninstall } = await import("../cli");
+    const { runMiMoCodeUninstall: rawrunMiMoCodeUninstall } = await import("../cli");
+    const runMiMoCodeUninstall = (flags: Map<string, string[]> = new Map()) => rawrunMiMoCodeUninstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")
@@ -306,7 +317,8 @@ describe("MiMo Code CLI commands", () => {
   });
 
   it("uninstall skips unsafe state paths while removing WaitSpin-owned state", async () => {
-    const { runMiMoCodeUninstall } = await import("../cli");
+    const { runMiMoCodeUninstall: rawrunMiMoCodeUninstall } = await import("../cli");
+    const runMiMoCodeUninstall = (flags: Map<string, string[]> = new Map()) => rawrunMiMoCodeUninstall(withJsonFlag(flags));
     const stdout: string[] = [];
     jest
       .spyOn(process.stdout, "write")

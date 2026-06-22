@@ -1,8 +1,17 @@
 {
   "name": "waitspin",
-  "version": "0.1.6",
-  "description": "CLI for WaitSpin sponsored wait-state ads: auth, campaigns, checkout, and publisher installs for VS Code, Claude Code, MiMo Code, OpenCode, and Grok Code CLI.",
+  "version": "0.1.8",
+  "description": "CLI for WaitSpin sponsored wait-state ads: auth, campaigns, checkout, and user installs for VS Code, Claude Code, MiMo Code, OpenCode, and Grok Code CLI.",
   "type": "module",
+  "homepage": "https://waitspin.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/citedy/waitspin.git",
+    "directory": "packages/waitspin"
+  },
+  "bugs": {
+    "url": "https://github.com/citedy/waitspin/issues"
+  },
   "bin": {
     "waitspin": "dist/cli.js"
   },
@@ -43,10 +52,5 @@
   "devDependencies": {
     "@types/node": "^22.18.0",
     "typescript": "5.9.2"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/citedy/waitspin.git",
-    "directory": "packages/waitspin"
   }
 }

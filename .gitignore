@@ -13,5 +13,5 @@ infra/waitspin-vps/secrets/
 docs/waitspin/private/
 .smoke-state/
 .playwright-mcp/
+.icon-inspect/
 extensions/waitspin-vscode/*.vsix
-.tmp-waitspin-*

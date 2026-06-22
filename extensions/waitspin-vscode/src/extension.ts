@@ -1,9 +1,11 @@
 import * as vscode from "vscode";
 import {
   DEFAULT_API_BASE,
+  isServeExpired,
   isSafeExternalUrl,
   normalizeTrustedApiBase,
   parseServePayload,
+  serveExpiryDelayMs,
   type PublisherViewState,
   type ServeCreative,
 } from "./extension-core";
@@ -13,17 +15,22 @@ import { PublisherWalletController } from "./extension-wallet";
 
 const POLL_INTERVAL_MS = 15_000;
 const FETCH_TIMEOUT_MS = 10_000;
+const IMPRESSION_EXPIRY_SAFETY_MS = 500;
 const API_KEY_SECRET_STORAGE_KEY = "waitspin.publisherApiKey";
 const INSTALL_ID_GLOBAL_STATE_KEY = "waitspin.publisherInstallId";
 
 type ActiveServe = ServeCreative & {
+  apiBase: string;
+  installId: string;
   shownAt: number;
+  visibleStartedAt: number | undefined;
   impressionRecorded: boolean;
   impressionRecording: boolean;
 };
 
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 let impressionTimeout: ReturnType<typeof setTimeout> | undefined;
+let serveExpiryTimeout: ReturnType<typeof setTimeout> | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
 let secretApiKey: string | undefined;
 let storedInstallId: string | undefined;
@@ -104,7 +111,7 @@ async function migratePublisherApiKeyToSecretStorage(
       );
     }
     logWaitSpin(
-      "Migrated waitspin.apiKey into VS Code SecretStorage for publisher polling.",
+      "Migrated waitspin.apiKey into VS Code SecretStorage for sponsor polling.",
     );
     return;
   }
@@ -115,7 +122,7 @@ async function migratePublisherApiKeyToSecretStorage(
     secretApiKey = undefined;
     refreshConfiguredState();
     warnCredentialStorageFailure(
-      "Unable to read WaitSpin publisher key from SecretStorage",
+      "Unable to read WaitSpin extension key from SecretStorage",
       error,
     );
     return;
@@ -210,7 +217,7 @@ function resolveApiBase(): string | undefined {
   if (!normalized && !invalidApiBaseWarned) {
     invalidApiBaseWarned = true;
     logWaitSpin(
-      "Ignoring untrusted waitspin.apiBase. Store credentials globally and use https://api.waitspin.com for publisher polling.",
+      "Ignoring untrusted waitspin.apiBase. Store credentials globally and use https://api.waitspin.com for sponsor polling.",
     );
   }
   return normalized;
@@ -219,6 +226,7 @@ function resolveApiBase(): string | undefined {
 function resetPollingAfterConfigChange(): void {
   authPollingStopped = false;
   getWalletController().reset();
+  clearActiveServe("configuration changed");
   updatePublisherState({ authStopped: false, lastError: undefined });
   refreshConfiguredState();
   if (pollTimer) {
@@ -282,6 +290,15 @@ async function fetchNextCreative(): Promise<void> {
   if (isPolling || authPollingStopped) {
     return;
   }
+  if (shouldKeepActiveServeBeforeNextFetch()) {
+    updateActiveServeVisibilityEvidence();
+    updatePublisherState({
+      inventoryStatus: "serving",
+      activeServe,
+      lastError: undefined,
+    });
+    return;
+  }
 
   const apiKey = resolveApiKey();
   const installId = resolveInstallId();
@@ -321,7 +338,7 @@ async function fetchNextCreative(): Promise<void> {
 
     if (isAuthError(response.status)) {
       stopPollingForAuth(
-        `Serve auth failed (HTTP ${response.status}). Check your publisher-scoped WaitSpin key and waitspin.installId.`,
+        `Serve auth failed (HTTP ${response.status}). Check your WaitSpin extension key and waitspin.installId.`,
       );
       hideAdSurfaces();
       return;
@@ -348,15 +365,15 @@ async function fetchNextCreative(): Promise<void> {
     }
 
     activeServe = {
-      serveId: parsed.serveId,
-      line: parsed.line,
-      destinationUrl: parsed.destinationUrl,
-      serveReceipt: parsed.serveReceipt,
+      ...parsed,
+      apiBase,
+      installId,
       shownAt: Date.now(),
-      minVisibleMs: parsed.minVisibleMs,
+      visibleStartedAt: undefined,
       impressionRecorded: false,
       impressionRecording: false,
     };
+    scheduleServeExpiry(activeServe);
     updatePublisherState({
       inventoryStatus: "serving",
       activeServe,
@@ -377,22 +394,92 @@ function scheduleVisibleImpression(
   serve: NonNullable<typeof activeServe>,
   minVisibleMs: number,
 ): void {
+  if (expireActiveServeIfNeeded(serve, "before scheduling impression")) {
+    queueFetchNextCreative();
+    return;
+  }
   if (impressionTimeout) {
     clearTimeout(impressionTimeout);
   }
+  updateActiveServeVisibilityEvidence();
+  const visibleMs = activeServeVisibleEvidenceMs(serve);
+  const waitMs = Math.min(
+    Math.max(250, minVisibleMs - visibleMs),
+    Math.max(250, serveExpiryDelayMs(serve)),
+  );
   impressionTimeout = setTimeout(() => {
     impressionTimeout = undefined;
     if (!activeServe || activeServe.serveId !== serve.serveId) {
       return;
     }
-    const visibleMs = Math.max(Date.now() - serve.shownAt, minVisibleMs);
-    void recordImpression(
-      serve.serveId,
-      serve.serveReceipt,
-      visibleMs,
-      resolveInstallId(),
-    );
-  }, minVisibleMs);
+    if (expireActiveServeIfNeeded(serve, "before recording impression")) {
+      queueFetchNextCreative();
+      return;
+    }
+    updateActiveServeVisibilityEvidence();
+    const visibleMs = activeServeVisibleEvidenceMs(serve);
+    if (visibleMs < minVisibleMs) {
+      scheduleVisibleImpression(serve, minVisibleMs);
+      return;
+    }
+    void recordImpression(serve.serveId, serve.serveReceipt, visibleMs);
+  }, waitMs);
+}
+
+function scheduleServeExpiry(serve: ActiveServe): void {
+  if (serveExpiryTimeout) {
+    clearTimeout(serveExpiryTimeout);
+  }
+  serveExpiryTimeout = setTimeout(() => {
+    serveExpiryTimeout = undefined;
+    if (!activeServe || activeServe.serveId !== serve.serveId) {
+      return;
+    }
+    clearActiveServe("serve expired before billable impression");
+    updatePublisherState({
+      inventoryStatus: "polling",
+      lastError: undefined,
+    });
+    queueFetchNextCreative();
+  }, Math.max(250, serveExpiryDelayMs(serve)));
+}
+
+function hasImpressionVisibilityEvidence(): boolean {
+  return vscode.window.state.focused && surfaces.hasVisibleSponsorSurface();
+}
+
+function updateActiveServeVisibilityEvidence(): void {
+  const serve = activeServe;
+  if (!serve || serve.impressionRecorded) {
+    return;
+  }
+  if (hasImpressionVisibilityEvidence()) {
+    serve.visibleStartedAt ??= Date.now();
+    return;
+  }
+  serve.visibleStartedAt = undefined;
+}
+
+function activeServeVisibleEvidenceMs(serve: ActiveServe): number {
+  if (!serve.visibleStartedAt) {
+    return 0;
+  }
+  return Math.max(0, Date.now() - serve.visibleStartedAt);
+}
+
+function shouldKeepActiveServeBeforeNextFetch(): boolean {
+  const serve = activeServe;
+  if (!serve) {
+    return false;
+  }
+  if (serve.impressionRecorded) {
+    clearActiveServe("impression already recorded");
+    return false;
+  }
+  if (expireActiveServeIfNeeded(serve, "polling gate")) {
+    return false;
+  }
+  return true;
 }
 
 function flushPendingImpressionIfEligible(): void {
@@ -400,14 +487,13 @@ function flushPendingImpressionIfEligible(): void {
   if (!serve) {
     return;
   }
-  const visibleMs = Date.now() - serve.shownAt;
+  updateActiveServeVisibilityEvidence();
+  const visibleMs = activeServeVisibleEvidenceMs(serve);
   if (visibleMs >= serve.minVisibleMs) {
-    void recordImpression(
-      serve.serveId,
-      serve.serveReceipt,
-      visibleMs,
-      resolveInstallId(),
-    );
+    if (expireActiveServeIfNeeded(serve, "flush before hide")) {
+      return;
+    }
+    void recordImpression(serve.serveId, serve.serveReceipt, visibleMs);
   }
 }
 
@@ -415,6 +501,10 @@ function clearImpressionSchedulingAndFlush(): void {
   if (impressionTimeout) {
     clearTimeout(impressionTimeout);
     impressionTimeout = undefined;
+  }
+  if (serveExpiryTimeout) {
+    clearTimeout(serveExpiryTimeout);
+    serveExpiryTimeout = undefined;
   }
   flushPendingImpressionIfEligible();
 }
@@ -429,8 +519,66 @@ function stopPollingAndFlushImpression(): void {
 
 function hideAdSurfaces(): void {
   clearImpressionSchedulingAndFlush();
+  clearActiveServe("surfaces hidden");
+}
+
+function clearActiveServeIfCurrent(serveId: string): void {
+  if (!activeServe || activeServe.serveId !== serveId) {
+    return;
+  }
+  clearActiveServe("serve cleared");
+}
+
+function clearActiveServe(reason: string): void {
+  if (impressionTimeout) {
+    clearTimeout(impressionTimeout);
+    impressionTimeout = undefined;
+  }
+  if (serveExpiryTimeout) {
+    clearTimeout(serveExpiryTimeout);
+    serveExpiryTimeout = undefined;
+  }
+  if (activeServe) {
+    logWaitSpin(
+      `Cleared sponsor serve ${activeServe.serveId} (${activeServe.campaignId ?? "unknown campaign"}): ${reason}`,
+    );
+  }
   activeServe = undefined;
   updatePublisherState({ activeServe: undefined });
+}
+
+function expireActiveServeIfNeeded(serve: ActiveServe, reason: string): boolean {
+  if (!isServeExpired(serve, Date.now(), IMPRESSION_EXPIRY_SAFETY_MS)) {
+    return false;
+  }
+  if (!activeServe || activeServe.serveId !== serve.serveId) {
+    return true;
+  }
+  clearActiveServe(`expired ${reason}`);
+  updatePublisherState({
+    inventoryStatus: "polling",
+    lastError: undefined,
+  });
+  return true;
+}
+
+function queueFetchNextCreative(): void {
+  setTimeout(() => {
+    void fetchNextCreative();
+  }, 0);
+}
+
+function handleImpressionVisibilityChange(): void {
+  updateActiveServeVisibilityEvidence();
+  const serve = activeServe;
+  if (!serve || serve.impressionRecorded) {
+    return;
+  }
+  if (expireActiveServeIfNeeded(serve, "visibility change")) {
+    queueFetchNextCreative();
+    return;
+  }
+  scheduleVisibleImpression(serve, serve.minVisibleMs);
 }
 
 function disposeExtensionResources(): void {
@@ -458,11 +606,11 @@ function startPollingIfConfigured(): void {
 
 async function showPublisherSetupPrompt(): Promise<void> {
   const choice = await vscode.window.showInformationMessage(
-    "WaitSpin needs a connected publisher install before sponsor polling can start.",
-    "Connect publisher",
+    "Connect WaitSpin before sponsor polling can start.",
+    "Connect WaitSpin",
     "Open docs",
   );
-  if (choice === "Connect publisher") {
+  if (choice === "Connect WaitSpin") {
     await vscode.commands.executeCommand("waitspin.connectPublisher");
   } else if (choice === "Open docs") {
     await vscode.env.openExternal(vscode.Uri.parse("https://waitspin.com/docs"));
@@ -473,7 +621,6 @@ async function recordImpression(
   serveId: string,
   serveReceipt: string,
   visibleMs: number,
-  installId: string | undefined,
 ): Promise<void> {
   const serve = activeServe;
   if (
@@ -486,13 +633,22 @@ async function recordImpression(
   }
   const apiKey = resolveApiKey();
   const apiBase = resolveApiBase();
-  if (!apiKey || !installId || !apiBase) {
+  const currentInstallId = resolveInstallId();
+  if (!apiKey || !currentInstallId || !apiBase) {
+    return;
+  }
+  if (
+    serve.installId !== currentInstallId ||
+    serve.apiBase !== apiBase ||
+    expireActiveServeIfNeeded(serve, "recording guard")
+  ) {
+    queueFetchNextCreative();
     return;
   }
 
   serve.impressionRecording = true;
   try {
-    const response = await fetchWithTimeout(`${apiBase}/v1/events/impression`, {
+    const response = await fetchWithTimeout(`${serve.apiBase}/v1/events/impression`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -501,40 +657,55 @@ async function recordImpression(
       body: JSON.stringify({
         serve_id: serveId,
         serve_receipt: serveReceipt,
-        install_id: installId,
+        install_id: serve.installId,
         visible_ms: visibleMs,
       }),
     });
 
     if (isAuthError(response.status)) {
       stopPollingForAuth(
-        `Impression auth failed (HTTP ${response.status}). Check your publisher-scoped WaitSpin key and waitspin.installId.`,
+        `Impression auth failed (HTTP ${response.status}). Check your WaitSpin extension key and waitspin.installId.`,
       );
       return;
     }
 
     if (!response.ok) {
-      logWaitSpin(`Impression request failed: HTTP ${response.status}`);
+      const message = `Impression request failed: HTTP ${response.status}`;
+      logWaitSpin(message);
+      clearActiveServeIfCurrent(serveId);
+      updatePublisherState({
+        inventoryStatus: "error",
+        lastError: message,
+      });
       return;
     }
     serve.impressionRecorded = true;
+    clearActiveServeIfCurrent(serveId);
     updatePublisherState({
+      inventoryStatus: "polling",
       lastUpdatedAt: new Date().toISOString(),
       lastError: undefined,
     });
     getWalletController().resetThrottle();
     void getWalletController().refresh(false);
   } catch (error) {
-    logWaitSpin(
-      `Impression network error: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const message = `Impression network error: ${error instanceof Error ? error.message : String(error)}`;
+    logWaitSpin(message);
+    clearActiveServeIfCurrent(serveId);
+    updatePublisherState({
+      inventoryStatus: "error",
+      lastError: message,
+    });
   } finally {
     serve.impressionRecording = false;
   }
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  surfaces.register(context);
+  surfaces.register(context, handleImpressionVisibilityChange);
+  context.subscriptions.push(
+    vscode.window.onDidChangeWindowState(handleImpressionVisibilityChange),
+  );
   storedInstallId = context.globalState
     .get<string>(INSTALL_ID_GLOBAL_STATE_KEY)
     ?.trim();

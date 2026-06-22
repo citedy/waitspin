@@ -4,6 +4,11 @@ import { realpathSync, statSync } from "node:fs";
 import { access, chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+  formatTargetInstallResult,
+  formatTargetStatusResult,
+  formatTargetUninstallResult,
+} from "../cli-format.js";
 import { experimentalRuntimeSource } from "./experimental-runtime.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -78,6 +83,11 @@ export type ExperimentalCliDeps = {
   }) => Promise<{ publisher_id: string; install_id: string; target: string }>;
   generateInstallId: () => string;
   printJson: (value: unknown) => void;
+  printCliOutput: (
+    flags: Map<string, string[]>,
+    json: unknown,
+    text: string,
+  ) => void;
 };
 
 export type ExperimentalAllInstallTarget = {
@@ -1059,7 +1069,7 @@ export async function runExperimentalCliTargetInstall(
     const fallbackFailure = !plan && !planFailure
       ? unsupportedPatchFailure(target)
       : null;
-    deps.printJson({
+    const output = {
       ...summary,
       dry_run: true,
       publisher_registered: false,
@@ -1079,7 +1089,8 @@ export async function runExperimentalCliTargetInstall(
             failure_kind: fallbackFailure!.failureKind,
             human_message: fallbackFailure!.humanMessage,
           }),
-    });
+    };
+    deps.printCliOutput(flags, output, formatTargetInstallResult(output));
     return;
   }
 
@@ -1174,7 +1185,7 @@ export async function runExperimentalCliTargetInstall(
     throw error;
   }
 
-  deps.printJson({
+  const output = {
     ...summary,
     ...redactedState(installState),
     publisher_registered: true,
@@ -1184,12 +1195,14 @@ export async function runExperimentalCliTargetInstall(
       target === "grok"
         ? "Restart Grok Code CLI to load the managed WaitSpin footer line."
         : "Restart the target CLI and verify visible sponsored wait-state plus >=5s impression before public support claims.",
-  });
+  };
+  deps.printCliOutput(flags, output, formatTargetInstallResult(output));
 }
 
 export async function runExperimentalCliTargetStatus(
   target: ExperimentalCliTargetName,
-  deps: Pick<ExperimentalCliDeps, "printJson">,
+  flags: Map<string, string[]>,
+  deps: Pick<ExperimentalCliDeps, "printCliOutput">,
 ): Promise<void> {
   const state = await loadState(target);
   const configuredStatePath = state?.state_path ?? statePath(target);
@@ -1245,7 +1258,7 @@ export async function runExperimentalCliTargetStatus(
     }
   }
 
-  deps.printJson({
+  const output = {
     ok: true,
     target,
     experimental: true,
@@ -1282,13 +1295,14 @@ export async function runExperimentalCliTargetStatus(
             "Cline VS Code extension support is covered by the VS Code target. Standalone Cline CLI needs official statusline/plugin support before WaitSpin can install it.",
         }
       : {}),
-  });
+  };
+  deps.printCliOutput(flags, output, formatTargetStatusResult(output));
 }
 
 export async function runExperimentalCliTargetUninstall(
   target: ExperimentalCliTargetName,
   flags: Map<string, string[]>,
-  deps: Pick<ExperimentalCliDeps, "booleanFlag" | "printJson">,
+  deps: Pick<ExperimentalCliDeps, "booleanFlag" | "printCliOutput">,
 ): Promise<void> {
   const dryRun = deps.booleanFlag(flags, "dry-run");
   const state = await loadState(target);
@@ -1305,7 +1319,7 @@ export async function runExperimentalCliTargetUninstall(
   }
 
   if (dryRun) {
-    deps.printJson({
+    const output = {
       ok: true,
       target,
       experimental: true,
@@ -1313,7 +1327,8 @@ export async function runExperimentalCliTargetUninstall(
       would_restore: restorePath,
       backup_available: restoreAvailable,
       would_remove: removePaths,
-    });
+    };
+    deps.printCliOutput(flags, output, formatTargetUninstallResult(output));
     return;
   }
 
@@ -1334,7 +1349,7 @@ export async function runExperimentalCliTargetUninstall(
   }
 
   if (state && restoreRefused) {
-    deps.printJson({
+    const output = {
       ok: false,
       target,
       experimental: true,
@@ -1348,7 +1363,8 @@ export async function runExperimentalCliTargetUninstall(
       state_path: statePath(target),
       human_message:
         "The target still contains a WaitSpin managed helper, but safe restore was refused. Keeping state/runtime files so backup metadata is not lost.",
-    });
+    };
+    deps.printCliOutput(flags, output, formatTargetUninstallResult(output));
     return;
   }
 
@@ -1356,7 +1372,7 @@ export async function runExperimentalCliTargetUninstall(
     removePaths.map((filePath) => rm(filePath, { force: true, recursive: true })),
   );
 
-  deps.printJson({
+  const output = {
     ok: true,
     target,
     experimental: true,
@@ -1364,7 +1380,8 @@ export async function runExperimentalCliTargetUninstall(
     restored,
     removed: removePaths,
     restore_path: restorePath,
-  });
+  };
+  deps.printCliOutput(flags, output, formatTargetUninstallResult(output));
 }
 
 export function experimentalAllInstallTargets(
@@ -1385,6 +1402,6 @@ export function experimentalInstallTarget(
     statusCommand: `waitspin ${target} status`,
     preflight: () => preflightExperimentalTarget(target),
     install: (flags) => runExperimentalCliTargetInstall(target, flags, deps),
-    status: () => runExperimentalCliTargetStatus(target, deps),
+    status: (flags) => runExperimentalCliTargetStatus(target, flags, deps),
   };
 }

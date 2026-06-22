@@ -3,8 +3,15 @@ import Link from "next/link";
 
 import { WaitSpinWebMcpRegistry } from "@/app/waitspin/WaitSpinWebMcpRegistry";
 import { Section, WaitSpinLegalPage } from "../legal-content";
+import {
+  WTS_VSCODE_MARKETPLACE_STATUS,
+  WTS_VSCODE_MARKETPLACE_STATUS_PATH,
+  waitSpinVscodeMarketplaceVersionLabel,
+} from "@/lib/waitspin/vscode-marketplace-status";
+import { WAITSPIN_PUBLIC_PUBLISHER_POLICY_COPY } from "@/lib/waitspin/public-publisher-policy-copy";
 
 const docsUrl = "https://waitspin.com/docs";
+const publisherPolicyCopy = WAITSPIN_PUBLIC_PUBLISHER_POLICY_COPY;
 const vscodeMarketplaceUrl =
   "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode";
 
@@ -12,9 +19,11 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://waitspin.com"),
   title: "WaitSpin API And Agent Docs",
   description:
-    "Current public WaitSpin API and agent contract for shipped routes, headers, scopes, and verified publisher surfaces.",
+    "Current public WaitSpin API and agent contract for shipped routes, headers, scopes, and verified user earning surfaces.",
   alternates: { canonical: docsUrl },
 };
+
+export const dynamic = "force-dynamic";
 
 const endpoints = [
   [
@@ -29,6 +38,12 @@ const endpoints = [
     "/v1/keys/verify",
     "none",
     "Verify code and receive a wts_live_ key.",
+  ],
+  [
+    "POST",
+    "/v1/list/subscribe",
+    "none",
+    "Request double opt-in publisher or founding advertiser email updates.",
   ],
   ["GET", "/v1/market", "none", "Read active public campaign leaderboard."],
   [
@@ -53,7 +68,7 @@ const endpoints = [
     "POST",
     "/v1/publishers/register",
     "publishers:write",
-    "Register a publisher install ID for a supported publisher target.",
+    "Register a user install ID for a supported earning surface.",
   ],
   [
     "POST",
@@ -71,7 +86,7 @@ const endpoints = [
     "GET",
     "/v1/wallet/status",
     "wallet:read",
-    "Read publisher balance, payout eligibility, and Connect status.",
+    "Read user balance, payout eligibility, and Connect status.",
   ],
   [
     "POST",
@@ -83,13 +98,13 @@ const endpoints = [
     "GET",
     "/v1/wallet/ledger",
     "wallet:read",
-    "Read publisher delivery, refund-reversal, and dispute-hold delivery-ledger rows.",
+    "Read user delivery, refund-reversal, and dispute-hold delivery-ledger rows.",
   ],
   [
     "POST",
     "/v1/wallet/payouts",
     "connect:manage",
-    "Preview or execute a guarded idempotent publisher payout.",
+    "Preview or execute a guarded idempotent user payout.",
   ],
   [
     "POST",
@@ -108,8 +123,13 @@ response: { "ok": true, "expires_in_seconds": 900, "delivery": "email" }
 
 POST /v1/keys/verify
 request:  { "email": "you@example.com", "code": "123456" }
-control response: { "account_id": "wacc_...", "api_key": "wts_live_...", "scopes": ["campaigns:write","campaigns:read","blocks:purchase","serve:read","events:write","wallet:read","connect:manage","analytics:read","publishers:write"], "trust_level": "email_verified" }
-publisher-extension response: { "account_id": "wacc_...", "api_key": "wts_live_...", "scopes": ["publishers:write","serve:read","events:write","wallet:read"], "trust_level": "email_verified" }
+control key response: { "account_id": "wacc_...", "api_key": "wts_live_...", "scopes": ["campaigns:write","campaigns:read","blocks:purchase","serve:read","events:write","wallet:read","connect:manage","analytics:read","publishers:write"], "trust_level": "email_verified" }
+extension key response: { "account_id": "wacc_...", "api_key": "wts_live_...", "scopes": ["publishers:write","serve:read","events:write","wallet:read"], "trust_level": "email_verified" }
+
+POST /v1/list/subscribe
+request:  { "email": "you@example.com", "segment": "publisher" | "advertiser", "source": "landing_hero", "turnstileToken": "optional", "company": "" }
+response: { "ok": true, "already_subscribed": false, "expires_in_seconds": 86400, "delivery": "email" }
+note: /list/confirm and /list/unsubscribe are email/browser-link routes, not API-key routes.
 
 GET /v1/market
 response: { "campaigns": [{ "campaign_id": "wcamp_...", "ad_line": "...", "brand_name": null, "bid_cpm_micros": 1000000, "impressions_served": 0, "status": "active" }] }
@@ -202,7 +222,7 @@ export default function WaitSpinDocsPage() {
           Agent markdown is available at{" "}
           <code>https://waitspin.com/.well-known/agents.md</code> and{" "}
           <code>https://waitspin.com/waitspin/agents.md</code>. It is scoped to
-          the shipped route allowlist, including verified publisher targets,
+          the shipped route allowlist, including verified user surfaces,
           and excludes deferred launch claims.
         </p>
         <p>
@@ -224,26 +244,35 @@ export default function WaitSpinDocsPage() {
           . It records the public source repository, extension version,
           release source commit, Marketplace URL, npm package version, VSIX
           filename, and VSIX SHA256 without committing the VSIX binary.
+          The live Marketplace status is published at{" "}
+          <Link
+            className="underline"
+            href={WTS_VSCODE_MARKETPLACE_STATUS_PATH}
+          >
+            {WTS_VSCODE_MARKETPLACE_STATUS_PATH}
+          </Link>
+          .
         </p>
         <p>
           Authenticated routes are API-key rate limited at <code>60/min</code>
-          and count against monthly API-call quota except publisher
+          and count against monthly API-call quota except extension
           serve/impression polling. <code>GET /v1/market</code> is IP limited at{" "}
           <code>60/min</code>.
         </p>
         <p>
-          Use control keys for advertiser, Connect, and payout commands. Use
-          publisher-extension keys only for extension registration, serve
-          polling, impression events, and read-only wallet visibility.
+          Use control keys for advertiser, Connect, and payout commands.
+          Extension keys created with the <code>publisher-extension</code>{" "}
+          profile are scoped to user install registration, serve polling,
+          impression events, and read-only wallet visibility.
         </p>
         </Section>
 
         <Section
           id="publisher-wallet-and-payouts"
-          title="Publisher Wallet And Payouts"
+          title="User Wallet And Payouts"
         >
           <p>
-            A connected VS Code publisher install means WaitSpin can serve
+            A connected VS Code user install means WaitSpin can serve
             sponsored cards and report wallet visibility. Payout readiness is a
             separate money state: earnings must mature, the available balance
             must reach the minimum payout, and a Stripe Express payout account
@@ -260,23 +289,25 @@ export default function WaitSpinDocsPage() {
           <p>
             <strong>Payout account not set up</strong> refers to Stripe Express
             payout onboarding, not the VS Code plugin connection. The extension
-            uses a publisher-extension key for read-only wallet visibility and
+            uses an extension API key for read-only wallet visibility and
             sponsor polling; payout account setup uses guarded Connect/payment
             routes and a control key.
           </p>
           <p>
             Primary setup path: open{" "}
             <a href="/wallet/connect">Set up payout account</a>, verify your
-            WaitSpin account email, choose the publisher payout country, and
+            WaitSpin account email, choose the payout country, and
             continue to Stripe Express. The browser flow creates the Stripe
             onboarding link server-side; it does not expose a reusable control
             API key to the page.
           </p>
           <p>
-            WaitSpin creates publisher payout accounts as Stripe{" "}
-            <strong>recipient</strong> accounts with the transfers capability.
-            Publishers receive payouts from WaitSpin; they must not be enabled
-            to accept customer payments through the WaitSpin platform account.
+            WaitSpin creates Stripe Express payout accounts with the transfers
+            capability. Users receive payouts from WaitSpin; they must not be
+            enabled to accept customer payments through the WaitSpin platform
+            account. WaitSpin does not force a Stripe service-agreement type in
+            API calls; Stripe applies the agreement required for the
+            platform/country pairing.
           </p>
           <p>
             Direct Stripe payments-balance top-ups can be unavailable when
@@ -291,7 +322,7 @@ export default function WaitSpinDocsPage() {
             <code>waitspin wallet connect --country US</code> with a control
             key, then open the Stripe Express onboarding URL it returns.
             Extension keys cannot create payout accounts because they are
-            intentionally limited to publisher registration, serve polling,
+            intentionally limited to user install registration, serve polling,
             impression events, and read-only wallet views.
           </p>
           <p>
@@ -305,28 +336,37 @@ export default function WaitSpinDocsPage() {
 
         <Section
           id="publisher-levels-and-limits"
-          title="Publisher Levels And Limits"
+          title="User Levels And Limits"
         >
           <p>
-            Publisher level controls how much paid inventory one publisher or
+            User level controls how much paid inventory one user account or
             install can receive while the account warms up. A fresh eligible
-            publisher starts at <strong>level 1/10</strong> and can receive paid
-            sponsored cards immediately when eligible campaigns are available.
-            There is no manual trusted/not-trusted switch for normal public VS
-            Code publisher installs.
+            user starts at{" "}
+            <strong>level {publisherPolicyCopy.trustMinLevelLabel}</strong> and
+            can receive paid sponsored cards immediately when eligible campaigns
+            are available. There is no manual trusted/not-trusted switch for
+            normal public VS Code user installs.
           </p>
           <p>
-            Level can rise by 1 after each clean 24h period of billable activity,
-            up to level 10/10. Risk signals such as refund/dispute pressure,
-            invalid impression receipts, velocity limits, or cap pressure can
-            reduce the effective level or pause paid supply for review.
+            Level can rise by 1 after each clean{" "}
+            {publisherPolicyCopy.trustCleanPeriodShort} period of billable
+            activity, up to level {publisherPolicyCopy.trustMaxLevelLabel}. Risk
+            signals such as refund/dispute pressure, invalid impression
+            receipts, velocity limits, or cap pressure can reduce the effective
+            level or pause paid supply for review.
           </p>
           <p>
-            Daily exposure limits are level-based. At level 1, one publisher
-            account can receive up to 3% of a campaign&apos;s effective daily
-            prepaid inventory, and one install can receive up to 0.5% of that
-            campaign per day. At level 10, those caps rise to 30% and 5%. A
-            separate global daily publisher revenue cap also scales with level.
+            Daily exposure limits are level-based. At level{" "}
+            {publisherPolicyCopy.trustMinLevel}, one user account can receive up
+            to {publisherPolicyCopy.minLevelPublisherCampaignCapPercent} of a
+            campaign&apos;s effective daily prepaid inventory, and one install
+            can receive up to{" "}
+            {publisherPolicyCopy.minLevelInstallCampaignCapPercent} of that
+            campaign per day. At level {publisherPolicyCopy.trustMaxLevel},
+            those caps rise to{" "}
+            {publisherPolicyCopy.maxLevelPublisherCampaignCapPercent} and{" "}
+            {publisherPolicyCopy.maxLevelInstallCampaignCapPercent}. A separate
+            separate global daily user revenue cap also scales with level.
           </p>
           <p>
             <code>204 No Content</code> or a VS Code "no eligible sponsor" state
@@ -379,13 +419,13 @@ export default function WaitSpinDocsPage() {
           response (<code>409</code>).
         </p>
         <p>
-          Public publisher targets are <code>status-bar-fallback</code>,
+          Public user earning targets are <code>status-bar-fallback</code>,
           installed from{" "}
           <Link className="underline" href={vscodeMarketplaceUrl}>
             VS Code Marketplace
           </Link>{" "}
           with <code>code --install-extension waitspin.waitspin-vscode</code> and connected
-          inside VS Code with <code>WaitSpin: Connect publisher</code>,{" "}
+          inside VS Code with <code>WaitSpin: Connect and earn</code>,{" "}
           <code>claude-code</code>, installed by{" "}
           <code>waitspin claude-code install --compose-existing</code>,{" "}
           <code>mimocode</code>, installed by{" "}
@@ -412,25 +452,34 @@ export default function WaitSpinDocsPage() {
           <Link className="underline" href="/waitspin/privacy">
             Privacy
           </Link>{" "}
-          notices before install, Checkout, or publisher registration. Unused
+          notices before install, Checkout, or user install registration. Unused
           prepaid block handling is support-reviewed; no automated
           account-credit balance, redemption flow, or self-serve cash refund
           request flow is shipped.
         </p>
       </Section>
 
-      <Section title="VS Code Publisher Setup">
+      <Section title="VS Code User Setup">
         <p>
-          The first-class VS Code publisher path is the{" "}
+          The first-class VS Code user path is the{" "}
           <Link className="underline" href={vscodeMarketplaceUrl}>
             WaitSpin VS Code Marketplace extension
           </Link>
           . Install it with{" "}
           <code>code --install-extension waitspin.waitspin-vscode</code>,
-          then run <code>WaitSpin: Connect publisher</code> inside VS Code.
+          then run <code>WaitSpin: Connect and earn</code> inside VS Code.
         </p>
         <p>
-          The extension requests or accepts a publisher-extension key, registers
+          Latest VS Code extension:{" "}
+          <code>
+            {waitSpinVscodeMarketplaceVersionLabel(
+              WTS_VSCODE_MARKETPLACE_STATUS,
+            )}
+          </code>
+          .
+        </p>
+        <p>
+          The extension requests or accepts an extension API key, registers
           the VS Code install through <code>POST /v1/publishers/register</code>,
           stores the key in VS Code SecretStorage, and starts wallet/sponsor
           polling against <code>https://api.waitspin.com</code>.
@@ -460,10 +509,10 @@ waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compo
 waitspin install --all --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
 waitspin status --all
 
-# VS Code publisher extension
+# VS Code user extension
 # Marketplace: ${vscodeMarketplaceUrl}
 code --install-extension waitspin.waitspin-vscode
-# Then run "WaitSpin: Connect publisher" in VS Code.
+# Then run "WaitSpin: Connect and earn" in VS Code.
 # CLI fallback:
 waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
 waitspin extension status --target vscode
@@ -490,15 +539,16 @@ waitspin grok status`}
           installs only detected supported targets and reports structured
           <code>installed</code>, <code>would_install</code>,{" "}
           <code>skipped_not_detected</code>, <code>skipped_conflict</code>, and{" "}
-          <code>failed_rollback</code> arrays. Use a publisher-extension key for
-          polling/events. The VS Code extension can connect a publisher inside
+          <code>failed_rollback</code> arrays. Use an extension API key for
+          polling/events. The VS Code extension can connect a user install inside
           VS Code and stores keys in SecretStorage; the Claude Code installer
           stores managed runtime state under <code>~/.waitspin</code> and does
           not write the key into Claude settings.
         </p>
         <p>
-          Publisher-extension keys are valid only for publisher registration,
-          serve polling, impression events, and read-only wallet status/ledger.
+          Extension keys created with the <code>publisher-extension</code>{" "}
+          profile are valid only for user install registration, serve polling,
+          impression events, and read-only wallet status/ledger.
           They cannot create campaigns, start Checkout, manage Connect, or
           execute payouts.
         </p>
@@ -514,7 +564,7 @@ waitspin grok status`}
           error body; rate limits may include <code>Retry-After</code>.
         </p>
         <p>
-          Billed impression delivery uses a 60% publisher share and 40%
+          Billed impression delivery uses a 60% user share and 40%
           platform share. Stripe processing fees are absorbed from the platform
           share unless the payment policy changes.
         </p>
