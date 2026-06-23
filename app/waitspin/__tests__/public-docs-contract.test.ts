@@ -387,6 +387,9 @@ describe("WaitSpin public docs contract", () => {
       privacyPage,
       publicTrustSource,
       exportScript,
+      publicSyncScript,
+      publicSkillScript,
+      publicSyncWorkflow,
       packageJson,
     ] = await Promise.all([
       readFile(path.join(repoRoot, "app/waitspin/trust/page.tsx"), "utf8"),
@@ -394,6 +397,18 @@ describe("WaitSpin public docs contract", () => {
       readFile(path.join(repoRoot, "lib/waitspin/public-trust.ts"), "utf8"),
       readFile(
         path.join(repoRoot, "scripts/waitspin-public-export.mjs"),
+        "utf8",
+      ),
+      readFile(
+        path.join(repoRoot, "scripts/waitspin-public-sync-check.mjs"),
+        "utf8",
+      ),
+      readFile(
+        path.join(repoRoot, "scripts/waitspin-public-skill-check.mjs"),
+        "utf8",
+      ),
+      readFile(
+        path.join(repoRoot, ".github/workflows/waitspin-public-sync.yml"),
         "utf8",
       ),
       readFile(path.join(repoRoot, "package.json"), "utf8"),
@@ -432,14 +447,43 @@ describe("WaitSpin public docs contract", () => {
     expect(exportScript).toContain("waitspin:trust-boundary");
     expect(exportScript).toContain("skills/waitspin/SKILL.md");
     expect(exportScript).toContain("skills/waitspin/skill-card.md");
-    expect(exportScript).toContain("npx skills add citedy/waitspin --skill waitspin -g -y");
+    expect(exportScript).toContain("npx skills add citedy/waitspin");
     expect(exportScript).toContain(
       "Cline, Kimi, and MMX are not public targets",
     );
     expect(packageJson).toContain("waitspin:public-export");
     expect(packageJson).toContain("waitspin:public-export:dry-run");
     expect(packageJson).toContain("waitspin:public-sync:check");
+    expect(packageJson).toContain("waitspin:public-skill:check");
     expect(packageJson).toContain("test:waitspin:public-sync");
+    expect(packageJson).toContain("test:waitspin:public-skill");
+    expect(publicSyncScript).toContain("AbortSignal.timeout");
+    expect(publicSyncScript).toContain("publicPackageTimeoutMs = 15_000");
+    expect(publicSyncScript).toContain("timeout: execTimeoutMs");
+    expect(publicSyncScript).toContain("assertExpectedPublicPackageUrl");
+    expect(publicSyncScript).toContain("parsed.name !== \"waitspin\"");
+    expect(publicSyncScript).toContain("function childEnv()");
+    expect(publicSyncScript).toContain("Unexpected content-type from public WaitSpin package metadata");
+    expect(publicSyncScript).toContain("npm_config_ignore_scripts");
+    expect(publicSyncScript).not.toContain("...process.env");
+    expect(publicSyncScript).toContain("Unable to read npm latest version");
+    expect(publicSkillScript).toContain("v0.1.10");
+    expect(publicSkillScript).toContain("clawhub");
+    expect(publicSkillScript).toContain("skills@1.5.12");
+    expect(publicSkillScript).toContain("clawhub@0.22.0");
+    expect(publicSkillScript).toContain("timeout: execTimeoutMs");
+    expect(publicSkillScript).toContain("fetchPublishedSkill");
+    expect(publicSkillScript).toContain("publicSkillUrl");
+    expect(publicSkillScript).toContain("local_skill_sha256");
+    expect(publicSkillScript).toContain("public_skill_sha256");
+    expect(publicSkillScript).toContain("createHash");
+    expect(publicSkillScript).toContain("Published WaitSpin skill content is stale");
+    expect(publicSkillScript).toContain("function childEnv(");
+    expect(publicSkillScript).toContain("includeGitHubToken: true");
+    expect(publicSkillScript).toContain("npm_config_ignore_scripts");
+    expect(publicSkillScript).not.toContain("...process.env");
+    expect(publicSyncWorkflow).toContain("npm run waitspin:public-skill:check");
+    expect(publicSyncWorkflow).toContain("pull_request:");
   });
 
   it("does not describe public npx install as waiting for npm publication", async () => {
@@ -479,15 +523,30 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("## Agent-Led OTP Automation");
     expect(skill).toContain("--key-profile control --json");
     expect(skill).toContain("--key-profile publisher-extension --json");
-    expect(skill).toContain("--code CODE_FROM_EMAIL");
-    expect(skill).toContain("WAITSPIN_VERIFICATION_CODE=CODE_FROM_EMAIL");
+    expect(skill).toContain("--code 123456");
+    expect(skill).toContain("tool-scoped environment variable");
+    expect(skill).toContain("WAITSPIN_VERIFICATION_CODE");
+    expect(skill).not.toContain('--code "$WAITSPIN_VERIFICATION_CODE"');
+    expect(skill).toContain(
+      "npx --yes waitspin@0.1.8 init --email you@example.com --key-profile control --json",
+    );
     expect(skill).toContain("next: \"enter_email_code\"");
+    expect(skill).toContain("Validate user-supplied emails");
+    expect(skill).toContain("Reject values containing shell metacharacters");
+    expect(skill).toContain("publisher-extension` for earning-surface installs, serve/impression polling, and read-only wallet status/ledger checks");
     expect(skill).toContain("Then stop and wait for the user");
     expect(skill).toContain("Do not print API keys or OTP codes");
-    expect(skill).toContain("WAITSPIN_API_KEY='KEY_FROM_JSON'");
+    expect(skill).toContain("Do not build inline shell assignments");
+    expect(skill).toContain("--api-key KEY_FROM_JSON");
     expect(skill).toContain("waitspin bid create");
-    expect(skill).toContain("waitspin install --all --dry-run");
+    expect(skill).toContain("waitspin install --all --api-key KEY_FROM_JSON --dry-run");
+    expect(skill).toContain("A `publisher-extension` key is appropriate for publisher earnings reads");
     expect(skill).toContain("do not echo it in chat");
+    expect(skill).toContain("npx --yes waitspin@0.1.8");
+    expect(skill).not.toContain("waitspin@latest");
+    expect(skill).not.toContain("USER_EMAIL");
+    expect(skill).not.toContain("CODE_FROM_EMAIL");
+    expect(skill).not.toContain("WAITSPIN_API_KEY='KEY_FROM_JSON'");
     expect(skill).not.toContain("PASTE_PUBLISHER_EXTENSION_KEY");
     expect(skill).not.toContain("PASTE_CONTROL_KEY");
   });
@@ -708,6 +767,9 @@ describe("WaitSpin public docs contract", () => {
     );
     expect(launchClient).toContain("MiMo Code shell hook");
     expect(launchClient).toContain("OpenCode TUI plugin slot");
+    expect(launchClient).toContain("npx skills add citedy/waitspin");
+    expect(launchClient).toContain("Copy Skill");
+    expect(launchClient).toContain("Install the WaitSpin skill");
     expect(launchClient).toContain("Copy agent command");
     expect(launchClient).toContain("Copy install-all");
     expect(launchClient).not.toContain("How can agents install the skill?");
@@ -807,8 +869,9 @@ describe("WaitSpin public docs contract", () => {
       "https://github.com/citedy/waitspin/blob/main/skills/waitspin/SKILL.md",
     );
     expect(llmsRoute).toContain(
-      "npx skills add citedy/waitspin --skill waitspin -g -y",
+      "npx skills add citedy/waitspin",
     );
+    expect(llmsRoute).not.toContain("PASTE_PUBLISHER_EXTENSION_KEY");
     expect(llmsRoute).not.toContain(
       "Skills.sh and ClawHub publication remain planned follow-up",
     );

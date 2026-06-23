@@ -488,7 +488,7 @@ export default function WaitSpinDocsPage() {
           CLI setup remains the advanced fallback:{" "}
           <code>
             waitspin extension install --target vscode --api-key
-            PASTE_PUBLISHER_EXTENSION_KEY
+            KEY_FROM_JSON
           </code>
           .
         </p>
@@ -497,16 +497,17 @@ export default function WaitSpinDocsPage() {
       <Section title="Agent Quick Start">
         <pre className="overflow-x-auto border bg-muted/40 p-4 text-xs leading-6">
           {`# Verify the published package before using this as release evidence.
+npx skills add citedy/waitspin
 npm view waitspin version
 npx --yes waitspin init --email you@example.com --key-profile control
-export WAITSPIN_API_KEY=PASTE_CONTROL_KEY
+export WAITSPIN_API_KEY=KEY_FROM_JSON
 waitspin bid create --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1
 waitspin bid checkout CAMPAIGN_ID
 npx --yes waitspin init --email you@example.com --key-profile publisher-extension
 
 # Advanced agent install for detected supported targets
-waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
-waitspin install --all --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+waitspin install --all --dry-run --api-key KEY_FROM_JSON --compose-existing
+waitspin install --all --api-key KEY_FROM_JSON --compose-existing
 waitspin status --all
 
 # VS Code user extension
@@ -514,23 +515,23 @@ waitspin status --all
 code --install-extension waitspin.waitspin-vscode
 # Then run "WaitSpin: Connect and earn" in VS Code.
 # CLI fallback:
-waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin extension install --target vscode --api-key KEY_FROM_JSON
 waitspin extension status --target vscode
 
 # Claude Code statusline
-waitspin claude-code install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+waitspin claude-code install --api-key KEY_FROM_JSON --compose-existing
 waitspin claude-code status
 
 # MiMo Code shell hook
-waitspin mimocode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin mimocode install --api-key KEY_FROM_JSON
 waitspin mimocode status
 
 # OpenCode TUI plugin slot
-waitspin opencode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin opencode install --api-key KEY_FROM_JSON
 waitspin opencode status
 
 # Grok Code CLI footer
-waitspin grok install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin grok install --api-key KEY_FROM_JSON
 waitspin grok status`}
         </pre>
         <p>

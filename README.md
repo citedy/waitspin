@@ -27,7 +27,9 @@ license.
 Agent skill install:
 
 ```bash
-npx skills add citedy/waitspin --skill waitspin -g -y
-npx skills add citedy/waitspin --skill waitspin -a '*' -g -y
-npx skills use citedy/waitspin@waitspin
+npx skills add citedy/waitspin
 ```
+
+Skill registry releases are versioned independently from npm package releases:
+GitHub Skills/ClawHub currently expose `v0.1.10`; the npm CLI package is
+`waitspin@0.1.8`.

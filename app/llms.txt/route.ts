@@ -29,9 +29,9 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - OpenAPI: https://waitspin.com/openapi/waitspin-api.openapi.json
 - Public market: GET /v1/market
 - Verified user earning surfaces: VS Code Activity Bar/status-bar extension, Claude Code statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer
-- VS Code install path: code --install-extension waitspin.waitspin-vscode, then run WaitSpin: Connect and earn inside VS Code. CLI fallback: waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
+- VS Code install path: code --install-extension waitspin.waitspin-vscode, then run WaitSpin: Connect and earn inside VS Code. CLI fallback: waitspin extension install --target vscode --api-key KEY_FROM_JSON
 - Advanced agent install: waitspin install --all --dry-run --compose-existing, waitspin install --all --compose-existing, waitspin status --all
-- Agent skill install: npx skills add citedy/waitspin --skill waitspin -g -y
+- Agent skill install: npx skills add citedy/waitspin
 - Guarded wallet, ledger, Connect onboarding, and payout routes
 - Privacy boundary: public clients do not read or send workspace files, source code, editor text, prompts, model responses, terminal output, shell history, repository URLs, screenshots, clipboard contents, or raw keystrokes.
 
@@ -53,10 +53,12 @@ ${waitSpinWebMcpToolListMarkdown()}
 Install the public WaitSpin agent skill with:
 
 \`\`\`bash
-npx skills add citedy/waitspin --skill waitspin -g -y
-npx skills add citedy/waitspin --skill waitspin -a '*' -g -y
-npx skills use citedy/waitspin@waitspin
+npx skills add citedy/waitspin
 \`\`\`
+
+Skill registry releases are versioned independently from npm package releases:
+GitHub Skills/ClawHub currently expose \`v0.1.10\`; the npm CLI package is
+\`waitspin@0.1.8\`.
 `;
 
 export const dynamic = "force-static";
