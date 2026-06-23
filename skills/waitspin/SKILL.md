@@ -17,10 +17,10 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - Privacy: `https://waitspin.com/waitspin/privacy`
 - Public client source: `https://github.com/citedy/waitspin`
 - npm package: `waitspin`
-- Published skill release: `v0.1.10`
+- Published skill release: `v0.1.11`
 - API base: `https://api.waitspin.com`
 
-Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.10`; the npm CLI package is `waitspin@0.1.8`.
+Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.11`; the npm CLI package is `waitspin@0.1.8`.
 
 Before making a claim about current package availability, verify it:
 
@@ -73,22 +73,24 @@ If the host agent cannot safely place the code in argv, put `WAITSPIN_VERIFICATI
 npx --yes waitspin@0.1.8 init --email you@example.com --key-profile control --json
 ```
 
-7. Parse the JSON response. Keep `api_key` secret; do not echo it in chat. Store it in the host-agent secret store or pass it through tool-scoped environment variables. For commands that support `--api-key`, pass the key as an argv value. Do not build inline shell assignments such as `WAITSPIN_API_KEY='...' command`.
+7. Parse the JSON response. Keep `api_key` secret; do not echo it in chat. Store it in the host-agent secret store or pass it through `WAITSPIN_API_KEY` in the tool's environment field for each follow-up command. Do not pass live API keys in argv with `--api-key`, and do not build inline shell assignments such as `WAITSPIN_API_KEY='...' command`.
 8. Continue immediately with the requested workflow. Do not make the user figure out the next command.
 
 For advertiser onboarding after control-key verification:
 
 ```bash
-waitspin bid create --line "Short sponsor line" --url https://example.com --price-per-block 500 --blocks 1 --api-key KEY_FROM_JSON --json
-waitspin bids list --api-key KEY_FROM_JSON --json
-waitspin bid checkout CAMPAIGN_ID --api-key KEY_FROM_JSON
+# WAITSPIN_API_KEY is supplied by the host tool's env field.
+waitspin bid create --line "Short sponsor line" --url https://example.com --price-per-block 500 --blocks 1 --json
+waitspin bids list --json
+waitspin bid checkout CAMPAIGN_ID
 ```
 
 For publisher or user onboarding after publisher-extension verification:
 
 ```bash
-waitspin install --all --api-key KEY_FROM_JSON --dry-run --compose-existing --json
-waitspin install --all --api-key KEY_FROM_JSON --compose-existing --json
+# WAITSPIN_API_KEY is supplied by the host tool's env field.
+waitspin install --all --dry-run --compose-existing --json
+waitspin install --all --compose-existing --json
 waitspin status --all --json
 ```
 
@@ -103,9 +105,10 @@ Use this path when the user wants to buy wait-state attention.
 ```bash
 npx --yes waitspin@0.1.8 init --email you@example.com --key-profile control --json
 npx --yes waitspin@0.1.8 init --email you@example.com --code 123456 --key-profile control --json
-waitspin bid create --line "Short sponsor line" --url https://example.com --price-per-block 500 --blocks 1 --api-key KEY_FROM_JSON --json
-waitspin bids list --api-key KEY_FROM_JSON --json
-waitspin bid checkout CAMPAIGN_ID --api-key KEY_FROM_JSON
+# WAITSPIN_API_KEY is supplied by the host tool's env field.
+waitspin bid create --line "Short sponsor line" --url https://example.com --price-per-block 500 --blocks 1 --json
+waitspin bids list --json
+waitspin bid checkout CAMPAIGN_ID
 ```
 
 Notes:
@@ -122,8 +125,9 @@ Use this path when the user wants to earn from supported developer wait states.
 ```bash
 npx --yes waitspin@0.1.8 init --email you@example.com --key-profile publisher-extension --json
 npx --yes waitspin@0.1.8 init --email you@example.com --code 123456 --key-profile publisher-extension --json
-waitspin install --all --api-key KEY_FROM_JSON --dry-run --compose-existing --json
-waitspin install --all --api-key KEY_FROM_JSON --compose-existing --json
+# WAITSPIN_API_KEY is supplied by the host tool's env field.
+waitspin install --all --dry-run --compose-existing --json
+waitspin install --all --compose-existing --json
 waitspin status --all --json
 ```
 
@@ -131,19 +135,20 @@ Prefer first-class target commands for debugging:
 
 ```bash
 code --install-extension waitspin.waitspin-vscode
-waitspin extension install --target vscode --api-key KEY_FROM_JSON --json
+# WAITSPIN_API_KEY is supplied by the host tool's env field.
+waitspin extension install --target vscode --json
 waitspin extension status --target vscode --json
 
-waitspin claude-code install --api-key KEY_FROM_JSON --compose-existing --json
+waitspin claude-code install --compose-existing --json
 waitspin claude-code status --json
 
-waitspin mimocode install --api-key KEY_FROM_JSON --json
+waitspin mimocode install --json
 waitspin mimocode status --json
 
-waitspin opencode install --api-key KEY_FROM_JSON --json
+waitspin opencode install --json
 waitspin opencode status --json
 
-waitspin grok install --api-key KEY_FROM_JSON --json
+waitspin grok install --json
 waitspin grok status --json
 ```
 

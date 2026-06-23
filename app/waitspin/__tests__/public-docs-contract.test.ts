@@ -462,20 +462,29 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSyncScript).toContain("timeout: execTimeoutMs");
     expect(publicSyncScript).toContain("assertExpectedPublicPackageUrl");
     expect(publicSyncScript).toContain("parsed.name !== \"waitspin\"");
+    expect(publicSyncScript).toContain("local_package_matches_npm");
+    expect(publicSyncScript).toContain("local package version differs from npm latest");
     expect(publicSyncScript).toContain("function childEnv()");
     expect(publicSyncScript).toContain("Unexpected content-type from public WaitSpin package metadata");
     expect(publicSyncScript).toContain("npm_config_ignore_scripts");
     expect(publicSyncScript).not.toContain("...process.env");
     expect(publicSyncScript).toContain("Unable to read npm latest version");
-    expect(publicSkillScript).toContain("v0.1.10");
+    expect(publicSkillScript).toContain("v0.1.11");
     expect(publicSkillScript).toContain("clawhub");
     expect(publicSkillScript).toContain("skills@1.5.12");
     expect(publicSkillScript).toContain("clawhub@0.22.0");
     expect(publicSkillScript).toContain("timeout: execTimeoutMs");
     expect(publicSkillScript).toContain("fetchPublishedSkill");
-    expect(publicSkillScript).toContain("publicSkillUrl");
+    expect(publicSkillScript).toContain("publicSkillMainUrl");
+    expect(publicSkillScript).toContain("publicSkillReleaseUrl");
+    expect(publicSkillScript).toContain("api.github.com");
+    expect(publicSkillScript).toContain("application/vnd.github+json");
+    expect(publicSkillScript).toContain("Buffer.from");
     expect(publicSkillScript).toContain("local_skill_sha256");
-    expect(publicSkillScript).toContain("public_skill_sha256");
+    expect(publicSkillScript).toContain("public_main_skill_sha256");
+    expect(publicSkillScript).toContain("public_release_skill_sha256");
+    expect(publicSkillScript).toContain("clawhub_skill_sha256");
+    expect(publicSkillScript).toContain("clawHubAdvertisedSpec");
     expect(publicSkillScript).toContain("createHash");
     expect(publicSkillScript).toContain("Published WaitSpin skill content is stale");
     expect(publicSkillScript).toContain("function childEnv(");
@@ -484,6 +493,14 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSkillScript).not.toContain("...process.env");
     expect(publicSyncWorkflow).toContain("npm run waitspin:public-skill:check");
     expect(publicSyncWorkflow).toContain("pull_request:");
+    expect(publicSyncWorkflow).toContain("packages/waitspin/package.json");
+    expect(publicSyncWorkflow).toContain(
+      "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+    );
+    expect(publicSyncWorkflow).toContain("persist-credentials: false");
+    expect(publicSyncWorkflow).toContain(
+      "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+    );
   });
 
   it("does not describe public npx install as waiting for npm publication", async () => {
@@ -537,9 +554,11 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("Then stop and wait for the user");
     expect(skill).toContain("Do not print API keys or OTP codes");
     expect(skill).toContain("Do not build inline shell assignments");
-    expect(skill).toContain("--api-key KEY_FROM_JSON");
+    expect(skill).toContain("WAITSPIN_API_KEY");
+    expect(skill).toContain("Do not pass live API keys in argv with `--api-key`");
+    expect(skill).not.toContain("--api-key KEY_FROM_JSON");
     expect(skill).toContain("waitspin bid create");
-    expect(skill).toContain("waitspin install --all --api-key KEY_FROM_JSON --dry-run");
+    expect(skill).toContain("waitspin install --all --dry-run");
     expect(skill).toContain("A `publisher-extension` key is appropriate for publisher earnings reads");
     expect(skill).toContain("do not echo it in chat");
     expect(skill).toContain("npx --yes waitspin@0.1.8");
