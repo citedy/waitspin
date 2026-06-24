@@ -1265,8 +1265,12 @@ export async function runExtensionInstall(flags: Map<string, string[]>) {
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
+  return pathAccessible(filePath, fsConstants.F_OK);
+}
+
+async function pathAccessible(filePath: string, mode: number): Promise<boolean> {
   try {
-    await access(filePath, fsConstants.F_OK);
+    await access(filePath, mode);
     return true;
   } catch {
     return false;
@@ -2102,7 +2106,51 @@ function processAlive(pid) {
 }
 
 async function processInfo(pid) {
-  if (process.platform === "win32" || !processAlive(pid)) return null;
+  if (!processAlive(pid)) return null;
+  if (process.platform === "win32") {
+    return await new Promise((resolve) => {
+      const numericPid = Math.trunc(Number(pid));
+      const command = [
+        "$p=Get-CimInstance Win32_Process -Filter 'ProcessId = " + numericPid + "';",
+        "if ($p) { Write-Output ([string]$p.ParentProcessId + ' ' + [string]$p.Name) }",
+      ].join(" ");
+      const child = spawn("powershell.exe", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        command,
+      ], {
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      let stdout = "";
+      let settled = false;
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      }
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk.toString("utf8");
+        if (stdout.length > 4000) stdout = stdout.slice(0, 4000);
+      });
+      child.on("error", () => finish(null));
+      child.on("close", (code) => {
+        if (code !== 0) {
+          finish(null);
+          return;
+        }
+        const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop() || "";
+        const match = line.trim().match(/^(\d+)\s+(.+)$/);
+        if (!match) {
+          finish(null);
+          return;
+        }
+        finish({ ppid: Number(match[1]), command: match[2] });
+      });
+    });
+  }
   return await new Promise((resolve) => {
     const child = spawn("ps", ["-o", "ppid=,comm=", "-p", String(pid)], {
       stdio: ["ignore", "pipe", "ignore"],
@@ -3783,13 +3831,22 @@ export async function runCopilotInstall(flags: Map<string, string[]>) {
   const commandPath = copilotCommandPath();
   const cachePath = copilotCachePath();
   const apiKeyPath = copilotApiKeyPath();
-  const settingsPath = copilotSettingsPath();
+  const currentSettingsPath = copilotSettingsPath();
   const existingState = await loadCopilotInstallState();
+  if (
+    existingState &&
+    path.resolve(existingState.settings_path) !== path.resolve(currentSettingsPath)
+  ) {
+    throw new Error(
+      `Existing GitHub Copilot CLI WaitSpin install uses ${existingState.settings_path}, but the current ${COPILOT_HOME_ENV} resolves to ${currentSettingsPath}. Re-run with the original ${COPILOT_HOME_ENV} or uninstall before installing into another Copilot config home.`,
+    );
+  }
+  const settingsPath = existingState?.settings_path ?? currentSettingsPath;
   const installId = existingState?.install_id || generateInstallId();
   const managedStatusLine = managedCopilotStatusLine({
     commandPath,
   });
-  const settings = await loadCopilotSettings();
+  const settings = await loadCopilotSettings(settingsPath);
   let settingsUpdate: ReturnType<typeof resolveCopilotSettingsUpdate> | null =
     null;
   let settingsBlockedReason: string | null = null;
@@ -3934,10 +3991,16 @@ export async function runCopilotStatus(
     ? await pathExists(assertSafeCopilotManagedPath(state.runtime_path))
     : false;
   const commandInstalled = state
-    ? await pathExists(assertSafeCopilotManagedPath(state.command_path))
+    ? await pathAccessible(
+        assertSafeCopilotManagedPath(state.command_path),
+        fsConstants.X_OK,
+      )
     : false;
   const apiKeyInstalled = state
-    ? await pathExists(assertSafeCopilotManagedPath(state.api_key_path))
+    ? await pathAccessible(
+        assertSafeCopilotManagedPath(state.api_key_path),
+        fsConstants.R_OK,
+      )
     : false;
   const footerCustomEnabled = isRecord(settings.footer)
     ? settings.footer.showCustom === true

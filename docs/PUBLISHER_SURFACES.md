@@ -8,4 +8,4 @@
 - Antigravity CLI: antigravity; statusLine.command with compose-existing support.
 - GitHub Copilot CLI: copilot; statusLine.command with compose-existing support.
 
-Cline, Kilo, Kimi, and MMX are not public targets unless separately promoted.
+Cline, Kimi, MMX, and other experimental native CLI targets are not public targets unless separately promoted.

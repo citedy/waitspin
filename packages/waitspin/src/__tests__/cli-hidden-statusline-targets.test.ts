@@ -18,7 +18,7 @@ const statSync = jest.fn();
 const realpathSync = jest.fn((value: string) => value);
 
 jest.mock("node:fs", () => ({
-  constants: { F_OK: 0 },
+  constants: { F_OK: 0, R_OK: 4, X_OK: 1 },
   realpathSync: (...args: unknown[]) => realpathSync(...(args as [string])),
   statSync: (...args: unknown[]) => statSync(...args),
 }));
@@ -185,12 +185,16 @@ describe("statusline CLI targets", () => {
     expect(runtimeWrite?.[1]).toContain("detectOwnerPid");
     expect(runtimeWrite?.[1]).toContain("ownerAliveAfterVisible");
     expect(runtimeWrite?.[1]).toContain("installedSurfaceStillConfigured");
+    expect(runtimeWrite?.[1]).toContain("Get-CimInstance Win32_Process");
+    expect(runtimeWrite?.[1]).toContain("powershell.exe");
     expect(runtimeWrite?.[1]).toContain("SHELL_PROCESS_NAMES");
 
     const secretWrite = (writeFile as jest.Mock).mock.calls.find(
       ([filePath]) => filePath === copilotApiKeyPath,
     );
     expect(secretWrite?.[1]).toBe("wts_live_test_key_value_1234567890\n");
+    expect(secretWrite?.[2]).toMatchObject({ mode: 0o600 });
+    expect(chmod).toHaveBeenCalledWith(copilotApiKeyPath, 0o600);
 
     const stateWrite = (writeFile as jest.Mock).mock.calls.find(
       ([filePath]) => filePath === copilotStatePath,
@@ -251,6 +255,40 @@ describe("statusline CLI targets", () => {
     expect(writeFile).not.toHaveBeenCalled();
   });
 
+  it("refuses to refresh Copilot support across COPILOT_HOME settings paths", async () => {
+    const { runCopilotInstall: rawRunCopilotInstall } = await import("../cli");
+    process.env.COPILOT_HOME = path.join(os.tmpdir(), "waitspin-copilot-other-home");
+    const managed = { type: "command", command: copilotCommandPath, padding: 0 };
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === copilotStatePath) {
+        return JSON.stringify({
+          target: "copilot",
+          install_id: "wins_copilot",
+          publisher_id: "wpub_copilot",
+          publisher_target: "copilot",
+          registered_at: "2026-06-23T00:00:00.000Z",
+          base_url: "https://api.waitspin.com",
+          api_key_path: copilotApiKeyPath,
+          command_path: copilotCommandPath,
+          runtime_path: copilotRuntimePath,
+          cache_path: copilotCachePath,
+          settings_path: copilotSettingsPath,
+          managed_status_line: managed,
+          installed_at: "2026-06-23T00:00:00.000Z",
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await expect(
+      rawRunCopilotInstall(
+        withJsonFlag(new Map([["api-key", ["wts_live_test_key_value_1234567890"]]])),
+      ),
+    ).rejects.toThrow(/original COPILOT_HOME|another Copilot config home/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
   it("reports Copilot status only when runtime, wrapper, secret, footer, and settings are healthy", async () => {
     const { runCopilotStatus: rawRunCopilotStatus } = await import("../cli");
     const managed = { type: "command", command: copilotCommandPath, padding: 0 };
@@ -290,13 +328,61 @@ describe("statusline CLI targets", () => {
     await rawRunCopilotStatus(withJsonFlag());
 
     expect(access).toHaveBeenCalledWith(copilotRuntimePath, 0);
-    expect(access).toHaveBeenCalledWith(copilotCommandPath, 0);
-    expect(access).toHaveBeenCalledWith(copilotApiKeyPath, 0);
+    expect(access).toHaveBeenCalledWith(copilotCommandPath, 1);
+    expect(access).toHaveBeenCalledWith(copilotApiKeyPath, 4);
     expect(JSON.parse(stdout.join(""))).toMatchObject({
       target: "copilot",
       installed: true,
       api_key_installed: true,
       command_installed: true,
+      footer_custom_enabled: true,
+      status_line_configured: true,
+    });
+  });
+
+  it("reports Copilot as not installed when the wrapper is not executable", async () => {
+    const { runCopilotStatus: rawRunCopilotStatus } = await import("../cli");
+    const managed = { type: "command", command: copilotCommandPath, padding: 0 };
+    const stdout: string[] = [];
+    jest.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+    access.mockImplementation(async (filePath: string, mode: number) => {
+      if (filePath === copilotCommandPath && mode === 1) throw enoent();
+      return undefined;
+    });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === copilotStatePath) {
+        return JSON.stringify({
+          target: "copilot",
+          install_id: "wins_copilot",
+          publisher_id: "wpub_copilot",
+          publisher_target: "copilot",
+          registered_at: "2026-06-23T00:00:00.000Z",
+          base_url: "https://api.waitspin.com",
+          api_key_path: copilotApiKeyPath,
+          command_path: copilotCommandPath,
+          runtime_path: copilotRuntimePath,
+          cache_path: copilotCachePath,
+          settings_path: copilotSettingsPath,
+          managed_status_line: managed,
+          installed_at: "2026-06-23T00:00:00.000Z",
+        });
+      }
+      if (filePath === copilotSettingsPath) {
+        return JSON.stringify({ footer: { showCustom: true }, statusLine: managed });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await rawRunCopilotStatus(withJsonFlag());
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "copilot",
+      installed: false,
+      api_key_installed: true,
+      command_installed: false,
       footer_custom_enabled: true,
       status_line_configured: true,
     });
@@ -459,12 +545,16 @@ describe("statusline CLI targets", () => {
     expect(runtimeWrite?.[1]).toContain("detectOwnerPid");
     expect(runtimeWrite?.[1]).toContain("ownerAliveAfterVisible");
     expect(runtimeWrite?.[1]).toContain("installedSurfaceStillConfigured");
+    expect(runtimeWrite?.[1]).toContain("Get-CimInstance Win32_Process");
+    expect(runtimeWrite?.[1]).toContain("powershell.exe");
     expect(runtimeWrite?.[1]).toContain("SHELL_PROCESS_NAMES");
 
     const secretWrite = (writeFile as jest.Mock).mock.calls.find(
       ([filePath]) => filePath === antigravityApiKeyPath,
     );
     expect(secretWrite?.[1]).toBe("wts_live_test_key_value_1234567890\n");
+    expect(secretWrite?.[2]).toMatchObject({ mode: 0o600 });
+    expect(chmod).toHaveBeenCalledWith(antigravityApiKeyPath, 0o600);
     expect(JSON.stringify(JSON.parse(stdout.join("")))).not.toContain(
       "wts_live_test_key_value_1234567890",
     );

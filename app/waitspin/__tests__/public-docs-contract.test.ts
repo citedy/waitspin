@@ -274,7 +274,9 @@ describe("WaitSpin public docs contract", () => {
     expect(sources.join("\n")).toContain("waitspin install --all");
     expect(sources.join("\n")).toContain("waitspin status --all");
     expect(sources.join("\n")).toContain("--compose-existing");
+    expect(publicCopySources).not.toContain("Kilo CLI");
     expect(publicCopySources).not.toContain("waitspin kilo");
+    expect(publicCopySources).not.toMatch(/\bkilo\b/i);
   });
 
   it("does not advertise an automated account-credit balance before redemption ships", async () => {
@@ -472,8 +474,9 @@ describe("WaitSpin public docs contract", () => {
     expect(exportScript).toContain("skills/waitspin/skill-card.md");
     expect(exportScript).toContain("npx skills add citedy/waitspin");
     expect(exportScript).toContain(
-      "Cline, Kilo, Kimi, and MMX are not public targets",
+      "Cline, Kimi, MMX, and other experimental native CLI targets are not public targets",
     );
+    expect(exportScript).not.toMatch(/\bkilo\b/i);
     expect(packageJson).toContain("waitspin:public-export");
     expect(packageJson).toContain("waitspin:public-export:dry-run");
     expect(packageJson).toContain("waitspin:public-sync:check");

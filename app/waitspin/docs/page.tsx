@@ -441,9 +441,9 @@ export default function WaitSpinDocsPage() {
           managed shell hook; OpenCode uses a managed TUI plugin entry; Grok
           Code CLI uses a managed text-asset footer patch with hash-backed
           restore. Cline VS Code extension installs are covered by the WaitSpin
-          VS Code Marketplace extension; standalone Cline CLI and Kilo CLI
-          await official statusline/plugin support.
-          Native spinner patch targets remain deferred.
+          VS Code Marketplace extension; standalone Cline CLI remains outside
+          the public install contract. Other native spinner patch targets remain
+          deferred until official statusline/plugin support exists.
         </p>
         </Section>
 

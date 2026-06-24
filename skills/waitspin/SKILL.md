@@ -167,7 +167,7 @@ Target behavior:
 - MiMo Code: managed bash hook and runtime.
 - OpenCode: managed TUI plugin slot.
 - Grok Code CLI: managed text-asset footer patch with hash-backed backup and restore.
-- Standalone Cline CLI and Kilo CLI are not public install targets. Cline VS Code extension users are covered by the VS Code target.
+- Standalone Cline CLI is not a public install target. Cline VS Code extension users are covered by the VS Code target, and other native CLI targets stay out of public install guidance until separately promoted.
 
 ### Inspect Wallet, Ledger, And Payout Readiness
 
