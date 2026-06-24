@@ -516,7 +516,7 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSyncScript).not.toContain("node:vm");
     expect(publicSyncScript).not.toContain("runInNewContext");
     expect(publicSyncScript).toContain("Unable to read npm latest version");
-    expect(publicSkillScript).toContain("v0.1.12");
+    expect(publicSkillScript).toContain("v0.1.13");
     expect(publicSkillScript).toContain("clawhub");
     expect(publicSkillScript).toContain("skills@1.5.12");
     expect(publicSkillScript).toContain("clawhub@0.22.0");

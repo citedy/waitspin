@@ -17,10 +17,10 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - Privacy: `https://waitspin.com/waitspin/privacy`
 - Public client source: `https://github.com/citedy/waitspin`
 - npm package: `waitspin`
-- Published skill release: `v0.1.12`
+- Published skill release: `v0.1.13`
 - API base: `https://api.waitspin.com`
 
-Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.12`; the npm CLI package is `waitspin@0.1.8`.
+Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.13`; the npm CLI package is `waitspin@0.1.8`.
 
 Before making a claim about current package availability, verify it:
 
