@@ -15,3 +15,7 @@ docs/waitspin/private/
 .playwright-mcp/
 .icon-inspect/
 extensions/waitspin-vscode/*.vsix
+
+# Local promo (remotion, renders, generated assets)
+*/promo/*
+docs/waitspin/promo/

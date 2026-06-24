@@ -505,6 +505,8 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSyncScript).toContain("public repo exported content is stale");
     expect(publicSyncScript).toContain("parsed.name !== \"waitspin\"");
     expect(publicSyncScript).toContain("local_package_matches_npm");
+    expect(publicSyncScript).toContain("--allow-local-pending-release");
+    expect(publicSyncScript).toContain("local_pending_release_allowed");
     expect(publicSyncScript).toContain("local package version differs from npm latest");
     expect(publicSyncScript).toContain("waitspinPublicChildEnv");
     expect(publicSyncScript).toContain("waitspinPublicGitHubTokenForAuth");
@@ -516,7 +518,7 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSyncScript).not.toContain("node:vm");
     expect(publicSyncScript).not.toContain("runInNewContext");
     expect(publicSyncScript).toContain("Unable to read npm latest version");
-    expect(publicSkillScript).toContain("v0.1.13");
+    expect(publicSkillScript).toContain("v0.1.14");
     expect(publicSkillScript).toContain("clawhub");
     expect(publicSkillScript).toContain("skills@1.5.12");
     expect(publicSkillScript).toContain("clawhub@0.22.0");
@@ -524,6 +526,9 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSkillScript).toContain("registryCliTimeoutMs");
     expect(publicSkillScript).toContain("clawhub_status");
     expect(publicSkillScript).toContain("clawhub_required: true");
+    expect(publicSkillScript).toContain("--allow-unpublished-release");
+    expect(publicSkillScript).toContain("publication_pending");
+    expect(publicSkillScript).toContain("release_check_skipped");
     expect(publicSkillScript).toContain("clawhub_selected_version");
     expect(publicSkillScript).not.toContain("tolerateClawHubOutage");
     expect(publicSkillScript).not.toContain("isTransientClawHubError");
@@ -533,6 +538,10 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSkillScript).toContain("api.github.com");
     expect(publicSkillScript).toContain("application/vnd.github+json");
     expect(publicSkillScript).toContain("Buffer.from");
+    expect(publicSyncWorkflow).toContain("--allow-local-pending-release");
+    expect(publicSyncWorkflow).toContain("--allow-unpublished-release");
+    expect(publicSyncWorkflow).toContain("EVENT_NAME: ${{ github.event_name }}");
+    expect(publicSyncWorkflow).toContain('if [ "$EVENT_NAME" = "pull_request" ]');
     expect(publicSkillScript).toContain("local_skill_sha256");
     expect(publicSkillScript).toContain("public_main_skill_sha256");
     expect(publicSkillScript).toContain("public_release_skill_sha256");
@@ -632,7 +641,7 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("WAITSPIN_VERIFICATION_CODE");
     expect(skill).not.toContain('--code "$WAITSPIN_VERIFICATION_CODE"');
     expect(skill).toContain(
-      "npx --yes waitspin@0.1.8 init --email you@example.com --key-profile control --json",
+      "npx --yes waitspin@0.1.9 init --email you@example.com --key-profile control --json",
     );
     expect(skill).toContain("next: \"enter_email_code\"");
     expect(skill).toContain("Validate user-supplied emails");
@@ -648,7 +657,7 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("waitspin install --all --dry-run");
     expect(skill).toContain("A `publisher-extension` key is appropriate for publisher earnings reads");
     expect(skill).toContain("do not echo it in chat");
-    expect(skill).toContain("npx --yes waitspin@0.1.8");
+    expect(skill).toContain("npx --yes waitspin@0.1.9");
     expect(skill).not.toContain("waitspin@latest");
     expect(skill).not.toContain("USER_EMAIL");
     expect(skill).not.toContain("CODE_FROM_EMAIL");
@@ -712,7 +721,7 @@ describe("WaitSpin public docs contract", () => {
     expect(llmsBody).toContain("WaitSpin is an agent-first ad marketplace");
     expect(llmsBody).toContain("## WebMCP Browser Tools");
     expect(llmsBody).toContain(
-      "Verified user earning surfaces: VS Code Activity Bar/status-bar extension, Claude Code statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer",
+      "Verified user earning surfaces: VS Code Activity Bar/status-bar extension, Claude Code statusline command, Antigravity CLI statusline command, GitHub Copilot CLI statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer",
     );
     expect(llmsBody).toContain(
       "Advanced agent install: waitspin install --all",
@@ -880,10 +889,10 @@ describe("WaitSpin public docs contract", () => {
     expect(launchClient).toContain("Copy install-all");
     expect(launchClient).not.toContain("How can agents install the skill?");
     expect(launchPage).toContain(
-      "verified earning surfaces for VS Code, Claude Code, MiMo Code, OpenCode, or Grok Code CLI",
+      "verified earning surfaces for VS Code, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, or Grok Code CLI",
     );
     expect(launchPage).toContain(
-      "Web, CLI, VS Code, Claude Code, MiMo Code, OpenCode, Grok Code CLI",
+      "Web, CLI, VS Code, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, Grok Code CLI",
     );
     expect(launchPage).not.toContain(
       "publishers run the verified VS Code Activity Bar/status-bar extension",

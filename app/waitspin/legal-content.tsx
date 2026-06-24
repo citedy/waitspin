@@ -20,10 +20,11 @@ export function WaitSpinLegalPage({
           <h1>{title}</h1>
           <p>{description}</p>
           <div className="waitspin-text-status">
-            Last updated: June 17, 2026. The public launch surface is CLI, REST
-            API, verified user earning surfaces for VS Code, Claude Code, MiMo
-            Code, OpenCode, and Grok Code CLI, public market, and guarded
-            wallet/ledger/Connect/payout routes.
+            Last updated: June 24, 2026. The public launch surface is CLI, REST
+            API, verified user earning surfaces for VS Code, Claude Code,
+            Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, and Grok
+            Code CLI, public market, and guarded wallet/ledger/Connect/payout
+            routes.
           </div>
         </header>
         <div className="waitspin-text-content">{children}</div>

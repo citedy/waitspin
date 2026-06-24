@@ -39,9 +39,10 @@ export default function WaitSpinTermsPage() {
           WaitSpin is an independent ad marketplace for sponsored messages in
           verified developer wait-state surfaces. The current public contract is
           API-first and documents the verified VS Code Activity Bar/status-bar
-          extension, Claude Code statusline command, MiMo Code shell hook,
-          OpenCode TUI plugin slot, Grok Code CLI integration, and install-all
-          orchestration for detected supported targets. Wallet visibility,
+          extension, Claude Code statusline command, Antigravity CLI
+          statusline command, GitHub Copilot CLI statusline command, MiMo Code
+          shell hook, OpenCode TUI plugin slot, Grok Code CLI integration, and
+          install-all orchestration for detected supported targets. Wallet visibility,
           ledger history,{" "}
           <Link className="underline" href="/wallet/connect">
             Stripe Connect onboarding

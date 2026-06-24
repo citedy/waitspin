@@ -1966,14 +1966,44 @@ function cleanLine(value) {
     .slice(0, 120);
 }
 
-async function runPreviousStatusLine(command, input) {
+function expandExecutablePath(command) {
+  const value = String(command || "").trim();
+  if (!value) return "";
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  let expanded = value;
+  if (
+    home &&
+    (expanded === "~" || expanded.startsWith("~/") || expanded.startsWith("~\\"))
+  ) {
+    expanded = path.join(home, expanded.slice(2));
+  }
+  if (home) {
+    expanded = expanded
+      .replace(/\$\{HOME\}/g, home)
+      .replace(/\$HOME(?=\/|\\|$)/g, home);
+  }
+  const userProfile = process.env.USERPROFILE || "";
+  if (userProfile) {
+    expanded = expanded.replace(/%USERPROFILE%/gi, userProfile);
+  }
+  return expanded;
+}
+
+async function runPreviousStatusLine(command, input, mode = "shell") {
   if (!command) return "";
   return await new Promise((resolve) => {
-    const child = spawn(command, {
-      shell: true,
-      stdio: ["pipe", "pipe", "ignore"],
-      env: process.env,
-    });
+    const child =
+      mode === "exec-path"
+        ? spawn(expandExecutablePath(command), [], {
+            shell: false,
+            stdio: ["pipe", "pipe", "ignore"],
+            env: process.env,
+          })
+        : spawn(command, {
+            shell: true,
+            stdio: ["pipe", "pipe", "ignore"],
+            env: process.env,
+          });
     let stdout = "";
     let settled = false;
     let killTimer = null;
@@ -2505,6 +2535,10 @@ async function main() {
       ? state.previous_status_line.command
       : "",
     stdin,
+    state.previous_status_line_command_mode ||
+      (state.target === "copilot" || state.target === "antigravity"
+        ? "exec-path"
+        : "shell"),
   );
   let renderedSession = null;
 
@@ -2922,11 +2956,13 @@ type AntigravityInstallState = InstallState & {
   base_url: string;
   api_key?: string;
   api_key_path: string;
+  command_path?: string;
   runtime_path: string;
   cache_path: string;
   settings_path: string;
   managed_status_line: AntigravityStatusLine;
   previous_status_line?: JsonValue;
+  previous_status_line_command_mode?: "exec-path";
   composed_existing_status_line?: boolean;
   antigravity_version?: string;
   installed_at: string;
@@ -2942,6 +2978,15 @@ function antigravityStatePath(): string {
 
 function antigravityRuntimePath(): string {
   return path.join(antigravityInstallDir(), "antigravity-statusline.mjs");
+}
+
+function antigravityCommandPath(): string {
+  return path.join(
+    antigravityInstallDir(),
+    process.platform === "win32"
+      ? "antigravity-statusline-command.cmd"
+      : "antigravity-statusline-command",
+  );
 }
 
 function antigravityCachePath(): string {
@@ -3006,39 +3051,32 @@ async function loadAntigravityInstallState(): Promise<AntigravityInstallState | 
   return parsed as AntigravityInstallState;
 }
 
-function antigravityStatusLineCommand(input: {
+function antigravityStatusLineWrapperSource(input: {
   runtimePath: string;
   statePath: string;
 }): string {
   if (process.platform === "win32") {
-    const command = [
-      "&",
-      powerShellQuote(process.execPath),
-      powerShellQuote(input.runtimePath),
-      "--state",
-      powerShellQuote(input.statePath),
-    ].join(" ");
+    const cmdQuote = (value: string) => `"${value.replace(/"/g, "\"\"")}"`;
     return [
-      "powershell",
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      powerShellCommandArgument(command),
-    ].join(" ");
+      "@echo off",
+      `${cmdQuote(process.execPath)} ${cmdQuote(input.runtimePath)} --state ${cmdQuote(input.statePath)}`,
+      "",
+    ].join("\r\n");
   }
 
-  return `${shellQuote(process.execPath)} ${shellQuote(input.runtimePath)} --state ${shellQuote(input.statePath)}`;
+  return [
+    "#!/bin/sh",
+    `exec ${shellQuote(process.execPath)} ${shellQuote(input.runtimePath)} --state ${shellQuote(input.statePath)}`,
+    "",
+  ].join("\n");
 }
 
 function managedAntigravityStatusLine(input: {
-  runtimePath: string;
-  statePath: string;
+  commandPath: string;
 }): AntigravityStatusLine {
   return {
     type: "command",
-    command: antigravityStatusLineCommand(input),
+    command: input.commandPath,
     enabled: true,
   };
 }
@@ -3161,13 +3199,27 @@ function redactedAntigravityState(
   };
 }
 
-async function writeAntigravityRuntime(runtimePath: string): Promise<void> {
+async function writeAntigravityRuntime(input: {
+  runtimePath: string;
+  commandPath: string;
+  statePath: string;
+}): Promise<void> {
+  const { runtimePath, commandPath, statePath } = input;
   await mkdir(path.dirname(runtimePath), { recursive: true });
   await writeFile(runtimePath, claudeCodeStatuslineRuntimeSource(), {
     encoding: "utf8",
     mode: 0o755,
   });
   await chmod(runtimePath, 0o755);
+  await writeFile(
+    commandPath,
+    antigravityStatusLineWrapperSource({ runtimePath, statePath }),
+    {
+      encoding: "utf8",
+      mode: 0o755,
+    },
+  );
+  await chmod(commandPath, 0o755);
 }
 
 function assertSafeAntigravityManagedPath(filePath: string): string {
@@ -3189,14 +3241,14 @@ export async function runAntigravityInstall(flags: Map<string, string[]>) {
   const baseUrl = resolveCredentialedBaseUrl(flags);
   const statePath = antigravityStatePath();
   const runtimePath = antigravityRuntimePath();
+  const commandPath = antigravityCommandPath();
   const cachePath = antigravityCachePath();
   const apiKeyPath = antigravityApiKeyPath();
   const settingsPath = antigravitySettingsPath();
   const existingState = await loadAntigravityInstallState();
   const installId = existingState?.install_id || generateInstallId();
   const managedStatusLine = managedAntigravityStatusLine({
-    runtimePath,
-    statePath,
+    commandPath,
   });
   const settings = await loadAntigravitySettings();
   let settingsUpdate: ReturnType<typeof resolveAntigravitySettingsUpdate> | null =
@@ -3222,6 +3274,7 @@ export async function runAntigravityInstall(flags: Map<string, string[]>) {
     install_id: installId,
     publisher_target: ANTIGRAVITY_PUBLISHER_TARGET,
     state_path: statePath,
+    command_path: commandPath,
     runtime_path: runtimePath,
     cache_path: cachePath,
     api_key_path: apiKeyPath,
@@ -3273,18 +3326,21 @@ export async function runAntigravityInstall(flags: Map<string, string[]>) {
     registered_at: installedAt,
     base_url: baseUrl,
     api_key_path: apiKeyPath,
+    command_path: commandPath,
     runtime_path: runtimePath,
     cache_path: cachePath,
     settings_path: settingsPath,
     managed_status_line: managedStatusLine,
     previous_status_line: settingsUpdate.previousStatusLine,
+    previous_status_line_command_mode:
+      settingsUpdate.previousStatusLine === undefined ? undefined : "exec-path",
     composed_existing_status_line: settingsUpdate.composedExistingStatusLine,
     antigravity_version: antigravityVersion,
     installed_at: installedAt,
   };
 
   try {
-    await writeAntigravityRuntime(runtimePath);
+    await writeAntigravityRuntime({ runtimePath, commandPath, statePath });
     await writeSecretFile(apiKeyPath, apiKey);
     await writeJsonObjectFile(statePath, installState, 0o600);
     await writeJsonObjectFile(settingsPath, settingsUpdate.nextSettings);
@@ -3299,6 +3355,9 @@ export async function runAntigravityInstall(flags: Map<string, string[]>) {
       ).catch(() => {});
       await Promise.resolve(
         rm(runtimePath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(commandPath, { force: true, recursive: true }),
       ).catch(() => {});
       await Promise.resolve(
         rm(apiKeyPath, { force: true, recursive: true }),
@@ -3332,13 +3391,29 @@ export async function runAntigravityStatus(
       antigravityStatusLineEquals(currentStatusLine, managedStatusLine),
   );
   const runtimeInstalled = state
-    ? await pathExists(assertSafeAntigravityManagedPath(state.runtime_path))
+    ? await pathAccessible(
+        assertSafeAntigravityManagedPath(state.runtime_path),
+        fsConstants.R_OK,
+      )
+    : false;
+  const commandInstalled = state?.command_path
+    ? await pathAccessible(
+        assertSafeAntigravityManagedPath(state.command_path),
+        fsConstants.X_OK,
+      )
     : false;
   const apiKeyInstalled = state
-    ? await pathExists(assertSafeAntigravityManagedPath(state.api_key_path))
+    ? await pathAccessible(
+        assertSafeAntigravityManagedPath(state.api_key_path),
+        fsConstants.R_OK,
+      )
     : false;
   const installed = Boolean(
-    state && runtimeInstalled && apiKeyInstalled && statusLineConfigured,
+    state &&
+      runtimeInstalled &&
+      commandInstalled &&
+      apiKeyInstalled &&
+      statusLineConfigured,
   );
   const output = {
     ok: true,
@@ -3350,11 +3425,13 @@ export async function runAntigravityStatus(
     publisher_id: state?.publisher_id ?? null,
     publisher_target: state?.publisher_target ?? ANTIGRAVITY_PUBLISHER_TARGET,
     state_path: antigravityStatePath(),
+    command_path: state?.command_path ?? antigravityCommandPath(),
     runtime_path: state?.runtime_path ?? antigravityRuntimePath(),
     cache_path: state?.cache_path ?? antigravityCachePath(),
     settings_path: antigravitySettingsPath(),
     api_key_path: state?.api_key_path ?? antigravityApiKeyPath(),
     api_key_installed: apiKeyInstalled,
+    command_installed: commandInstalled,
     runtime_installed: runtimeInstalled,
     status_line_configured: statusLineConfigured,
     composed_existing_status_line: Boolean(
@@ -3385,6 +3462,7 @@ export async function runAntigravityUninstall(flags: Map<string, string[]>) {
   const settings = await loadAntigravitySettings();
   const declaredRemovePaths = state
     ? [
+        ...(state.command_path ? [state.command_path] : []),
         state.runtime_path,
         state.cache_path,
         state.api_key_path,
@@ -3438,6 +3516,9 @@ export async function runAntigravityUninstall(flags: Map<string, string[]>) {
 
   const removePaths = state
     ? [
+        ...(state.command_path
+          ? [assertSafeAntigravityManagedPath(state.command_path)]
+          : []),
         assertSafeAntigravityManagedPath(state.runtime_path),
         assertSafeAntigravityManagedPath(state.cache_path),
         assertSafeAntigravityManagedPath(state.api_key_path),
@@ -3483,6 +3564,7 @@ type CopilotInstallState = InstallState & {
   settings_path: string;
   managed_status_line: CopilotStatusLine;
   previous_status_line?: JsonValue;
+  previous_status_line_command_mode?: "exec-path";
   had_previous_footer_show_custom?: boolean;
   previous_footer_show_custom?: JsonValue;
   composed_existing_status_line?: boolean;
@@ -3928,6 +4010,8 @@ export async function runCopilotInstall(flags: Map<string, string[]>) {
     settings_path: settingsPath,
     managed_status_line: managedStatusLine,
     previous_status_line: settingsUpdate.previousStatusLine,
+    previous_status_line_command_mode:
+      settingsUpdate.previousStatusLine === undefined ? undefined : "exec-path",
     had_previous_footer_show_custom: settingsUpdate.hadPreviousFooterShowCustom,
     previous_footer_show_custom: settingsUpdate.previousFooterShowCustom,
     composed_existing_status_line: settingsUpdate.composedExistingStatusLine,
@@ -3988,7 +4072,10 @@ export async function runCopilotStatus(
       copilotStatusLineEquals(currentStatusLine, managedStatusLine),
   );
   const runtimeInstalled = state
-    ? await pathExists(assertSafeCopilotManagedPath(state.runtime_path))
+    ? await pathAccessible(
+        assertSafeCopilotManagedPath(state.runtime_path),
+        fsConstants.R_OK,
+      )
     : false;
   const commandInstalled = state
     ? await pathAccessible(

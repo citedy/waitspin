@@ -104,14 +104,16 @@ waitspin grok status
 
 API base: `https://api.waitspin.com`
 
-The public package installs five verified user earning surfaces: the VS Code
-Activity Bar/status-bar extension, the Claude Code statusline command, the MiMo
-Code shell hook, the OpenCode TUI plugin slot, and the Grok Code CLI footer.
-Claude Code support uses the official `statusLine.command` path and does not
-patch Claude Code internals. MiMo Code uses a bash hook that polls the API for
-sponsored messages. OpenCode uses its TUI `app_bottom` plugin slot. Grok Code
-CLI uses a managed text-asset footer patch with hash-backed backup/restore and
-does not patch native binaries.
+The public package installs seven verified user earning surfaces: the VS Code
+Activity Bar/status-bar extension, the Claude Code statusline command, the
+Antigravity CLI statusline command, the GitHub Copilot CLI statusline command,
+the MiMo Code shell hook, the OpenCode TUI plugin slot, and the Grok Code CLI
+footer. Claude Code, Antigravity CLI, and GitHub Copilot CLI support use
+first-class `statusLine.command` paths and do not patch native binaries. MiMo
+Code uses a bash hook that polls the API for sponsored messages. OpenCode uses
+its TUI `app_bottom` plugin slot. Grok Code CLI uses a managed text-asset
+footer patch with hash-backed backup/restore and does not patch native
+binaries.
 
 `waitspin install --all` is an advanced agent command for installing every
 detected supported target. It keeps explicit target commands as the canonical

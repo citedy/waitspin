@@ -51,6 +51,7 @@ function enoent(): Error & { code: string } {
 }
 
 describe("statusline CLI targets", () => {
+  const TEST_PUBLISHER_EXTENSION_TOKEN = "test-publisher-extension-token";
   const originalFetch = global.fetch;
   const originalCopilotHome = process.env.COPILOT_HOME;
   const originalCopilotBin = process.env.WAITSPIN_COPILOT_BIN;
@@ -65,6 +66,7 @@ describe("statusline CLI targets", () => {
 
   const antigravityStatePath = path.join(os.homedir(), ".waitspin", "antigravity-install.json");
   const antigravityRuntimePath = path.join(os.homedir(), ".waitspin", "antigravity-statusline.mjs");
+  const antigravityCommandPath = path.join(os.homedir(), ".waitspin", "antigravity-statusline-command");
   const antigravityCachePath = path.join(os.homedir(), ".waitspin", "antigravity-statusline-cache.json");
   const antigravityApiKeyPath = path.join(os.homedir(), ".waitspin", "antigravity-api-key.secret");
   const antigravitySettingsPath = path.join(
@@ -163,7 +165,7 @@ describe("statusline CLI targets", () => {
     });
 
     await rawRunCopilotInstall(
-      withJsonFlag(new Map([["api-key", ["wts_live_test_key_value_1234567890"]]])),
+      withJsonFlag(new Map([["api-key", [TEST_PUBLISHER_EXTENSION_TOKEN]]])),
     );
 
     const registerBody = JSON.parse(
@@ -177,7 +179,7 @@ describe("statusline CLI targets", () => {
     );
     expect(commandWrite?.[1]).toContain(copilotRuntimePath);
     expect(commandWrite?.[1]).toContain(copilotStatePath);
-    expect(commandWrite?.[1]).not.toContain("wts_live_test_key_value_1234567890");
+    expect(commandWrite?.[1]).not.toContain(TEST_PUBLISHER_EXTENSION_TOKEN);
 
     const runtimeWrite = (writeFile as jest.Mock).mock.calls.find(
       ([filePath]) => filePath === copilotRuntimePath,
@@ -192,7 +194,7 @@ describe("statusline CLI targets", () => {
     const secretWrite = (writeFile as jest.Mock).mock.calls.find(
       ([filePath]) => filePath === copilotApiKeyPath,
     );
-    expect(secretWrite?.[1]).toBe("wts_live_test_key_value_1234567890\n");
+    expect(secretWrite?.[1]).toBe(`${TEST_PUBLISHER_EXTENSION_TOKEN}\n`);
     expect(secretWrite?.[2]).toMatchObject({ mode: 0o600 });
     expect(chmod).toHaveBeenCalledWith(copilotApiKeyPath, 0o600);
 
@@ -232,7 +234,7 @@ describe("statusline CLI targets", () => {
       api_key_present: true,
     });
     expect(output).not.toHaveProperty("experimental");
-    expect(JSON.stringify(output)).not.toContain("wts_live_test_key_value_1234567890");
+    expect(JSON.stringify(output)).not.toContain(TEST_PUBLISHER_EXTENSION_TOKEN);
   });
 
   it("rejects malformed Copilot JSONC settings before side effects", async () => {
@@ -247,7 +249,7 @@ describe("statusline CLI targets", () => {
 
     await expect(
       rawRunCopilotInstall(
-        withJsonFlag(new Map([["api-key", ["wts_live_test_key_value_1234567890"]]])),
+        withJsonFlag(new Map([["api-key", [TEST_PUBLISHER_EXTENSION_TOKEN]]])),
       ),
     ).rejects.toThrow(/invalid JSONC/);
     expect(execFile).not.toHaveBeenCalled();
@@ -282,11 +284,66 @@ describe("statusline CLI targets", () => {
 
     await expect(
       rawRunCopilotInstall(
-        withJsonFlag(new Map([["api-key", ["wts_live_test_key_value_1234567890"]]])),
+        withJsonFlag(new Map([["api-key", [TEST_PUBLISHER_EXTENSION_TOKEN]]])),
       ),
     ).rejects.toThrow(/original COPILOT_HOME|another Copilot config home/);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("records composed Copilot statusline commands as executable paths", async () => {
+    const { runCopilotInstall: rawRunCopilotInstall } = await import("../cli");
+    const previousCommandPath = path.join(
+      os.tmpdir(),
+      "WaitSpin Test App",
+      "custom statusline",
+    );
+    const stdout: string[] = [];
+    jest.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === copilotSettingsPath) {
+        return JSON.stringify({
+          footer: { showCustom: true },
+          statusLine: { type: "command", command: previousCommandPath },
+        });
+      }
+      if (filePath === copilotStatePath) throw enoent();
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await rawRunCopilotInstall(
+      withJsonFlag(
+        new Map([
+          ["api-key", [TEST_PUBLISHER_EXTENSION_TOKEN]],
+          ["compose-existing", ["true"]],
+        ]),
+      ),
+    );
+
+    const stateWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === copilotStatePath,
+    );
+    const state = JSON.parse(stateWrite[1]) as Record<string, unknown>;
+    expect(state).toMatchObject({
+      previous_status_line: { type: "command", command: previousCommandPath },
+      previous_status_line_command_mode: "exec-path",
+      composed_existing_status_line: true,
+    });
+
+    const runtimeWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === copilotRuntimePath,
+    );
+    expect(runtimeWrite?.[1]).toContain("function expandExecutablePath(command)");
+    expect(runtimeWrite?.[1]).toContain(".replace(/\\$\\{HOME\\}/g, home)");
+    expect(runtimeWrite?.[1]).toContain("spawn(expandExecutablePath(command), []");
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "copilot",
+      settings_action: "compose-existing",
+      composed_existing_status_line: true,
+    });
   });
 
   it("reports Copilot status only when runtime, wrapper, secret, footer, and settings are healthy", async () => {
@@ -327,7 +384,7 @@ describe("statusline CLI targets", () => {
 
     await rawRunCopilotStatus(withJsonFlag());
 
-    expect(access).toHaveBeenCalledWith(copilotRuntimePath, 0);
+    expect(access).toHaveBeenCalledWith(copilotRuntimePath, 4);
     expect(access).toHaveBeenCalledWith(copilotCommandPath, 1);
     expect(access).toHaveBeenCalledWith(copilotApiKeyPath, 4);
     expect(JSON.parse(stdout.join(""))).toMatchObject({
@@ -383,6 +440,55 @@ describe("statusline CLI targets", () => {
       installed: false,
       api_key_installed: true,
       command_installed: false,
+      footer_custom_enabled: true,
+      status_line_configured: true,
+    });
+  });
+
+  it("reports Copilot as not installed when the runtime is not readable", async () => {
+    const { runCopilotStatus: rawRunCopilotStatus } = await import("../cli");
+    const managed = { type: "command", command: copilotCommandPath, padding: 0 };
+    const stdout: string[] = [];
+    jest.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+    access.mockImplementation(async (filePath: string, mode: number) => {
+      if (filePath === copilotRuntimePath && mode === 4) throw enoent();
+      return undefined;
+    });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === copilotStatePath) {
+        return JSON.stringify({
+          target: "copilot",
+          install_id: "wins_copilot",
+          publisher_id: "wpub_copilot",
+          publisher_target: "copilot",
+          registered_at: "2026-06-23T00:00:00.000Z",
+          base_url: "https://api.waitspin.com",
+          api_key_path: copilotApiKeyPath,
+          command_path: copilotCommandPath,
+          runtime_path: copilotRuntimePath,
+          cache_path: copilotCachePath,
+          settings_path: copilotSettingsPath,
+          managed_status_line: managed,
+          installed_at: "2026-06-23T00:00:00.000Z",
+        });
+      }
+      if (filePath === copilotSettingsPath) {
+        return JSON.stringify({ footer: { showCustom: true }, statusLine: managed });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await rawRunCopilotStatus(withJsonFlag());
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "copilot",
+      installed: false,
+      runtime_installed: false,
+      api_key_installed: true,
+      command_installed: true,
       footer_custom_enabled: true,
       status_line_configured: true,
     });
@@ -508,7 +614,7 @@ describe("statusline CLI targets", () => {
     });
 
     await rawRunAntigravityInstall(
-      withJsonFlag(new Map([["api-key", ["wts_live_test_key_value_1234567890"]]])),
+      withJsonFlag(new Map([["api-key", [TEST_PUBLISHER_EXTENSION_TOKEN]]])),
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -520,6 +626,7 @@ describe("statusline CLI targets", () => {
       target: "antigravity",
       publisher_target: "antigravity",
       api_key_path: antigravityApiKeyPath,
+      command_path: antigravityCommandPath,
       runtime_path: antigravityRuntimePath,
       cache_path: antigravityCachePath,
       settings_path: antigravitySettingsPath,
@@ -534,10 +641,16 @@ describe("statusline CLI targets", () => {
     };
     expect(settings.statusLine).toMatchObject({
       type: "command",
+      command: antigravityCommandPath,
       enabled: true,
     });
-    expect(settings.statusLine.command).toContain(antigravityRuntimePath);
-    expect(settings.statusLine.command).toContain(antigravityStatePath);
+
+    const commandWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === antigravityCommandPath,
+    );
+    expect(commandWrite?.[1]).toContain(antigravityRuntimePath);
+    expect(commandWrite?.[1]).toContain(antigravityStatePath);
+    expect(commandWrite?.[1]).not.toContain(TEST_PUBLISHER_EXTENSION_TOKEN);
 
     const runtimeWrite = (writeFile as jest.Mock).mock.calls.find(
       ([filePath]) => filePath === antigravityRuntimePath,
@@ -552,11 +665,11 @@ describe("statusline CLI targets", () => {
     const secretWrite = (writeFile as jest.Mock).mock.calls.find(
       ([filePath]) => filePath === antigravityApiKeyPath,
     );
-    expect(secretWrite?.[1]).toBe("wts_live_test_key_value_1234567890\n");
+    expect(secretWrite?.[1]).toBe(`${TEST_PUBLISHER_EXTENSION_TOKEN}\n`);
     expect(secretWrite?.[2]).toMatchObject({ mode: 0o600 });
     expect(chmod).toHaveBeenCalledWith(antigravityApiKeyPath, 0o600);
     expect(JSON.stringify(JSON.parse(stdout.join("")))).not.toContain(
-      "wts_live_test_key_value_1234567890",
+      TEST_PUBLISHER_EXTENSION_TOKEN,
     );
     expect(JSON.parse(stdout.join(""))).not.toHaveProperty("experimental");
   });
@@ -579,7 +692,7 @@ describe("statusline CLI targets", () => {
     });
 
     await rawRunAntigravityInstall(
-      withJsonFlag(new Map([["api-key", ["wts_live_test_key_value_1234567890"]]])),
+      withJsonFlag(new Map([["api-key", [TEST_PUBLISHER_EXTENSION_TOKEN]]])),
     );
 
     const stateWrite = (writeFile as jest.Mock).mock.calls.find(
@@ -598,7 +711,7 @@ describe("statusline CLI targets", () => {
     const { runAntigravityStatus: rawRunAntigravityStatus } = await import("../cli");
     const managed = {
       type: "command",
-      command: `'${process.execPath}' '${antigravityRuntimePath}' --state '${antigravityStatePath}'`,
+      command: antigravityCommandPath,
       enabled: true,
     };
     const stdout: string[] = [];
@@ -616,6 +729,7 @@ describe("statusline CLI targets", () => {
           registered_at: "2026-06-23T00:00:00.000Z",
           base_url: "https://api.waitspin.com",
           api_key_path: antigravityApiKeyPath,
+          command_path: antigravityCommandPath,
           runtime_path: antigravityRuntimePath,
           cache_path: antigravityCachePath,
           settings_path: antigravitySettingsPath,
@@ -629,12 +743,65 @@ describe("statusline CLI targets", () => {
 
     await rawRunAntigravityStatus(withJsonFlag());
 
-    expect(access).toHaveBeenCalledWith(antigravityRuntimePath, 0);
-    expect(access).toHaveBeenCalledWith(antigravityApiKeyPath, 0);
+    expect(access).toHaveBeenCalledWith(antigravityRuntimePath, 4);
+    expect(access).toHaveBeenCalledWith(antigravityCommandPath, 1);
+    expect(access).toHaveBeenCalledWith(antigravityApiKeyPath, 4);
     expect(JSON.parse(stdout.join(""))).toMatchObject({
       target: "antigravity",
       installed: true,
       api_key_installed: true,
+      command_installed: true,
+      runtime_installed: true,
+      status_line_configured: true,
+    });
+  });
+
+  it("reports Antigravity as not installed when the runtime is not readable", async () => {
+    const { runAntigravityStatus: rawRunAntigravityStatus } = await import("../cli");
+    const managed = {
+      type: "command",
+      command: antigravityCommandPath,
+      enabled: true,
+    };
+    const stdout: string[] = [];
+    jest.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+    access.mockImplementation(async (filePath: string, mode: number) => {
+      if (filePath === antigravityRuntimePath && mode === 4) throw enoent();
+      return undefined;
+    });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === antigravityStatePath) {
+        return JSON.stringify({
+          target: "antigravity",
+          install_id: "wins_antigravity",
+          publisher_id: "wpub_antigravity",
+          publisher_target: "antigravity",
+          registered_at: "2026-06-23T00:00:00.000Z",
+          base_url: "https://api.waitspin.com",
+          api_key_path: antigravityApiKeyPath,
+          command_path: antigravityCommandPath,
+          runtime_path: antigravityRuntimePath,
+          cache_path: antigravityCachePath,
+          settings_path: antigravitySettingsPath,
+          managed_status_line: managed,
+          installed_at: "2026-06-23T00:00:00.000Z",
+        });
+      }
+      if (filePath === antigravitySettingsPath) return JSON.stringify({ statusLine: managed });
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await rawRunAntigravityStatus(withJsonFlag());
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "antigravity",
+      installed: false,
+      api_key_installed: true,
+      command_installed: true,
+      runtime_installed: false,
       status_line_configured: true,
     });
   });
@@ -643,7 +810,7 @@ describe("statusline CLI targets", () => {
     const { runAntigravityStatus: rawRunAntigravityStatus } = await import("../cli");
     const managed = {
       type: "command",
-      command: `'${process.execPath}' '${antigravityRuntimePath}' --state '${antigravityStatePath}'`,
+      command: antigravityCommandPath,
       enabled: true,
     };
     const stdout: string[] = [];
@@ -665,6 +832,7 @@ describe("statusline CLI targets", () => {
           registered_at: "2026-06-23T00:00:00.000Z",
           base_url: "https://api.waitspin.com",
           api_key_path: antigravityApiKeyPath,
+          command_path: antigravityCommandPath,
           runtime_path: antigravityRuntimePath,
           cache_path: antigravityCachePath,
           settings_path: antigravitySettingsPath,
@@ -682,6 +850,7 @@ describe("statusline CLI targets", () => {
       target: "antigravity",
       installed: false,
       api_key_installed: false,
+      command_installed: true,
       runtime_installed: true,
       status_line_configured: true,
     });
@@ -692,7 +861,7 @@ describe("statusline CLI targets", () => {
     const previous = { type: "command", command: "custom-agy-statusline", enabled: true };
     const managed = {
       type: "command",
-      command: `'${process.execPath}' '${antigravityRuntimePath}' --state '${antigravityStatePath}'`,
+      command: antigravityCommandPath,
       enabled: true,
     };
     const stdout: string[] = [];
@@ -710,6 +879,7 @@ describe("statusline CLI targets", () => {
           registered_at: "2026-06-23T00:00:00.000Z",
           base_url: "https://api.waitspin.com",
           api_key_path: antigravityApiKeyPath,
+          command_path: antigravityCommandPath,
           runtime_path: antigravityRuntimePath,
           cache_path: antigravityCachePath,
           settings_path: antigravitySettingsPath,
@@ -734,6 +904,7 @@ describe("statusline CLI targets", () => {
       colorScheme: "terminal",
     });
     for (const filePath of [
+      antigravityCommandPath,
       antigravityRuntimePath,
       antigravityCachePath,
       antigravityApiKeyPath,
