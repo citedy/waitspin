@@ -40,6 +40,22 @@ export const WAITSPIN_PUBLIC_PUBLISHER_TARGETS = [
     localBehavior:
       "Uses a managed text-asset footer patch with hash-backed backup/restore plus managed runtime/cache/state; it does not patch native binaries.",
   },
+  {
+    label: "Antigravity CLI",
+    target: "antigravity",
+    installCommand:
+      "waitspin antigravity install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing",
+    localBehavior:
+      "Manages Antigravity CLI statusLine.command in ~/.gemini/antigravity-cli/settings.json and stores WaitSpin state/cache under ~/.waitspin without patching native binaries.",
+  },
+  {
+    label: "GitHub Copilot CLI",
+    target: "copilot",
+    installCommand:
+      "waitspin copilot install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing",
+    localBehavior:
+      "Manages GitHub Copilot CLI statusLine.command in ~/.copilot/settings.json or COPILOT_HOME/settings.json and stores WaitSpin state/cache under ~/.waitspin without patching native binaries.",
+  },
 ] as const;
 
 export const WAITSPIN_PUBLIC_TARGET_IDS = WAITSPIN_PUBLIC_PUBLISHER_TARGETS.map(

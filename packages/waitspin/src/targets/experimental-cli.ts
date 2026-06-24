@@ -13,11 +13,17 @@ import { experimentalRuntimeSource } from "./experimental-runtime.js";
 
 type JsonRecord = Record<string, unknown>;
 
-export type ExperimentalCliTargetName = "grok" | "cline" | "kimi" | "mmx";
+export type ExperimentalCliTargetName =
+  | "grok"
+  | "cline"
+  | "kilo"
+  | "kimi"
+  | "mmx";
 
 export const EXPERIMENTAL_CLI_TARGET_NAMES = [
   "grok",
   "cline",
+  "kilo",
   "kimi",
   "mmx",
 ] as const satisfies readonly ExperimentalCliTargetName[];
@@ -159,6 +165,17 @@ const TARGETS: Record<ExperimentalCliTargetName, ExperimentalTargetConfig> = {
       },
     ],
   },
+  kilo: {
+    target: "kilo",
+    label: "Kilo CLI",
+    mode: "unsupported-native-cli-plugin-slot",
+    binEnv: "WAITSPIN_KILO_BIN",
+    defaultBin: "kilo",
+    versionArgs: ["--version"],
+    patchFileEnv: "WAITSPIN_KILO_PATCH_FILE",
+    candidateRelativePaths: [],
+    anchors: [],
+  },
   kimi: {
     target: "kimi",
     label: "Kimi Code",
@@ -242,6 +259,13 @@ function unsupportedPatchFailure(target: ExperimentalCliTargetName): {
         "Cline CLI is currently published as a native platform binary without an official TUI statusline/plugin slot. Use the VS Code target for the Cline extension: waitspin extension install --target vscode. Standalone Cline CLI needs official statusline/plugin support before WaitSpin can install it.",
     };
   }
+  if (target === "kilo") {
+    return {
+      failureKind: "unsupported_native_cli",
+      humanMessage:
+        "Kilo CLI is currently published as a native platform binary. Local project plugins initialize, but the private TUI slot runtime is not exposed to external plugins, so WaitSpin cannot install a persistent footer/status line safely. Keep Kilo hidden until Kilo publishes a stable footer/status plugin surface.",
+    };
+  }
   return {
     failureKind: "unsupported_patch_layout",
     humanMessage:
@@ -255,6 +279,9 @@ function installNoteForTarget(target: ExperimentalCliTargetName): string {
   }
   if (target === "cline") {
     return "Hidden experimental target. Cline VS Code extension support is covered by the VS Code fallback; standalone Cline CLI awaits an official statusline/plugin surface.";
+  }
+  if (target === "kilo") {
+    return "Hidden experimental target. Kilo CLI loads local plugins, but external plugins cannot currently register the private TUI footer/status slots needed for WaitSpin impression-safe display.";
   }
   return "Hidden experimental target. Not advertised publicly until real-session install, status, impression, uninstall, restore, and rollback acceptance passes.";
 }
@@ -1293,6 +1320,13 @@ export async function runExperimentalCliTargetStatus(
           fallback_command: "waitspin extension install --target vscode",
           human_message:
             "Cline VS Code extension support is covered by the VS Code target. Standalone Cline CLI needs official statusline/plugin support before WaitSpin can install it.",
+        }
+      : {}),
+    ...(target === "kilo" && !state
+      ? {
+          unsupported_reason: "unsupported_native_cli",
+          human_message:
+            "Kilo CLI loads local plugins, but external plugins cannot currently register the private TUI footer/status slots needed for a persistent WaitSpin line. Keep Kilo hidden until Kilo publishes a stable footer/status plugin surface.",
         }
       : {}),
   };

@@ -52,5 +52,8 @@
   "devDependencies": {
     "@types/node": "^22.18.0",
     "typescript": "5.9.2"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
   }
 }

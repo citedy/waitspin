@@ -1,6 +1,6 @@
 ---
 name: waitspin
-description: Use this skill for WaitSpin, the sponsored wait-state ads CLI and API. Trigger when a user wants to create or manage WaitSpin campaigns, buy prepaid impression blocks, inspect the public market, onboard with email OTP keys, install or check earning surfaces for VS Code, Claude Code, MiMo Code, OpenCode, or Grok Code CLI, inspect wallet/ledger/payout status, or reason about WaitSpin public API, trust boundary, privacy, and shipped vs not-shipped capabilities.
+description: Use this skill for WaitSpin, the sponsored wait-state ads CLI and API. Trigger when a user wants to create or manage WaitSpin campaigns, buy prepaid impression blocks, inspect the public market, onboard with email OTP keys, install or check earning surfaces for VS Code, Claude Code, MiMo Code, OpenCode, Grok Code CLI, Antigravity CLI, or GitHub Copilot CLI, inspect wallet/ledger/payout status, or reason about WaitSpin public API, trust boundary, privacy, and shipped vs not-shipped capabilities.
 ---
 
 # WaitSpin
@@ -17,10 +17,10 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - Privacy: `https://waitspin.com/waitspin/privacy`
 - Public client source: `https://github.com/citedy/waitspin`
 - npm package: `waitspin`
-- Published skill release: `v0.1.11`
+- Published skill release: `v0.1.12`
 - API base: `https://api.waitspin.com`
 
-Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.11`; the npm CLI package is `waitspin@0.1.8`.
+Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.12`; the npm CLI package is `waitspin@0.1.8`.
 
 Before making a claim about current package availability, verify it:
 
@@ -142,6 +142,12 @@ waitspin extension status --target vscode --json
 waitspin claude-code install --compose-existing --json
 waitspin claude-code status --json
 
+waitspin antigravity install --compose-existing --json
+waitspin antigravity status --json
+
+waitspin copilot install --compose-existing --json
+waitspin copilot status --json
+
 waitspin mimocode install --json
 waitspin mimocode status --json
 
@@ -156,10 +162,12 @@ Target behavior:
 
 - VS Code: first-class Marketplace extension plus CLI fallback.
 - Claude Code: official `statusLine.command`; use `--compose-existing` only when preserving an existing status line.
+- Antigravity CLI: official `statusLine.command`; use `--compose-existing` only when preserving an existing status line.
+- GitHub Copilot CLI: official `statusLine.command`; use `--compose-existing` only when preserving an existing status line.
 - MiMo Code: managed bash hook and runtime.
 - OpenCode: managed TUI plugin slot.
 - Grok Code CLI: managed text-asset footer patch with hash-backed backup and restore.
-- Standalone Cline CLI is not a public install target. Cline VS Code extension users are covered by the VS Code target.
+- Standalone Cline CLI and Kilo CLI are not public install targets. Cline VS Code extension users are covered by the VS Code target.
 
 ### Inspect Wallet, Ledger, And Payout Readiness
 

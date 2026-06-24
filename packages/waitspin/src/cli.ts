@@ -10,12 +10,18 @@ import {
   cp,
   mkdir,
   readFile,
+  readdir,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+  parse as parseJsonc,
+  printParseErrorCode,
+  type ParseError,
+} from "jsonc-parser";
 import {
   experimentalAllInstallTargets,
   experimentalInstallTarget,
@@ -114,6 +120,13 @@ const MIMOCODE_DEFAULT_BIN = "mimo";
 const OPENCODE_PUBLISHER_TARGET = "opencode";
 const OPENCODE_BIN_ENV = "WAITSPIN_OPENCODE_BIN";
 const OPENCODE_DEFAULT_BIN = "opencode";
+const COPILOT_PUBLISHER_TARGET = "copilot";
+const COPILOT_BIN_ENV = "WAITSPIN_COPILOT_BIN";
+const COPILOT_HOME_ENV = "COPILOT_HOME";
+const COPILOT_DEFAULT_BIN = "copilot";
+const ANTIGRAVITY_PUBLISHER_TARGET = "antigravity";
+const ANTIGRAVITY_BIN_ENV = "WAITSPIN_ANTIGRAVITY_BIN";
+const ANTIGRAVITY_DEFAULT_BIN = "agy";
 
 const extensionTargets = {
   vscode: "vscode",
@@ -152,11 +165,17 @@ export function usageText(): string {
       "  waitspin grok install [--json] [--api-key KEY] [--dry-run]",
       "  waitspin grok status [--json]",
       "  waitspin grok uninstall [--json] [--dry-run]",
+      "  waitspin antigravity install [--json] [--api-key KEY] [--compose-existing] [--dry-run]",
+      "  waitspin antigravity status [--json]",
+      "  waitspin antigravity uninstall [--json] [--dry-run]",
+      "  waitspin copilot install [--json] [--api-key KEY] [--compose-existing] [--dry-run]",
+      "  waitspin copilot status [--json]",
+      "  waitspin copilot uninstall [--json] [--dry-run]",
       "",
       "Defaults:",
       "  API base: https://api.waitspin.com",
       "  API key: WAITSPIN_API_KEY env var",
-      "  Public user targets: status-bar-fallback, claude-code, mimocode, opencode, grok",
+      "  Public user targets: status-bar-fallback, claude-code, mimocode, opencode, grok, antigravity, copilot",
     ].join("\n") + "\n"
   );
 }
@@ -962,6 +981,44 @@ async function registerPublisherInstall(input: {
       );
     }
     if (
+      input.target === COPILOT_PUBLISHER_TARGET &&
+      error instanceof WaitSpinCliHttpError &&
+      error.status === 400 &&
+      /Invalid input|Validation error/.test(error.message)
+    ) {
+      throw new Error(
+        [
+          `WaitSpin API rejected target "${COPILOT_PUBLISHER_TARGET}".`,
+          "Your local CLI supports this hidden GitHub Copilot CLI target, but the selected API base does not.",
+          "",
+          "For production:",
+          "  deploy the backend target allowlist only after full public acceptance, then rerun:",
+          `  waitspin ${COPILOT_PUBLISHER_TARGET} install`,
+          "",
+          "For developer-local acceptance only, use an explicit loopback API with --allow-dev-api-base.",
+        ].join("\n"),
+      );
+    }
+    if (
+      input.target === ANTIGRAVITY_PUBLISHER_TARGET &&
+      error instanceof WaitSpinCliHttpError &&
+      error.status === 400 &&
+      /Invalid input|Validation error/.test(error.message)
+    ) {
+      throw new Error(
+        [
+          `WaitSpin API rejected target "${ANTIGRAVITY_PUBLISHER_TARGET}".`,
+          "Your local CLI supports this hidden Antigravity target, but the selected API base does not.",
+          "",
+          "For production:",
+          "  deploy the backend target allowlist only after full public acceptance, then rerun:",
+          `  waitspin ${ANTIGRAVITY_PUBLISHER_TARGET} install`,
+          "",
+          "For developer-local acceptance only, use an explicit loopback API with --allow-dev-api-base.",
+        ].join("\n"),
+      );
+    }
+    if (
       isExperimentalCliTargetName(input.target) &&
       error instanceof WaitSpinCliHttpError &&
       error.status === 400 &&
@@ -1512,15 +1569,40 @@ function isErrno(error: unknown, code: string): boolean {
   );
 }
 
-async function readJsonObjectFile(filePath: string): Promise<Record<string, unknown> | null> {
+function parseJsonObject(
+  filePath: string,
+  raw: string,
+  options: { jsonc?: boolean } = {},
+): Record<string, unknown> {
+  const errors: ParseError[] = [];
+  const parsed = options.jsonc
+    ? parseJsonc(raw, errors, {
+        allowTrailingComma: true,
+        disallowComments: false,
+      })
+    : (JSON.parse(raw) as unknown);
+
+  if (errors.length > 0) {
+    const first = errors[0];
+    throw new Error(
+      `${filePath} contains invalid JSONC: ${printParseErrorCode(first.error)} at offset ${first.offset}.`,
+    );
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${filePath} must contain a JSON object.`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+async function readJsonObjectFile(
+  filePath: string,
+  options: { jsonc?: boolean } = {},
+): Promise<Record<string, unknown> | null> {
   try {
     const raw = await readFile(filePath, "utf8");
     if (!raw.trim()) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error(`${filePath} must contain a JSON object.`);
-    }
-    return parsed as Record<string, unknown>;
+    return parseJsonObject(filePath, raw, options);
   } catch (error) {
     if (isErrno(error, "ENOENT")) {
       return null;
@@ -1572,6 +1654,65 @@ async function loadClaudeCodeInstallState(): Promise<ClaudeCodeInstallState | nu
     return null;
   }
   return parsed as ClaudeCodeInstallState;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function requireStringField(
+  value: Record<string, unknown>,
+  field: string,
+  statePath: string,
+): string {
+  const fieldValue = value[field];
+  if (typeof fieldValue !== "string" || !fieldValue.trim()) {
+    throw new Error(`${statePath} is missing required string field ${field}.`);
+  }
+  return fieldValue;
+}
+
+function requireRecordField(
+  value: Record<string, unknown>,
+  field: string,
+  statePath: string,
+): Record<string, unknown> {
+  const fieldValue = value[field];
+  if (!isRecord(fieldValue)) {
+    throw new Error(`${statePath} is missing required object field ${field}.`);
+  }
+  return fieldValue;
+}
+
+function pathIsInside(candidate: string, root: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+async function managedHeartbeatPaths(
+  cachePath: string,
+  assertSafeManagedPath: (filePath: string) => string,
+): Promise<string[]> {
+  const safeCachePath = assertSafeManagedPath(cachePath);
+  const directory = path.dirname(safeCachePath);
+  const prefix = `${path.basename(safeCachePath)}.`;
+  const suffix = ".heartbeat";
+  let entries: string[];
+  try {
+    entries = await readdir(directory);
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return [];
+    throw error;
+  }
+  return entries
+    .filter((entry) => entry.startsWith(prefix) && entry.endsWith(suffix))
+    .map((entry) => assertSafeManagedPath(path.join(directory, entry)));
+}
+
+async function writeSecretFile(filePath: string, value: string): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${value}\n`, { encoding: "utf8", mode: 0o600 });
+  await chmod(filePath, 0o600);
 }
 
 function isCommandStatusLine(value: unknown): value is ClaudeCodeStatusLine {
@@ -1712,6 +1853,17 @@ const HEARTBEAT_IMPRESSION_WAIT_MS = 2_500;
 const LOCK_RETRY_MS = 40;
 const LOCK_TIMEOUT_MS = 2_000;
 const LOCK_STALE_MS = 10_000;
+const SHELL_PROCESS_NAMES = new Set([
+  "bash",
+  "cmd",
+  "dash",
+  "fish",
+  "ksh",
+  "powershell",
+  "pwsh",
+  "sh",
+  "zsh",
+]);
 
 function argValue(name) {
   const index = process.argv.indexOf(name);
@@ -1729,6 +1881,15 @@ async function readJson(filePath, fallback) {
     return JSON.parse(await readFile(filePath, "utf8"));
   } catch {
     return fallback;
+  }
+}
+
+async function readSecret(filePath) {
+  if (!filePath) return "";
+  try {
+    return (await readFile(filePath, "utf8")).trim();
+  } catch {
+    return "";
   }
 }
 
@@ -1930,6 +2091,100 @@ async function waitForHeartbeatVisibleAfter(heartbeatPath, shownAt) {
   } while (true);
 }
 
+function processAlive(pid) {
+  if (!Number.isFinite(pid) || pid <= 1) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function processInfo(pid) {
+  if (process.platform === "win32" || !processAlive(pid)) return null;
+  return await new Promise((resolve) => {
+    const child = spawn("ps", ["-o", "ppid=,comm=", "-p", String(pid)], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let stdout = "";
+    let settled = false;
+    function finish(value) {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    }
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+      if (stdout.length > 4000) stdout = stdout.slice(0, 4000);
+    });
+    child.on("error", () => finish(null));
+    child.on("close", (code) => {
+      if (code !== 0) {
+        finish(null);
+        return;
+      }
+      const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop() || "";
+      const match = line.trim().match(/^(\d+)\s+(.+)$/);
+      if (!match) {
+        finish(null);
+        return;
+      }
+      finish({ ppid: Number(match[1]), command: match[2] });
+    });
+  });
+}
+
+function isShellProcess(command) {
+  const base = path.basename(String(command || "")).toLowerCase();
+  return SHELL_PROCESS_NAMES.has(base);
+}
+
+async function detectOwnerPid() {
+  const parentPid = Number(process.ppid);
+  if (!processAlive(parentPid)) return 0;
+  const parent = await processInfo(parentPid);
+  if (parent && isShellProcess(parent.command) && processAlive(parent.ppid)) {
+    return parent.ppid;
+  }
+  return parentPid;
+}
+
+async function ownerAliveAfterVisible(session) {
+  const ownerPid = Number(session.ownerPid || 0);
+  return processAlive(ownerPid);
+}
+
+function commandStatusLineMatches(current, managed) {
+  if (!current || !managed || typeof current !== "object" || typeof managed !== "object") {
+    return false;
+  }
+  if (Array.isArray(current) || Array.isArray(managed)) return false;
+  if (typeof current.command !== "string" || typeof managed.command !== "string") {
+    return false;
+  }
+  if (current.command !== managed.command) return false;
+  if (managed.type !== undefined && current.type !== managed.type) return false;
+  if (managed.padding !== undefined && current.padding !== managed.padding) return false;
+  if (managed.enabled !== undefined && current.enabled !== managed.enabled) return false;
+  return current.enabled !== false;
+}
+
+async function installedSurfaceStillConfigured(state) {
+  if (!state?.settings_path || !state?.managed_status_line) return false;
+  const settings = await readJson(state.settings_path, null);
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return false;
+  }
+  if (!commandStatusLineMatches(settings.statusLine, state.managed_status_line)) {
+    return false;
+  }
+  if (state.target === "copilot") {
+    return Boolean(settings.footer?.showCustom === true);
+  }
+  return true;
+}
+
 async function markShown(session, heartbeatPath) {
   const serve = session.activeServe;
   if (!serve || serve.impressionRecorded || !heartbeatPath) return false;
@@ -2049,27 +2304,37 @@ async function recordDelayedImpression() {
   const heartbeatPath = argValue("--heartbeat");
   if (!statePath || !expectedServeId || !heartbeatPath) return;
   const state = await readJson(statePath, null);
-  if (!state?.api_key || !state.install_id || !state.base_url || !state.cache_path) {
+  const apiKey = state?.api_key || (await readSecret(state?.api_key_path));
+  if (!apiKey || !state?.install_id || !state.base_url || !state.cache_path) {
     return;
   }
-  const cache = await readJson(state.cache_path, { sessions: {} });
-  const session = Object.values(cache.sessions || {}).find(
-    (candidate) =>
-      candidate?.activeServe?.serveId === expectedServeId &&
-      candidate.activeServe.shownHeartbeatPath === heartbeatPath,
+  const runtimeState = { ...state, api_key: apiKey };
+  const cache = normalizeSessionCache(
+    await readJson(state.cache_path, { sessions: {} }),
   );
+  const session = findSessionByServe(cache, expectedServeId, heartbeatPath);
   const serve = session?.activeServe;
   if (!serve || serve.impressionRecorded || !serve.shownAt) return;
   const visibleAt = serve.shownAt + Math.max(serve.minVisibleMs || 5000, 5000);
   const dueAt = visibleAt + 250;
   if (Date.now() < dueAt) await sleep(dueAt - Date.now());
-  if (!(await waitForHeartbeatVisibleAfter(heartbeatPath, visibleAt))) return;
+  const ownerConfiguredVisible =
+    (await ownerAliveAfterVisible(session)) &&
+    (await installedSurfaceStillConfigured(state));
+  if (
+    !(await waitForHeartbeatVisibleAfter(heartbeatPath, visibleAt)) &&
+    !ownerConfiguredVisible
+  ) {
+    return;
+  }
   await withCacheLock(state.cache_path, async () => {
-    const lockedCache = await readJson(state.cache_path, { sessions: {} });
-    const lockedSession = Object.values(lockedCache.sessions || {}).find(
-      (candidate) =>
-        candidate?.activeServe?.serveId === expectedServeId &&
-        candidate.activeServe.shownHeartbeatPath === heartbeatPath,
+    const lockedCache = normalizeSessionCache(
+      await readJson(state.cache_path, { sessions: {} }),
+    );
+    const lockedSession = findSessionByServe(
+      lockedCache,
+      expectedServeId,
+      heartbeatPath,
     );
     if (!lockedSession) return;
     const lockedServe = lockedSession.activeServe;
@@ -2082,9 +2347,11 @@ async function recordDelayedImpression() {
       lockedServe.shownAt &&
       lockedServe.shownHeartbeatPath === heartbeatPath &&
       !serveIsExpired(lockedServe) &&
-      (await heartbeatVisibleAfter(heartbeatPath, lockedVisibleAt))
+      ((await heartbeatVisibleAfter(heartbeatPath, lockedVisibleAt)) ||
+        ((await ownerAliveAfterVisible(lockedSession)) &&
+          (await installedSurfaceStillConfigured(state))))
     ) {
-      await recordImpression(state, lockedSession);
+      await recordImpression(runtimeState, lockedSession);
     }
     delete lockedSession.impressionTickServeId;
     delete lockedSession.impressionTickScheduledAt;
@@ -2096,16 +2363,74 @@ async function recordDelayedImpression() {
 function sessionKey(inputJson) {
   return (
     inputJson.session_id ||
+    inputJson.conversation_id ||
     inputJson.transcript_path ||
+    inputJson.workspace_current_dir ||
     inputJson.cwd ||
     "claude-code"
   );
 }
 
-function pruneSessions(cache) {
+function safeInputJson(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const output = {};
+  for (const key of ["session_id", "transcript_path", "cwd"]) {
+    if (typeof value[key] === "string" && value[key].trim()) {
+      output[key] = value[key];
+    }
+  }
+  if (typeof value.conversation_id === "string" && value.conversation_id.trim()) {
+    output.conversation_id = value.conversation_id;
+  }
+  if (
+    value.workspace &&
+    typeof value.workspace === "object" &&
+    !Array.isArray(value.workspace) &&
+    typeof value.workspace.current_dir === "string" &&
+    value.workspace.current_dir.trim()
+  ) {
+    output.workspace_current_dir = value.workspace.current_dir;
+  }
+  return output;
+}
+
+function safeSessionKey(inputJson) {
+  return createHash("sha256")
+    .update(String(sessionKey(inputJson)))
+    .digest("hex");
+}
+
+function normalizeSessionCache(value) {
+  const cache =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  if (
+    !cache.sessions ||
+    typeof cache.sessions !== "object" ||
+    Array.isArray(cache.sessions)
+  ) {
+    cache.sessions = {};
+  }
+  return cache;
+}
+
+function findSessionByServe(cache, expectedServeId, heartbeatPath) {
+  return Object.values(cache.sessions).find(
+    (candidate) =>
+      candidate &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate) &&
+      candidate.activeServe?.serveId === expectedServeId &&
+      candidate.activeServe.shownHeartbeatPath === heartbeatPath,
+  );
+}
+
+async function pruneSessions(cachePath, cache) {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   for (const [key, value] of Object.entries(cache.sessions || {})) {
-    if ((value.lastSeenAt || 0) < cutoff) delete cache.sessions[key];
+    if ((value.lastSeenAt || 0) < cutoff) {
+      delete cache.sessions[key];
+      await rm(heartbeatPathFor(cachePath, key), { force: true }).catch(() => {});
+    }
   }
 }
 
@@ -2115,17 +2440,20 @@ async function main() {
   const stdin = await readStdin();
   let inputJson = {};
   try {
-    inputJson = stdin.trim() ? JSON.parse(stdin) : {};
+    inputJson = safeInputJson(stdin.trim() ? JSON.parse(stdin) : {});
   } catch {
     inputJson = {};
   }
   const state = await readJson(statePath, null);
-  if (!state?.api_key || !state.install_id || !state.base_url || !state.cache_path) {
+  const apiKey = state?.api_key || (await readSecret(state?.api_key_path));
+  if (!apiKey || !state?.install_id || !state.base_url || !state.cache_path) {
     return;
   }
+  const runtimeState = { ...state, api_key: apiKey };
+  const ownerPid = await detectOwnerPid();
 
   const previous = await runPreviousStatusLine(
-    state.previous_status_line?.type === "command"
+    typeof state.previous_status_line?.command === "string"
       ? state.previous_status_line.command
       : "",
     stdin,
@@ -2134,31 +2462,44 @@ async function main() {
 
   try {
     renderedSession = await withCacheLock(state.cache_path, async () => {
-      const cache = await readJson(state.cache_path, { sessions: {} });
-      if (!cache.sessions || typeof cache.sessions !== "object") cache.sessions = {};
-      const key = sessionKey(inputJson);
-      const session = cache.sessions[key] || {};
+      const cache = normalizeSessionCache(
+        await readJson(state.cache_path, { sessions: {} }),
+      );
+      const key = safeSessionKey(inputJson);
+      const existingSession = Object.prototype.hasOwnProperty.call(
+        cache.sessions,
+        key,
+      )
+        ? cache.sessions[key]
+        : {};
+      const session =
+        existingSession &&
+        typeof existingSession === "object" &&
+        !Array.isArray(existingSession)
+          ? existingSession
+          : {};
       session.lastSeenAt = Date.now();
       cache.sessions[key] = session;
       const heartbeatPath = heartbeatPathFor(state.cache_path, key);
       await writeHeartbeat(heartbeatPath);
+      if (ownerPid > 1) session.ownerPid = ownerPid;
 
       if (session.activeServe && serveIsExpired(session.activeServe)) {
         session.activeServe = null;
       }
-      await recordForegroundImpression(state, session, heartbeatPath);
+      await recordForegroundImpression(runtimeState, session, heartbeatPath);
       const shouldFetchNext = !session.activeServe
         ? Date.now() - (session.lastFetchAt || 0) >= FETCH_INTERVAL_MS
         : session.activeServe.impressionRecorded &&
           Date.now() - (session.lastFetchAt || 0) >= FETCH_INTERVAL_MS;
       if (shouldFetchNext) {
-        await fetchNextServe(state, session);
+        await fetchNextServe(runtimeState, session);
       }
       if (session.activeServe && !session.activeServe.impressionRecorded) {
         await markShown(session, heartbeatPath);
         await scheduleImpressionTick(statePath, heartbeatPath, session);
       }
-      pruneSessions(cache);
+      await pruneSessions(state.cache_path, cache);
       await writeJson(state.cache_path, cache);
       return session;
     });
@@ -2442,6 +2783,7 @@ export async function runClaudeCodeUninstall(flags: Map<string, string[]>) {
         state.runtime_path,
         state.cache_path,
         claudeCodeStatePath(),
+        `${state.cache_path}.*.heartbeat`,
       ]
     : [claudeCodeStatePath()];
 
@@ -2493,6 +2835,10 @@ export async function runClaudeCodeUninstall(flags: Map<string, string[]>) {
         assertSafeClaudeCodeManagedPath(state.runtime_path),
         assertSafeClaudeCodeManagedPath(state.cache_path),
         claudeCodeStatePath(),
+        ...(await managedHeartbeatPaths(
+          state.cache_path,
+          assertSafeClaudeCodeManagedPath,
+        )),
       ]
     : [claudeCodeStatePath()];
 
@@ -2507,6 +2853,1229 @@ export async function runClaudeCodeUninstall(flags: Map<string, string[]>) {
   const output = {
     ok: true,
     target: CLAUDE_CODE_PUBLISHER_TARGET,
+    uninstalled: true,
+    settings_action: settingsAction,
+    removed: removePaths,
+    ...(settingsWarning ? { settings_warning: settingsWarning } : {}),
+  };
+  printCliOutput(flags, output, formatTargetUninstallResult(output));
+}
+
+type AntigravitySettings = Record<string, JsonValue>;
+
+type AntigravityStatusLine = {
+  type: "command";
+  command: string;
+  enabled: true;
+};
+
+type AntigravityInstallState = InstallState & {
+  target: typeof ANTIGRAVITY_PUBLISHER_TARGET;
+  base_url: string;
+  api_key?: string;
+  api_key_path: string;
+  runtime_path: string;
+  cache_path: string;
+  settings_path: string;
+  managed_status_line: AntigravityStatusLine;
+  previous_status_line?: JsonValue;
+  composed_existing_status_line?: boolean;
+  antigravity_version?: string;
+  installed_at: string;
+};
+
+function antigravityInstallDir(): string {
+  return path.join(os.homedir(), ".waitspin");
+}
+
+function antigravityStatePath(): string {
+  return path.join(antigravityInstallDir(), "antigravity-install.json");
+}
+
+function antigravityRuntimePath(): string {
+  return path.join(antigravityInstallDir(), "antigravity-statusline.mjs");
+}
+
+function antigravityCachePath(): string {
+  return path.join(antigravityInstallDir(), "antigravity-statusline-cache.json");
+}
+
+function antigravityApiKeyPath(): string {
+  return path.join(antigravityInstallDir(), "antigravity-api-key.secret");
+}
+
+function antigravitySettingsPath(): string {
+  return path.join(os.homedir(), ".gemini", "antigravity-cli", "settings.json");
+}
+
+function antigravityBinary(): string {
+  return executableFromEnv(ANTIGRAVITY_BIN_ENV, ANTIGRAVITY_DEFAULT_BIN);
+}
+
+async function readAntigravityVersion(): Promise<string> {
+  try {
+    const result = await execFileText(antigravityBinary(), ["--version"], {
+      encoding: "utf8",
+      timeout: 5_000,
+    });
+    return `${result.stdout || result.stderr || ""}`.trim();
+  } catch (error) {
+    throw new Error(
+      `Unable to run Antigravity CLI. Install Antigravity CLI or set ${ANTIGRAVITY_BIN_ENV} to its executable path before installing WaitSpin Antigravity support.`,
+      { cause: error },
+    );
+  }
+}
+
+async function loadAntigravitySettings(): Promise<AntigravitySettings> {
+  const parsed = await readJsonObjectFile(antigravitySettingsPath(), {
+    jsonc: true,
+  });
+  return (parsed ?? {}) as AntigravitySettings;
+}
+
+async function loadAntigravityInstallState(): Promise<AntigravityInstallState | null> {
+  const statePath = antigravityStatePath();
+  const parsed = await readJsonObjectFile(statePath);
+  if (!parsed?.install_id || parsed.target !== ANTIGRAVITY_PUBLISHER_TARGET) {
+    return null;
+  }
+  for (const field of [
+    "install_id",
+    "publisher_id",
+    "publisher_target",
+    "registered_at",
+    "base_url",
+    "runtime_path",
+    "cache_path",
+    "settings_path",
+    "api_key_path",
+    "installed_at",
+  ]) {
+    requireStringField(parsed, field, statePath);
+  }
+  requireRecordField(parsed, "managed_status_line", statePath);
+  return parsed as AntigravityInstallState;
+}
+
+function antigravityStatusLineCommand(input: {
+  runtimePath: string;
+  statePath: string;
+}): string {
+  if (process.platform === "win32") {
+    const command = [
+      "&",
+      powerShellQuote(process.execPath),
+      powerShellQuote(input.runtimePath),
+      "--state",
+      powerShellQuote(input.statePath),
+    ].join(" ");
+    return [
+      "powershell",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      powerShellCommandArgument(command),
+    ].join(" ");
+  }
+
+  return `${shellQuote(process.execPath)} ${shellQuote(input.runtimePath)} --state ${shellQuote(input.statePath)}`;
+}
+
+function managedAntigravityStatusLine(input: {
+  runtimePath: string;
+  statePath: string;
+}): AntigravityStatusLine {
+  return {
+    type: "command",
+    command: antigravityStatusLineCommand(input),
+    enabled: true,
+  };
+}
+
+function isAntigravityCommandStatusLine(value: unknown): value is {
+  command: string;
+  enabled?: boolean;
+} {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as { command?: unknown }).command === "string" &&
+    (value as { command: string }).command.trim().length > 0 &&
+    (value as { enabled?: unknown }).enabled !== false
+  );
+}
+
+function isEmptyAntigravityStatusLine(value: unknown): boolean {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as { command?: unknown }).command === "string" &&
+    (value as { command: string }).command.trim().length === 0
+  );
+}
+
+function antigravityStatusLineEquals(left: unknown, right: unknown): boolean {
+  if (isAntigravityCommandStatusLine(left) && isAntigravityCommandStatusLine(right)) {
+    return (
+      left.command === right.command &&
+      left.enabled !== false &&
+      right.enabled !== false &&
+      (left as { type?: unknown }).type === (right as { type?: unknown }).type
+    );
+  }
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function resolveAntigravitySettingsUpdate(input: {
+  settings: AntigravitySettings;
+  managedStatusLine: AntigravityStatusLine;
+  existingState: AntigravityInstallState | null;
+  composeExisting: boolean;
+}): {
+  nextSettings: AntigravitySettings;
+  previousStatusLine?: JsonValue;
+  composedExistingStatusLine: boolean;
+  action: "install" | "refresh-managed" | "compose-existing";
+} {
+  const current = isEmptyAntigravityStatusLine(input.settings.statusLine)
+    ? undefined
+    : input.settings.statusLine;
+  const isAlreadyManaged =
+    antigravityStatusLineEquals(current, input.managedStatusLine) ||
+    (input.existingState?.managed_status_line &&
+      antigravityStatusLineEquals(current, input.existingState.managed_status_line));
+
+  if (!current || isAlreadyManaged) {
+    return {
+      nextSettings: { ...input.settings, statusLine: input.managedStatusLine },
+      previousStatusLine: input.existingState?.previous_status_line,
+      composedExistingStatusLine: Boolean(
+        input.existingState?.composed_existing_status_line,
+      ),
+      action: isAlreadyManaged ? "refresh-managed" : "install",
+    };
+  }
+
+  if (!input.composeExisting) {
+    throw new Error(
+      "Antigravity already has a statusLine configured. Re-run with --compose-existing to preserve it and append the WaitSpin sponsor line, or remove it first.",
+    );
+  }
+
+  if (!isAntigravityCommandStatusLine(current)) {
+    throw new Error(
+      "Antigravity statusLine exists but is not a command status line; refusing to compose because restore would be ambiguous.",
+    );
+  }
+
+  if (current.command === input.managedStatusLine.command) {
+    return {
+      nextSettings: { ...input.settings, statusLine: input.managedStatusLine },
+      composedExistingStatusLine: false,
+      action: "refresh-managed",
+    };
+  }
+
+  return {
+    nextSettings: { ...input.settings, statusLine: input.managedStatusLine },
+    previousStatusLine: current as JsonValue,
+    composedExistingStatusLine: true,
+    action: "compose-existing",
+  };
+}
+
+function redactedAntigravityState(
+  state: AntigravityInstallState | null,
+): Record<string, unknown> | null {
+  if (!state) return null;
+  return {
+    target: state.target,
+    install_id: state.install_id,
+    publisher_id: state.publisher_id,
+    publisher_target: state.publisher_target,
+    registered_at: state.registered_at,
+    base_url: state.base_url,
+    runtime_path: state.runtime_path,
+    cache_path: state.cache_path,
+    settings_path: state.settings_path,
+    composed_existing_status_line: Boolean(
+      state.composed_existing_status_line,
+    ),
+    has_previous_status_line: state.previous_status_line !== undefined,
+    antigravity_version: state.antigravity_version,
+    installed_at: state.installed_at,
+    api_key_present: Boolean(state.api_key || state.api_key_path),
+  };
+}
+
+async function writeAntigravityRuntime(runtimePath: string): Promise<void> {
+  await mkdir(path.dirname(runtimePath), { recursive: true });
+  await writeFile(runtimePath, claudeCodeStatuslineRuntimeSource(), {
+    encoding: "utf8",
+    mode: 0o755,
+  });
+  await chmod(runtimePath, 0o755);
+}
+
+function assertSafeAntigravityManagedPath(filePath: string): string {
+  const installRoot = path.resolve(antigravityInstallDir());
+  const resolved = path.resolve(filePath);
+  if (
+    !resolved.startsWith(`${installRoot}${path.sep}`) ||
+    !path.basename(resolved).startsWith("antigravity-")
+  ) {
+    throw new Error(
+      "Refusing to manage an Antigravity WaitSpin file outside ~/.waitspin.",
+    );
+  }
+  return resolved;
+}
+
+export async function runAntigravityInstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const statePath = antigravityStatePath();
+  const runtimePath = antigravityRuntimePath();
+  const cachePath = antigravityCachePath();
+  const apiKeyPath = antigravityApiKeyPath();
+  const settingsPath = antigravitySettingsPath();
+  const existingState = await loadAntigravityInstallState();
+  const installId = existingState?.install_id || generateInstallId();
+  const managedStatusLine = managedAntigravityStatusLine({
+    runtimePath,
+    statePath,
+  });
+  const settings = await loadAntigravitySettings();
+  let settingsUpdate: ReturnType<typeof resolveAntigravitySettingsUpdate> | null =
+    null;
+  let settingsBlockedReason: string | null = null;
+  try {
+    settingsUpdate = resolveAntigravitySettingsUpdate({
+      settings,
+      managedStatusLine,
+      existingState,
+      composeExisting: booleanFlag(flags, "compose-existing"),
+    });
+  } catch (error) {
+    if (!dryRun) throw error;
+    settingsBlockedReason =
+      error instanceof Error ? error.message : String(error);
+  }
+
+  const summary = {
+    ok: true,
+    target: ANTIGRAVITY_PUBLISHER_TARGET,
+    mode: "statusline-command",
+    install_id: installId,
+    publisher_target: ANTIGRAVITY_PUBLISHER_TARGET,
+    state_path: statePath,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    api_key_path: apiKeyPath,
+    settings_path: settingsPath,
+    settings_action: settingsUpdate?.action ?? "blocked",
+    composed_existing_status_line:
+      settingsUpdate?.composedExistingStatusLine ?? false,
+    note: "Installs WaitSpin through Antigravity CLI's statusLine.command surface.",
+    next: "check_status",
+    next_command: "waitspin antigravity status",
+  };
+
+  if (dryRun) {
+    const output = {
+      ...summary,
+      dry_run: true,
+      publisher_registered: false,
+      has_existing_status_line: Boolean(settings.statusLine),
+      ...(settingsBlockedReason
+        ? {
+            would_fail: true,
+            settings_blocked_reason: settingsBlockedReason,
+            next: "resolve_status_line_conflict",
+            next_command: "waitspin antigravity install --compose-existing",
+          }
+        : {}),
+    };
+    printCliOutput(flags, output, formatTargetInstallResult(output));
+    return;
+  }
+
+  if (!settingsUpdate) {
+    throw new Error("Unable to resolve Antigravity settings update.");
+  }
+  const antigravityVersion = await readAntigravityVersion();
+  const apiKey = requireApiKey(flags);
+  const registration = await registerPublisherInstall({
+    baseUrl,
+    apiKey,
+    installId,
+    target: ANTIGRAVITY_PUBLISHER_TARGET,
+  });
+  const installedAt = new Date().toISOString();
+  const installState: AntigravityInstallState = {
+    target: ANTIGRAVITY_PUBLISHER_TARGET,
+    install_id: registration.install_id,
+    publisher_id: registration.publisher_id,
+    publisher_target: registration.target,
+    registered_at: installedAt,
+    base_url: baseUrl,
+    api_key_path: apiKeyPath,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    settings_path: settingsPath,
+    managed_status_line: managedStatusLine,
+    previous_status_line: settingsUpdate.previousStatusLine,
+    composed_existing_status_line: settingsUpdate.composedExistingStatusLine,
+    antigravity_version: antigravityVersion,
+    installed_at: installedAt,
+  };
+
+  try {
+    await writeAntigravityRuntime(runtimePath);
+    await writeSecretFile(apiKeyPath, apiKey);
+    await writeJsonObjectFile(statePath, installState, 0o600);
+    await writeJsonObjectFile(settingsPath, settingsUpdate.nextSettings);
+  } catch (error) {
+    if (existingState) {
+      await writeJsonObjectFile(statePath, existingState, 0o600).catch(
+        () => {},
+      );
+    } else {
+      await Promise.resolve(
+        rm(statePath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(runtimePath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(apiKeyPath, { force: true, recursive: true }),
+      ).catch(() => {});
+    }
+    throw error;
+  }
+
+  const output = {
+    ...summary,
+    ...redactedAntigravityState(installState),
+    publisher_registered: true,
+    antigravity_version: antigravityVersion,
+    next: "launch_antigravity",
+    next_command: ANTIGRAVITY_DEFAULT_BIN,
+    verification_hint:
+      "Keep the sponsored line visible for at least 5 seconds, then verify an impression.",
+  };
+  printCliOutput(flags, output, formatTargetInstallResult(output));
+}
+
+export async function runAntigravityStatus(
+  flags: Map<string, string[]> = new Map(),
+) {
+  const state = await loadAntigravityInstallState();
+  const settings = await loadAntigravitySettings();
+  const managedStatusLine = state?.managed_status_line ?? null;
+  const currentStatusLine = settings.statusLine;
+  const statusLineConfigured = Boolean(
+    managedStatusLine &&
+      antigravityStatusLineEquals(currentStatusLine, managedStatusLine),
+  );
+  const runtimeInstalled = state
+    ? await pathExists(assertSafeAntigravityManagedPath(state.runtime_path))
+    : false;
+  const apiKeyInstalled = state
+    ? await pathExists(assertSafeAntigravityManagedPath(state.api_key_path))
+    : false;
+  const installed = Boolean(
+    state && runtimeInstalled && apiKeyInstalled && statusLineConfigured,
+  );
+  const output = {
+    ok: true,
+    target: ANTIGRAVITY_PUBLISHER_TARGET,
+    mode: "statusline-command",
+    installed,
+    publisher_registered: Boolean(state?.publisher_id),
+    install_id: state?.install_id ?? null,
+    publisher_id: state?.publisher_id ?? null,
+    publisher_target: state?.publisher_target ?? ANTIGRAVITY_PUBLISHER_TARGET,
+    state_path: antigravityStatePath(),
+    runtime_path: state?.runtime_path ?? antigravityRuntimePath(),
+    cache_path: state?.cache_path ?? antigravityCachePath(),
+    settings_path: antigravitySettingsPath(),
+    api_key_path: state?.api_key_path ?? antigravityApiKeyPath(),
+    api_key_installed: apiKeyInstalled,
+    runtime_installed: runtimeInstalled,
+    status_line_configured: statusLineConfigured,
+    composed_existing_status_line: Boolean(
+      state?.composed_existing_status_line,
+    ),
+    has_previous_status_line: Boolean(state?.previous_status_line),
+    antigravity_version: state?.antigravity_version ?? null,
+    ...(installed
+      ? {
+          next: "launch_antigravity",
+          next_command: ANTIGRAVITY_DEFAULT_BIN,
+          verification_hint:
+            "Keep the sponsored line visible for at least 5 seconds, then verify an impression.",
+        }
+      : {
+          next: "install_antigravity",
+          next_command: "waitspin antigravity install",
+          human_message:
+            "Antigravity WaitSpin statusline support is not installed for this user.",
+        }),
+  };
+  printCliOutput(flags, output, formatTargetStatusResult(output));
+}
+
+export async function runAntigravityUninstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const state = await loadAntigravityInstallState();
+  const settings = await loadAntigravitySettings();
+  const declaredRemovePaths = state
+    ? [
+        state.runtime_path,
+        state.cache_path,
+        state.api_key_path,
+        antigravityStatePath(),
+        `${state.cache_path}.*.heartbeat`,
+      ]
+    : [antigravityStatePath()];
+
+  let nextSettings: AntigravitySettings | null = null;
+  let settingsAction:
+    | "restore-previous"
+    | "remove-managed"
+    | "skip-user-settings"
+    | "not-managed" = "not-managed";
+  let settingsWarning: string | null = null;
+  if (state?.managed_status_line) {
+    if (!antigravityStatusLineEquals(settings.statusLine, state.managed_status_line)) {
+      settingsAction = "skip-user-settings";
+      settingsWarning =
+        "Antigravity statusLine is no longer the WaitSpin managed command; leaving user settings unchanged while removing WaitSpin-managed files.";
+    } else {
+      nextSettings = { ...settings };
+      if (state.previous_status_line !== undefined) {
+        nextSettings.statusLine = state.previous_status_line;
+        settingsAction = "restore-previous";
+      } else {
+        delete nextSettings.statusLine;
+        settingsAction = "remove-managed";
+      }
+    }
+  }
+
+  if (dryRun) {
+    const output = {
+      ok: true,
+      target: ANTIGRAVITY_PUBLISHER_TARGET,
+      dry_run: true,
+      installed: Boolean(state),
+      settings_action: settingsAction,
+      would_remove: declaredRemovePaths,
+      path_validation: state ? "deferred_until_apply" : "not_needed",
+      ...(settingsWarning
+        ? {
+            settings_warning: settingsWarning,
+          }
+        : {}),
+    };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
+    return;
+  }
+
+  const removePaths = state
+    ? [
+        assertSafeAntigravityManagedPath(state.runtime_path),
+        assertSafeAntigravityManagedPath(state.cache_path),
+        assertSafeAntigravityManagedPath(state.api_key_path),
+        antigravityStatePath(),
+        ...(await managedHeartbeatPaths(
+          state.cache_path,
+          assertSafeAntigravityManagedPath,
+        )),
+      ]
+    : [antigravityStatePath()];
+
+  if (nextSettings) {
+    await writeJsonObjectFile(antigravitySettingsPath(), nextSettings);
+  }
+  await Promise.all(
+    removePaths.map((filePath) =>
+      rm(filePath, { force: true, recursive: true }),
+    ),
+  );
+  const output = {
+    ok: true,
+    target: ANTIGRAVITY_PUBLISHER_TARGET,
+    uninstalled: true,
+    settings_action: settingsAction,
+    removed: removePaths,
+    ...(settingsWarning ? { settings_warning: settingsWarning } : {}),
+  };
+  printCliOutput(flags, output, formatTargetUninstallResult(output));
+}
+
+type CopilotSettings = Record<string, JsonValue>;
+
+type CopilotStatusLine = ClaudeCodeStatusLine;
+
+type CopilotInstallState = InstallState & {
+  target: typeof COPILOT_PUBLISHER_TARGET;
+  base_url: string;
+  api_key?: string;
+  api_key_path: string;
+  command_path: string;
+  runtime_path: string;
+  cache_path: string;
+  settings_path: string;
+  managed_status_line: CopilotStatusLine;
+  previous_status_line?: JsonValue;
+  had_previous_footer_show_custom?: boolean;
+  previous_footer_show_custom?: JsonValue;
+  composed_existing_status_line?: boolean;
+  copilot_version?: string;
+  installed_at: string;
+};
+
+function copilotInstallDir(): string {
+  return path.join(os.homedir(), ".waitspin");
+}
+
+function copilotStatePath(): string {
+  return path.join(copilotInstallDir(), "copilot-install.json");
+}
+
+function copilotRuntimePath(): string {
+  return path.join(copilotInstallDir(), "copilot-statusline.mjs");
+}
+
+function copilotCommandPath(): string {
+  return path.join(
+    copilotInstallDir(),
+    process.platform === "win32"
+      ? "copilot-statusline-command.cmd"
+      : "copilot-statusline-command",
+  );
+}
+
+function copilotCachePath(): string {
+  return path.join(copilotInstallDir(), "copilot-statusline-cache.json");
+}
+
+function copilotApiKeyPath(): string {
+  return path.join(copilotInstallDir(), "copilot-api-key.secret");
+}
+
+function assertSafeCopilotConfigDir(resolved: string): string {
+  const homeDir = path.resolve(os.homedir());
+  const tmpDir = path.resolve(os.tmpdir());
+  if (!pathIsInside(resolved, homeDir) && !pathIsInside(resolved, tmpDir)) {
+    throw new Error(
+      `${COPILOT_HOME_ENV} must resolve inside the user's home directory or the system temporary directory for unattended WaitSpin installs.`,
+    );
+  }
+  if (resolved === path.parse(resolved).root) {
+    throw new Error(`${COPILOT_HOME_ENV} must not point at a filesystem root.`);
+  }
+  return resolved;
+}
+
+function copilotConfigDir(): string {
+  const configuredHome = process.env[COPILOT_HOME_ENV]?.trim();
+  return configuredHome
+    ? assertSafeCopilotConfigDir(path.resolve(configuredHome))
+    : path.join(os.homedir(), ".copilot");
+}
+
+function copilotSettingsPath(): string {
+  return path.join(copilotConfigDir(), "settings.json");
+}
+
+function copilotBinary(): string {
+  return executableFromEnv(COPILOT_BIN_ENV, COPILOT_DEFAULT_BIN);
+}
+
+async function readCopilotVersion(): Promise<string> {
+  try {
+    const result = await execFileText(copilotBinary(), ["--version"], {
+      encoding: "utf8",
+      timeout: 5_000,
+    });
+    return `${result.stdout || result.stderr || ""}`.trim();
+  } catch (error) {
+    throw new Error(
+      `Unable to run GitHub Copilot CLI. Install GitHub Copilot CLI or set ${COPILOT_BIN_ENV} to its executable path before installing WaitSpin Copilot support.`,
+      { cause: error },
+    );
+  }
+}
+
+async function loadCopilotSettings(
+  settingsPath = copilotSettingsPath(),
+): Promise<CopilotSettings> {
+  const parsed = await readJsonObjectFile(settingsPath, {
+    jsonc: true,
+  });
+  return (parsed ?? {}) as CopilotSettings;
+}
+
+async function loadCopilotInstallState(): Promise<CopilotInstallState | null> {
+  const statePath = copilotStatePath();
+  const parsed = await readJsonObjectFile(statePath);
+  if (!parsed?.install_id || parsed.target !== COPILOT_PUBLISHER_TARGET) {
+    return null;
+  }
+  for (const field of [
+    "install_id",
+    "publisher_id",
+    "publisher_target",
+    "registered_at",
+    "base_url",
+    "runtime_path",
+    "cache_path",
+    "settings_path",
+    "command_path",
+    "api_key_path",
+    "installed_at",
+  ]) {
+    requireStringField(parsed, field, statePath);
+  }
+  requireRecordField(parsed, "managed_status_line", statePath);
+  return parsed as CopilotInstallState;
+}
+
+function copilotStatusLineWrapperSource(input: {
+  runtimePath: string;
+  statePath: string;
+}): string {
+  if (process.platform === "win32") {
+    const cmdQuote = (value: string) => `"${value.replace(/"/g, "\"\"")}"`;
+    return [
+      "@echo off",
+      `${cmdQuote(process.execPath)} ${cmdQuote(input.runtimePath)} --state ${cmdQuote(input.statePath)}`,
+      "",
+    ].join("\r\n");
+  }
+
+  return [
+    "#!/bin/sh",
+    `exec ${shellQuote(process.execPath)} ${shellQuote(input.runtimePath)} --state ${shellQuote(input.statePath)}`,
+    "",
+  ].join("\n");
+}
+
+function managedCopilotStatusLine(input: {
+  commandPath: string;
+}): CopilotStatusLine {
+  return {
+    type: "command",
+    command: input.commandPath,
+    padding: 0,
+  };
+}
+
+function copilotStatusLineEquals(left: unknown, right: unknown): boolean {
+  if (isCommandStatusLine(left) && isCommandStatusLine(right)) {
+    return (
+      left.type === right.type &&
+      left.command === right.command &&
+      left.padding === right.padding
+    );
+  }
+  return statusLineEquals(left, right);
+}
+
+function copilotFooterWithCustomEnabled(settings: CopilotSettings): {
+  footer: JsonValue;
+  previousFooterShowCustom?: JsonValue;
+  hadPreviousFooterShowCustom: boolean;
+} {
+  const currentFooter = isRecord(settings.footer) ? settings.footer : {};
+  const hadPreviousFooterShowCustom = Object.prototype.hasOwnProperty.call(
+    currentFooter,
+    "showCustom",
+  );
+  return {
+    footer: { ...currentFooter, showCustom: true } as JsonValue,
+    previousFooterShowCustom: currentFooter.showCustom as JsonValue | undefined,
+    hadPreviousFooterShowCustom,
+  };
+}
+
+function restoreCopilotFooterShowCustom(
+  settings: CopilotSettings,
+  state: CopilotInstallState,
+): CopilotSettings {
+  const currentFooter = isRecord(settings.footer) ? { ...settings.footer } : {};
+  if (
+    state.had_previous_footer_show_custom &&
+    state.previous_footer_show_custom !== undefined
+  ) {
+    currentFooter.showCustom = state.previous_footer_show_custom;
+  } else {
+    delete currentFooter.showCustom;
+  }
+  const nextSettings = { ...settings };
+  if (Object.keys(currentFooter).length > 0) {
+    nextSettings.footer = currentFooter as JsonValue;
+  } else {
+    delete nextSettings.footer;
+  }
+  return nextSettings;
+}
+
+function resolveCopilotSettingsUpdate(input: {
+  settings: CopilotSettings;
+  managedStatusLine: CopilotStatusLine;
+  existingState: CopilotInstallState | null;
+  composeExisting: boolean;
+}): {
+  nextSettings: CopilotSettings;
+  previousStatusLine?: JsonValue;
+  composedExistingStatusLine: boolean;
+  previousFooterShowCustom?: JsonValue;
+  hadPreviousFooterShowCustom: boolean;
+  action: "install" | "refresh-managed" | "compose-existing";
+} {
+  const current = input.settings.statusLine;
+  const footerUpdate = copilotFooterWithCustomEnabled(input.settings);
+  const isAlreadyManaged =
+    copilotStatusLineEquals(current, input.managedStatusLine) ||
+    (input.existingState?.managed_status_line &&
+      copilotStatusLineEquals(current, input.existingState.managed_status_line));
+
+  if (!current || isAlreadyManaged) {
+    return {
+      nextSettings: {
+        ...input.settings,
+        footer: footerUpdate.footer,
+        statusLine: input.managedStatusLine,
+      },
+      previousStatusLine: input.existingState?.previous_status_line,
+      composedExistingStatusLine: Boolean(
+        input.existingState?.composed_existing_status_line,
+      ),
+      previousFooterShowCustom:
+        input.existingState?.previous_footer_show_custom ??
+        footerUpdate.previousFooterShowCustom,
+      hadPreviousFooterShowCustom:
+        input.existingState?.had_previous_footer_show_custom ??
+        footerUpdate.hadPreviousFooterShowCustom,
+      action: isAlreadyManaged ? "refresh-managed" : "install",
+    };
+  }
+
+  if (!input.composeExisting) {
+    throw new Error(
+      "GitHub Copilot CLI already has a statusLine configured. Re-run with --compose-existing to preserve it and append the WaitSpin sponsor line, or remove it first.",
+    );
+  }
+
+  if (!isCommandStatusLine(current)) {
+    throw new Error(
+      "GitHub Copilot CLI statusLine exists but is not a command status line; refusing to compose because restore would be ambiguous.",
+    );
+  }
+
+  if (current.command === input.managedStatusLine.command) {
+    return {
+      nextSettings: {
+        ...input.settings,
+        footer: footerUpdate.footer,
+        statusLine: input.managedStatusLine,
+      },
+      composedExistingStatusLine: false,
+      previousFooterShowCustom:
+        input.existingState?.previous_footer_show_custom ??
+        footerUpdate.previousFooterShowCustom,
+      hadPreviousFooterShowCustom:
+        input.existingState?.had_previous_footer_show_custom ??
+        footerUpdate.hadPreviousFooterShowCustom,
+      action: "refresh-managed",
+    };
+  }
+
+  return {
+    nextSettings: {
+      ...input.settings,
+      footer: footerUpdate.footer,
+      statusLine: input.managedStatusLine,
+    },
+    previousStatusLine: current as JsonValue,
+    composedExistingStatusLine: true,
+    previousFooterShowCustom: footerUpdate.previousFooterShowCustom,
+    hadPreviousFooterShowCustom: footerUpdate.hadPreviousFooterShowCustom,
+    action: "compose-existing",
+  };
+}
+
+function redactedCopilotState(
+  state: CopilotInstallState | null,
+): Record<string, unknown> | null {
+  if (!state) return null;
+  return {
+    target: state.target,
+    install_id: state.install_id,
+    publisher_id: state.publisher_id,
+    publisher_target: state.publisher_target,
+    registered_at: state.registered_at,
+    base_url: state.base_url,
+    runtime_path: state.runtime_path,
+    cache_path: state.cache_path,
+    settings_path: state.settings_path,
+    composed_existing_status_line: Boolean(
+      state.composed_existing_status_line,
+    ),
+    has_previous_status_line: state.previous_status_line !== undefined,
+    copilot_version: state.copilot_version,
+    installed_at: state.installed_at,
+    api_key_present: Boolean(state.api_key || state.api_key_path),
+  };
+}
+
+async function writeCopilotRuntime(input: {
+  runtimePath: string;
+  commandPath: string;
+  statePath: string;
+}): Promise<void> {
+  const { runtimePath, commandPath, statePath } = input;
+  await mkdir(path.dirname(runtimePath), { recursive: true });
+  await writeFile(runtimePath, claudeCodeStatuslineRuntimeSource(), {
+    encoding: "utf8",
+    mode: 0o755,
+  });
+  await chmod(runtimePath, 0o755);
+  await writeFile(
+    commandPath,
+    copilotStatusLineWrapperSource({ runtimePath, statePath }),
+    {
+      encoding: "utf8",
+      mode: 0o755,
+    },
+  );
+  await chmod(commandPath, 0o755);
+}
+
+function assertSafeCopilotManagedPath(filePath: string): string {
+  const installRoot = path.resolve(copilotInstallDir());
+  const resolved = path.resolve(filePath);
+  if (
+    !resolved.startsWith(`${installRoot}${path.sep}`) ||
+    !path.basename(resolved).startsWith("copilot-")
+  ) {
+    throw new Error(
+      "Refusing to manage a GitHub Copilot CLI WaitSpin file outside ~/.waitspin.",
+    );
+  }
+  return resolved;
+}
+
+export async function runCopilotInstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const statePath = copilotStatePath();
+  const runtimePath = copilotRuntimePath();
+  const commandPath = copilotCommandPath();
+  const cachePath = copilotCachePath();
+  const apiKeyPath = copilotApiKeyPath();
+  const settingsPath = copilotSettingsPath();
+  const existingState = await loadCopilotInstallState();
+  const installId = existingState?.install_id || generateInstallId();
+  const managedStatusLine = managedCopilotStatusLine({
+    commandPath,
+  });
+  const settings = await loadCopilotSettings();
+  let settingsUpdate: ReturnType<typeof resolveCopilotSettingsUpdate> | null =
+    null;
+  let settingsBlockedReason: string | null = null;
+  try {
+    settingsUpdate = resolveCopilotSettingsUpdate({
+      settings,
+      managedStatusLine,
+      existingState,
+      composeExisting: booleanFlag(flags, "compose-existing"),
+    });
+  } catch (error) {
+    if (!dryRun) throw error;
+    settingsBlockedReason =
+      error instanceof Error ? error.message : String(error);
+  }
+
+  const summary = {
+    ok: true,
+    target: COPILOT_PUBLISHER_TARGET,
+    mode: "statusline-command",
+    install_id: installId,
+    publisher_target: COPILOT_PUBLISHER_TARGET,
+    state_path: statePath,
+    command_path: commandPath,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    api_key_path: apiKeyPath,
+    settings_path: settingsPath,
+    settings_action: settingsUpdate?.action ?? "blocked",
+    composed_existing_status_line:
+      settingsUpdate?.composedExistingStatusLine ?? false,
+    note: "Installs WaitSpin through GitHub Copilot CLI's statusLine.command surface.",
+    next: "check_status",
+    next_command: "waitspin copilot status",
+  };
+
+  if (dryRun) {
+    const output = {
+      ...summary,
+      dry_run: true,
+      publisher_registered: false,
+      has_existing_status_line: Boolean(settings.statusLine),
+      ...(settingsBlockedReason
+        ? {
+            would_fail: true,
+            settings_blocked_reason: settingsBlockedReason,
+            next: "resolve_status_line_conflict",
+            next_command: "waitspin copilot install --compose-existing",
+          }
+        : {}),
+    };
+    printCliOutput(flags, output, formatTargetInstallResult(output));
+    return;
+  }
+
+  if (!settingsUpdate) {
+    throw new Error("Unable to resolve GitHub Copilot CLI settings update.");
+  }
+  const copilotVersion = await readCopilotVersion();
+  const apiKey = requireApiKey(flags);
+  const registration = await registerPublisherInstall({
+    baseUrl,
+    apiKey,
+    installId,
+    target: COPILOT_PUBLISHER_TARGET,
+  });
+  const installedAt = new Date().toISOString();
+  const installState: CopilotInstallState = {
+    target: COPILOT_PUBLISHER_TARGET,
+    install_id: registration.install_id,
+    publisher_id: registration.publisher_id,
+    publisher_target: registration.target,
+    registered_at: installedAt,
+    base_url: baseUrl,
+    api_key_path: apiKeyPath,
+    command_path: commandPath,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    settings_path: settingsPath,
+    managed_status_line: managedStatusLine,
+    previous_status_line: settingsUpdate.previousStatusLine,
+    had_previous_footer_show_custom: settingsUpdate.hadPreviousFooterShowCustom,
+    previous_footer_show_custom: settingsUpdate.previousFooterShowCustom,
+    composed_existing_status_line: settingsUpdate.composedExistingStatusLine,
+    copilot_version: copilotVersion,
+    installed_at: installedAt,
+  };
+
+  try {
+    await writeCopilotRuntime({ runtimePath, commandPath, statePath });
+    await writeSecretFile(apiKeyPath, apiKey);
+    await writeJsonObjectFile(statePath, installState, 0o600);
+    await writeJsonObjectFile(settingsPath, settingsUpdate.nextSettings);
+  } catch (error) {
+    if (existingState) {
+      await writeJsonObjectFile(statePath, existingState, 0o600).catch(
+        () => {},
+      );
+    } else {
+      await Promise.resolve(
+        rm(statePath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(runtimePath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(commandPath, { force: true, recursive: true }),
+      ).catch(() => {});
+      await Promise.resolve(
+        rm(apiKeyPath, { force: true, recursive: true }),
+      ).catch(() => {});
+    }
+    throw error;
+  }
+
+  const output = {
+    ...summary,
+    ...redactedCopilotState(installState),
+    publisher_registered: true,
+    copilot_version: copilotVersion,
+    next: "launch_copilot",
+    next_command: COPILOT_DEFAULT_BIN,
+    verification_hint:
+      "Keep the sponsored line visible for at least 5 seconds, then verify an impression.",
+  };
+  printCliOutput(flags, output, formatTargetInstallResult(output));
+}
+
+export async function runCopilotStatus(
+  flags: Map<string, string[]> = new Map(),
+) {
+  const state = await loadCopilotInstallState();
+  const settingsPath = state?.settings_path ?? copilotSettingsPath();
+  const settings = await loadCopilotSettings(settingsPath);
+  const managedStatusLine = state?.managed_status_line ?? null;
+  const currentStatusLine = settings.statusLine;
+  const statusLineConfigured = Boolean(
+    managedStatusLine &&
+      copilotStatusLineEquals(currentStatusLine, managedStatusLine),
+  );
+  const runtimeInstalled = state
+    ? await pathExists(assertSafeCopilotManagedPath(state.runtime_path))
+    : false;
+  const commandInstalled = state
+    ? await pathExists(assertSafeCopilotManagedPath(state.command_path))
+    : false;
+  const apiKeyInstalled = state
+    ? await pathExists(assertSafeCopilotManagedPath(state.api_key_path))
+    : false;
+  const footerCustomEnabled = isRecord(settings.footer)
+    ? settings.footer.showCustom === true
+    : false;
+  const installed = Boolean(
+    state &&
+      runtimeInstalled &&
+      commandInstalled &&
+      apiKeyInstalled &&
+      statusLineConfigured &&
+      footerCustomEnabled,
+  );
+  const output = {
+    ok: true,
+    target: COPILOT_PUBLISHER_TARGET,
+    mode: "statusline-command",
+    installed,
+    publisher_registered: Boolean(state?.publisher_id),
+    install_id: state?.install_id ?? null,
+    publisher_id: state?.publisher_id ?? null,
+    publisher_target: state?.publisher_target ?? COPILOT_PUBLISHER_TARGET,
+    state_path: copilotStatePath(),
+    command_path: state?.command_path ?? copilotCommandPath(),
+    runtime_path: state?.runtime_path ?? copilotRuntimePath(),
+    cache_path: state?.cache_path ?? copilotCachePath(),
+    api_key_path: state?.api_key_path ?? copilotApiKeyPath(),
+    settings_path: settingsPath,
+    api_key_installed: apiKeyInstalled,
+    command_installed: commandInstalled,
+    runtime_installed: runtimeInstalled,
+    status_line_configured: statusLineConfigured,
+    footer_custom_enabled: footerCustomEnabled,
+    composed_existing_status_line: Boolean(
+      state?.composed_existing_status_line,
+    ),
+    has_previous_status_line: Boolean(state?.previous_status_line),
+    copilot_version: state?.copilot_version ?? null,
+    ...(installed
+      ? {
+          next: "launch_copilot",
+          next_command: COPILOT_DEFAULT_BIN,
+          verification_hint:
+            "Keep the sponsored line visible for at least 5 seconds, then verify an impression.",
+        }
+      : {
+          next: "install_copilot",
+          next_command: "waitspin copilot install",
+          human_message:
+            "GitHub Copilot CLI WaitSpin statusline support is not installed for this user.",
+        }),
+  };
+  printCliOutput(flags, output, formatTargetStatusResult(output));
+}
+
+export async function runCopilotUninstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const state = await loadCopilotInstallState();
+  const settingsPath = state?.settings_path ?? copilotSettingsPath();
+  const settings = await loadCopilotSettings(settingsPath);
+  const declaredRemovePaths = state
+    ? [
+        state.command_path,
+        state.runtime_path,
+        state.cache_path,
+        state.api_key_path,
+        copilotStatePath(),
+        `${state.cache_path}.*.heartbeat`,
+      ]
+    : [copilotStatePath()];
+
+  let nextSettings: CopilotSettings | null = null;
+  let settingsAction:
+    | "restore-previous"
+    | "remove-managed"
+    | "skip-user-settings"
+    | "not-managed" = "not-managed";
+  let settingsWarning: string | null = null;
+  if (state?.managed_status_line) {
+    if (!copilotStatusLineEquals(settings.statusLine, state.managed_status_line)) {
+      settingsAction = "skip-user-settings";
+      settingsWarning =
+        "GitHub Copilot CLI statusLine is no longer the WaitSpin managed command; leaving user settings unchanged while removing WaitSpin-managed files.";
+    } else {
+      nextSettings = restoreCopilotFooterShowCustom(settings, state);
+      if (state.previous_status_line !== undefined) {
+        nextSettings.statusLine = state.previous_status_line;
+        settingsAction = "restore-previous";
+      } else {
+        delete nextSettings.statusLine;
+        settingsAction = "remove-managed";
+      }
+    }
+  }
+
+  if (dryRun) {
+    const output = {
+      ok: true,
+      target: COPILOT_PUBLISHER_TARGET,
+      dry_run: true,
+      installed: Boolean(state),
+      settings_action: settingsAction,
+      would_remove: declaredRemovePaths,
+      path_validation: state ? "deferred_until_apply" : "not_needed",
+      ...(settingsWarning
+        ? {
+            settings_warning: settingsWarning,
+          }
+        : {}),
+    };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
+    return;
+  }
+
+  const removePaths = state
+    ? [
+        assertSafeCopilotManagedPath(state.command_path),
+        assertSafeCopilotManagedPath(state.runtime_path),
+        assertSafeCopilotManagedPath(state.cache_path),
+        assertSafeCopilotManagedPath(state.api_key_path),
+        copilotStatePath(),
+        ...(await managedHeartbeatPaths(
+          state.cache_path,
+          assertSafeCopilotManagedPath,
+        )),
+      ]
+    : [copilotStatePath()];
+
+  if (nextSettings) {
+    await writeJsonObjectFile(settingsPath, nextSettings);
+  }
+  await Promise.all(
+    removePaths.map((filePath) =>
+      rm(filePath, { force: true, recursive: true }),
+    ),
+  );
+  const output = {
+    ok: true,
+    target: COPILOT_PUBLISHER_TARGET,
     uninstalled: true,
     settings_action: settingsAction,
     removed: removePaths,
@@ -3917,7 +5486,13 @@ export async function runOpencodeUninstall(flags: Map<string, string[]>) {
 }
 
 type PublicAllInstallTarget = {
-  target: "vscode" | "claude-code" | "mimocode" | "opencode";
+  target:
+    | "vscode"
+    | "claude-code"
+    | "mimocode"
+    | "opencode"
+    | "copilot"
+    | "antigravity";
   command: string;
   statusCommand: string;
   preflight: (flags: Map<string, string[]>) => Promise<string | null>;
@@ -3997,6 +5572,14 @@ async function preflightOpenCode(): Promise<string> {
   );
 }
 
+async function preflightCopilot(): Promise<string> {
+  return readCopilotVersion();
+}
+
+async function preflightAntigravity(): Promise<string> {
+  return readAntigravityVersion();
+}
+
 function experimentalCliDeps(): ExperimentalCliDeps {
   return {
     booleanFlag,
@@ -4046,6 +5629,22 @@ function allInstallTargets(flags: Map<string, string[]>): AllInstallTarget[] {
       status: runOpencodeStatus,
     },
     experimentalInstallTarget("grok", experimentalDeps),
+    {
+      target: ANTIGRAVITY_PUBLISHER_TARGET,
+      command: "waitspin antigravity install --compose-existing",
+      statusCommand: "waitspin antigravity status",
+      preflight: preflightAntigravity,
+      install: runAntigravityInstall,
+      status: runAntigravityStatus,
+    },
+    {
+      target: COPILOT_PUBLISHER_TARGET,
+      command: "waitspin copilot install --compose-existing",
+      statusCommand: "waitspin copilot status",
+      preflight: preflightCopilot,
+      install: runCopilotInstall,
+      status: runCopilotStatus,
+    },
   ];
   if (booleanFlag(flags, "include-experimental")) {
     targets.push(
@@ -4068,7 +5667,7 @@ function isNotDetectedError(message: string): boolean {
   if (/WaitSpin extension package not found|assets not found/i.test(message)) {
     return false;
   }
-  return /not detected|Unable to run Claude Code|Unsupported Claude Code version|ENOENT|spawn .*ENOENT|command not found|executable path/i.test(
+  return /not detected|Unable to run Claude Code|Unable to run GitHub Copilot CLI|Unable to run Antigravity CLI|Unsupported Claude Code version|ENOENT|spawn .*ENOENT|command not found|executable path/i.test(
     message,
   );
 }
@@ -4381,6 +5980,36 @@ export async function main(argv: string[] = process.argv.slice(2)) {
 
   if (command === "opencode" && positionals[0] === "uninstall") {
     await runOpencodeUninstall(flags);
+    return;
+  }
+
+  if (command === "copilot" && positionals[0] === "install") {
+    await runCopilotInstall(flags);
+    return;
+  }
+
+  if (command === "copilot" && positionals[0] === "status") {
+    await runCopilotStatus(flags);
+    return;
+  }
+
+  if (command === "copilot" && positionals[0] === "uninstall") {
+    await runCopilotUninstall(flags);
+    return;
+  }
+
+  if (command === "antigravity" && positionals[0] === "install") {
+    await runAntigravityInstall(flags);
+    return;
+  }
+
+  if (command === "antigravity" && positionals[0] === "status") {
+    await runAntigravityStatus(flags);
+    return;
+  }
+
+  if (command === "antigravity" && positionals[0] === "uninstall") {
+    await runAntigravityUninstall(flags);
     return;
   }
 

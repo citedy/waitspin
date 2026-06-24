@@ -147,8 +147,8 @@ request:  { "campaign_id": "wcamp_..." }
 response: { "checkout_url": "https://checkout.stripe.com/...", "block_purchase_id": "wbp_..." }
 
 POST /v1/publishers/register
-request:  { "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "mimocode" | "opencode" | "grok" }
-response: { "publisher_id": "wpub_...", "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "mimocode" | "opencode" | "grok" }
+request:  { "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "antigravity" | "copilot" | "mimocode" | "opencode" | "grok" }
+response: { "publisher_id": "wpub_...", "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "antigravity" | "copilot" | "mimocode" | "opencode" | "grok" }
 
 POST /v1/serve/next
 request:  { "install_id": "wins_...", "slot_id": "optional" }
@@ -428,16 +428,21 @@ export default function WaitSpinDocsPage() {
           inside VS Code with <code>WaitSpin: Connect and earn</code>,{" "}
           <code>claude-code</code>, installed by{" "}
           <code>waitspin claude-code install --compose-existing</code>,{" "}
+          <code>antigravity</code>, installed by{" "}
+          <code>waitspin antigravity install --compose-existing</code>,{" "}
+          <code>copilot</code>, installed by{" "}
+          <code>waitspin copilot install --compose-existing</code>,{" "}
           <code>mimocode</code>, installed by{" "}
           <code>waitspin mimocode install</code>, and <code>opencode</code>,
           installed by <code>waitspin opencode install</code>, and{" "}
           <code>grok</code>, installed by <code>waitspin grok install</code>.
-          Claude Code support uses the official <code>statusLine.command</code>{" "}
-          path; MiMo Code uses a managed shell hook; OpenCode uses a managed
-          TUI plugin entry; Grok Code CLI uses a managed text-asset footer patch
-          with hash-backed restore. Cline VS Code extension installs are
-          covered by the WaitSpin VS Code Marketplace extension;
-          standalone Cline CLI awaits official statusline/plugin support.
+          Claude Code, Antigravity CLI, and GitHub Copilot CLI support use
+          first-class <code>statusLine.command</code> paths; MiMo Code uses a
+          managed shell hook; OpenCode uses a managed TUI plugin entry; Grok
+          Code CLI uses a managed text-asset footer patch with hash-backed
+          restore. Cline VS Code extension installs are covered by the WaitSpin
+          VS Code Marketplace extension; standalone Cline CLI and Kilo CLI
+          await official statusline/plugin support.
           Native spinner patch targets remain deferred.
         </p>
         </Section>
@@ -521,6 +526,14 @@ waitspin extension status --target vscode
 # Claude Code statusline
 waitspin claude-code install --api-key KEY_FROM_JSON --compose-existing
 waitspin claude-code status
+
+# Antigravity CLI statusline
+waitspin antigravity install --api-key KEY_FROM_JSON --compose-existing
+waitspin antigravity status
+
+# GitHub Copilot CLI statusline
+waitspin copilot install --api-key KEY_FROM_JSON --compose-existing
+waitspin copilot status
 
 # MiMo Code shell hook
 waitspin mimocode install --api-key KEY_FROM_JSON

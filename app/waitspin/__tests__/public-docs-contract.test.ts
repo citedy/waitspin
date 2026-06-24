@@ -73,12 +73,16 @@ describe("WaitSpin public docs contract", () => {
     expect(markdown).toContain("OpenCode TUI plugin");
     expect(markdown).toContain("Grok Code CLI footer");
     expect(markdown).toContain("waitspin grok install");
-    expect(markdown).toContain("standalone Cline CLI awaits");
+    expect(markdown).toContain("standalone Cline CLI");
+    expect(markdown).not.toContain("Kilo CLI");
     expect(markdown).toContain("waitspin install --all --dry-run");
     expect(markdown).toContain("waitspin status --all");
     expect(markdown).toContain(
       "waitspin claude-code install --api-key wts_live_... --compose-existing",
     );
+    expect(markdown).toContain("waitspin antigravity install");
+    expect(markdown).toContain("waitspin copilot install");
+    expect(markdown).not.toContain("waitspin kilo");
     expect(markdown).toContain("`POST /v1/events/click`");
     expect(markdown).not.toContain("| POST | `/v1/events/click` |");
     expect(markdown).toContain("## WebMCP Browser Tools");
@@ -237,6 +241,11 @@ describe("WaitSpin public docs contract", () => {
     const sources = await Promise.all(
       checkedFiles.map((file) => readFile(path.join(repoRoot, file), "utf8")),
     );
+    const publicCopySources = checkedFiles
+      .map((file, index) => ({ file, source: sources[index] }))
+      .filter(({ file }) => file !== "packages/waitspin/src/cli.ts")
+      .map(({ source }) => source)
+      .join("\n");
 
     for (const source of sources) {
       expect(source).toContain("--target vscode");
@@ -257,10 +266,15 @@ describe("WaitSpin public docs contract", () => {
     expect(sources.join("\n")).toContain("waitspin opencode install");
     expect(sources.join("\n")).toContain("grok");
     expect(sources.join("\n")).toContain("waitspin grok install");
+    expect(sources.join("\n")).toContain("antigravity");
+    expect(sources.join("\n")).toContain("waitspin antigravity install");
+    expect(sources.join("\n")).toContain("copilot");
+    expect(sources.join("\n")).toContain("waitspin copilot install");
     expect(sources.join("\n")).toContain("standalone Cline CLI");
     expect(sources.join("\n")).toContain("waitspin install --all");
     expect(sources.join("\n")).toContain("waitspin status --all");
     expect(sources.join("\n")).toContain("--compose-existing");
+    expect(publicCopySources).not.toContain("waitspin kilo");
   });
 
   it("does not advertise an automated account-credit balance before redemption ships", async () => {
@@ -389,6 +403,7 @@ describe("WaitSpin public docs contract", () => {
       exportScript,
       publicSyncScript,
       publicSkillScript,
+      publicEnvScript,
       publicSyncWorkflow,
       packageJson,
     ] = await Promise.all([
@@ -408,6 +423,10 @@ describe("WaitSpin public docs contract", () => {
         "utf8",
       ),
       readFile(
+        path.join(repoRoot, "scripts/waitspin-public-env.mjs"),
+        "utf8",
+      ),
+      readFile(
         path.join(repoRoot, ".github/workflows/waitspin-public-sync.yml"),
         "utf8",
       ),
@@ -423,6 +442,10 @@ describe("WaitSpin public docs contract", () => {
     }
     for (const target of WAITSPIN_PUBLIC_TARGET_IDS) {
       expect(publicTrustSource).toContain(target);
+    }
+    for (const hiddenTarget of ["kilo"]) {
+      expect(publicTrustSource).not.toContain(hiddenTarget);
+      expect(exportScript).not.toContain(hiddenTarget);
     }
     for (const item of WAITSPIN_NEVER_SENT_DATA) {
       expect(publicTrustSource).toContain(item);
@@ -449,7 +472,7 @@ describe("WaitSpin public docs contract", () => {
     expect(exportScript).toContain("skills/waitspin/skill-card.md");
     expect(exportScript).toContain("npx skills add citedy/waitspin");
     expect(exportScript).toContain(
-      "Cline, Kimi, and MMX are not public targets",
+      "Cline, Kilo, Kimi, and MMX are not public targets",
     );
     expect(packageJson).toContain("waitspin:public-export");
     expect(packageJson).toContain("waitspin:public-export:dry-run");
@@ -461,19 +484,46 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSyncScript).toContain("publicPackageTimeoutMs = 15_000");
     expect(publicSyncScript).toContain("timeout: execTimeoutMs");
     expect(publicSyncScript).toContain("assertExpectedPublicPackageUrl");
+    expect(publicSyncScript).toContain("exportedContentPaths");
+    expect(publicSyncScript).toContain("app/llms.txt/route.ts");
+    expect(publicSyncScript).toContain("renderLocalLlmsText");
+    expect(publicSyncScript).toContain("waitspin.com/llms.txt");
+    expect(publicSyncScript).toContain("WAITSPIN_WEBMCP_TOOLS");
+    expect(publicSyncScript).toContain("WTS_PUBLISHER_REVENUE_BPS");
+    expect(publicSyncScript).toContain("replaceStaticInterpolation");
+    expect(publicSyncScript).toContain("parseDoubleQuotedString");
+    expect(publicSyncScript).toContain("comparePublicExports");
+    expect(publicSyncScript).toContain("GITHUB_EVENT_NAME");
+    expect(publicSyncScript).toContain("public_export_comparison_skipped");
+    expect(publicSyncScript).toContain("local_sha256");
+    expect(publicSyncScript).toContain("public_sha256");
+    expect(publicSyncScript).toContain("compareExportedContent");
+    expect(publicSyncScript).toContain("compareRenderedContent");
+    expect(publicSyncScript).toContain("public repo exported content is stale");
     expect(publicSyncScript).toContain("parsed.name !== \"waitspin\"");
     expect(publicSyncScript).toContain("local_package_matches_npm");
     expect(publicSyncScript).toContain("local package version differs from npm latest");
-    expect(publicSyncScript).toContain("function childEnv()");
+    expect(publicSyncScript).toContain("waitspinPublicChildEnv");
+    expect(publicSyncScript).toContain("waitspinPublicGitHubTokenForAuth");
+    expect(publicSyncScript).toContain("headers.authorization");
+    expect(publicSyncScript).toContain("sourced from exportedContentPaths only");
+    expect(publicSyncScript).toContain("waitspinPublicSafeErrorDetail");
     expect(publicSyncScript).toContain("Unexpected content-type from public WaitSpin package metadata");
-    expect(publicSyncScript).toContain("npm_config_ignore_scripts");
     expect(publicSyncScript).not.toContain("...process.env");
+    expect(publicSyncScript).not.toContain("node:vm");
+    expect(publicSyncScript).not.toContain("runInNewContext");
     expect(publicSyncScript).toContain("Unable to read npm latest version");
-    expect(publicSkillScript).toContain("v0.1.11");
+    expect(publicSkillScript).toContain("v0.1.12");
     expect(publicSkillScript).toContain("clawhub");
     expect(publicSkillScript).toContain("skills@1.5.12");
     expect(publicSkillScript).toContain("clawhub@0.22.0");
-    expect(publicSkillScript).toContain("timeout: execTimeoutMs");
+    expect(publicSkillScript).toContain("timeout: options.timeoutMs ?? execTimeoutMs");
+    expect(publicSkillScript).toContain("registryCliTimeoutMs");
+    expect(publicSkillScript).toContain("clawhub_status");
+    expect(publicSkillScript).toContain("clawhub_required: true");
+    expect(publicSkillScript).toContain("clawhub_selected_version");
+    expect(publicSkillScript).not.toContain("tolerateClawHubOutage");
+    expect(publicSkillScript).not.toContain("isTransientClawHubError");
     expect(publicSkillScript).toContain("fetchPublishedSkill");
     expect(publicSkillScript).toContain("publicSkillMainUrl");
     expect(publicSkillScript).toContain("publicSkillReleaseUrl");
@@ -487,13 +537,47 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSkillScript).toContain("clawHubAdvertisedSpec");
     expect(publicSkillScript).toContain("createHash");
     expect(publicSkillScript).toContain("Published WaitSpin skill content is stale");
-    expect(publicSkillScript).toContain("function childEnv(");
+    expect(publicSkillScript).toContain("waitspinPublicChildEnv");
     expect(publicSkillScript).toContain("includeGitHubToken: true");
-    expect(publicSkillScript).toContain("npm_config_ignore_scripts");
+    expect(publicSkillScript).toContain("waitspinPublicGitHubTokenForAuth");
+    expect(publicSkillScript).toContain("headers.authorization");
+    expect(publicSkillScript).toContain("waitspinPublicSafeErrorDetail");
     expect(publicSkillScript).not.toContain("...process.env");
+    expect(publicEnvScript).toContain("waitspinPublicChildEnv");
+    expect(publicEnvScript).toContain("waitspinPublicGitHubTokenForAuth");
+    expect(publicEnvScript).toContain("waitspinPublicSafeErrorDetail");
+    expect(publicEnvScript).toContain("typeof value !== \"string\"");
+    expect(publicEnvScript).toContain("github_pat_");
+    expect(publicEnvScript).toContain("ghs_");
+    expect(publicEnvScript).toContain("[A-Za-z0-9_.-]+");
+    expect(publicEnvScript).toContain("{1,255}$");
+    expect(publicEnvScript).toContain("[redacted-long-token]");
+    expect(publicEnvScript).toContain("npm_config_ignore_scripts");
+    expect(publicEnvScript).toContain("npm_config_registry");
+    expect(publicEnvScript).toContain("npm_config_strict_ssl");
+    expect(publicEnvScript).toContain("registry.npmjs.org");
+    expect(publicEnvScript).toContain("allowedNpmConfigKeys");
+    expect(publicEnvScript).toContain("npm_config_cache");
+    expect(publicEnvScript).toContain("npm_config_https_proxy");
+    expect(publicEnvScript).toContain("secretNpmConfigPattern");
+    expect(publicEnvScript).toContain("userconfig");
+    expect(publicEnvScript).toContain("globalconfig");
+    expect(publicEnvScript).toContain("strict_ssl");
+    expect(publicEnvScript).toContain("cafile");
+    expect(publicEnvScript).toContain("!allowedNpmConfigKeys.has(key)");
+    expect(publicEnvScript).toContain("parsed.protocol !== \"http:\"");
+    expect(publicEnvScript).toContain("parsed.protocol !== \"https:\"");
+    expect(publicEnvScript).toContain("GH_TOKEN");
     expect(publicSyncWorkflow).toContain("npm run waitspin:public-skill:check");
     expect(publicSyncWorkflow).toContain("pull_request:");
+    expect(publicSyncWorkflow).toContain("permissions:");
+    expect(publicSyncWorkflow).toContain("contents: read");
     expect(publicSyncWorkflow).toContain("packages/waitspin/package.json");
+    expect(publicSyncWorkflow).toContain("scripts/waitspin-public-env.mjs");
+    expect(publicSyncWorkflow).toContain("lib/waitspin/billing.ts");
+    expect(publicSyncWorkflow).toContain("lib/waitspin/constants.ts");
+    expect(publicSyncWorkflow).toContain("lib/waitspin/webmcp/tool-definitions.ts");
+    expect(publicSyncWorkflow).toContain("GH_TOKEN: ${{ github.token }}");
     expect(publicSyncWorkflow).toContain(
       "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
     );
@@ -553,7 +637,7 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("publisher-extension` for earning-surface installs, serve/impression polling, and read-only wallet status/ledger checks");
     expect(skill).toContain("Then stop and wait for the user");
     expect(skill).toContain("Do not print API keys or OTP codes");
-    expect(skill).toContain("Do not build inline shell assignments");
+    expect(skill).toContain("do not build inline shell assignments");
     expect(skill).toContain("WAITSPIN_API_KEY");
     expect(skill).toContain("Do not pass live API keys in argv with `--api-key`");
     expect(skill).not.toContain("--api-key KEY_FROM_JSON");

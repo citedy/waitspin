@@ -196,6 +196,21 @@ try {
     throw new Error("clean npx Claude Code status returned an unexpected payload");
   }
 
+  for (const target of ["antigravity", "copilot"]) {
+    const statusOutput = runInstalledBin(waitspinBin, [target, "status", "--json"], {
+      cwd: tempRoot,
+      env: smokeEnv,
+    });
+    const status = JSON.parse(statusOutput);
+    if (
+      status.target !== target ||
+      status.mode !== "statusline-command" ||
+      status.installed !== false
+    ) {
+      throw new Error(`clean npx ${target} status returned an unexpected payload`);
+    }
+  }
+
   const allStatusOutput = runInstalledBin(
     waitspinBin,
     [
@@ -209,10 +224,16 @@ try {
   if (
     allStatus.command !== "status --all" ||
     !Array.isArray(allStatus.statuses) ||
-    allStatus.statuses.length !== 5 ||
-    !["vscode", "claude-code", "mimocode", "opencode", "grok"].every((target) =>
-      allStatus.statuses.some((entry) => entry?.target === target),
-    ) ||
+    allStatus.statuses.length !== 7 ||
+    ![
+      "vscode",
+      "claude-code",
+      "mimocode",
+      "opencode",
+      "grok",
+      "antigravity",
+      "copilot",
+    ].every((target) => allStatus.statuses.some((entry) => entry?.target === target)) ||
     !Array.isArray(allStatus.failed_status)
   ) {
     throw new Error("clean npx status --all returned an unexpected payload");
@@ -254,6 +275,8 @@ try {
         clean_npx_status: true,
         clean_npx_status_all: true,
         clean_npx_claude_code_status: true,
+        clean_npx_antigravity_status: true,
+        clean_npx_copilot_status: true,
         clean_npx_uninstall: true,
       },
       null,

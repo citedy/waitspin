@@ -43,6 +43,14 @@ waitspin extension status --target vscode
 waitspin claude-code install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
 waitspin claude-code status
 
+# Or install for Antigravity CLI statusline
+waitspin antigravity install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+waitspin antigravity status
+
+# Or install for GitHub Copilot CLI statusline
+waitspin copilot install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+waitspin copilot status
+
 # Or install for MiMo Code shell hook
 waitspin mimocode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 waitspin mimocode status
@@ -78,6 +86,12 @@ waitspin grok status
 - `waitspin claude-code install --compose-existing` — install the Claude Code statusline command
 - `waitspin claude-code status` — inspect managed Claude Code runtime state
 - `waitspin claude-code uninstall` — restore Claude Code statusline settings and remove managed local state
+- `waitspin antigravity install --compose-existing` — install the Antigravity CLI statusline command
+- `waitspin antigravity status` — inspect managed Antigravity CLI runtime state
+- `waitspin antigravity uninstall` — restore Antigravity CLI statusline settings and remove managed local state
+- `waitspin copilot install --compose-existing` — install the GitHub Copilot CLI statusline command
+- `waitspin copilot status` — inspect managed GitHub Copilot CLI runtime state
+- `waitspin copilot uninstall` — restore GitHub Copilot CLI statusline settings and remove managed local state
 - `waitspin mimocode install` — install the MiMo Code shell hook
 - `waitspin mimocode status` — inspect managed MiMo Code runtime state
 - `waitspin mimocode uninstall` — remove managed MiMo Code runtime and bash hook
@@ -128,6 +142,8 @@ npx waitspin install --all --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-exi
 npx waitspin status --all
 npx waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
 npx waitspin claude-code install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+npx waitspin antigravity install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+npx waitspin copilot install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
 npx waitspin mimocode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 npx waitspin opencode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 npx waitspin grok install --api-key PASTE_PUBLISHER_EXTENSION_KEY
@@ -147,6 +163,12 @@ The Claude Code installer writes a managed statusline runtime/state under
 `~/.waitspin` and updates `~/.claude/settings.json` with a safe
 `statusLine.command`. It fails fast when an existing unmanaged statusline is
 present unless `--compose-existing` is explicitly requested and restorable.
+
+The Antigravity CLI and GitHub Copilot CLI installers write managed
+runtime/state under `~/.waitspin` and configure their first-class
+`statusLine.command` settings without patching native binaries. Both fail fast
+when an existing unmanaged statusline is present unless `--compose-existing` is
+explicitly requested and restorable.
 
 The MiMo Code installer writes a managed runtime script under `~/.local/bin/`
 and a bash hook in `~/.bashrc`. It polls the API for sponsored messages and
@@ -176,4 +198,6 @@ npx --yes waitspin --help
 npx --yes waitspin@latest mimocode status
 npx --yes waitspin@latest opencode status
 npx --yes waitspin@latest grok status
+npx --yes waitspin@latest antigravity status
+npx --yes waitspin@latest copilot status
 ```

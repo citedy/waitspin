@@ -10,6 +10,7 @@ const chmod = jest.fn();
 const cp = jest.fn();
 const execFile = jest.fn();
 const fetchMock = jest.fn();
+const readdir = jest.fn();
 const rename = jest.fn();
 const rm = jest.fn();
 const stat = jest.fn();
@@ -28,6 +29,7 @@ jest.mock("node:fs/promises", () => ({
   cp: (...args: unknown[]) => cp(...args),
   mkdir: jest.fn(),
   readFile: jest.fn(),
+  readdir: (...args: unknown[]) => readdir(...args),
   rename: (...args: unknown[]) => rename(...args),
   rm: (...args: unknown[]) => rm(...args),
   stat: (...args: unknown[]) => stat(...args),
@@ -54,12 +56,17 @@ describe("waitspin extension install", () => {
     "WAITSPIN_ALLOW_EXPERIMENTAL_PATCH_FILE",
     "WAITSPIN_GROK_PATCH_FILE",
     "WAITSPIN_CLINE_PATCH_FILE",
+    "WAITSPIN_KILO_PATCH_FILE",
     "WAITSPIN_KIMI_PATCH_FILE",
     "WAITSPIN_MMX_PATCH_FILE",
     "WAITSPIN_GROK_BIN",
     "WAITSPIN_CLINE_BIN",
+    "WAITSPIN_KILO_BIN",
     "WAITSPIN_KIMI_BIN",
     "WAITSPIN_MMX_BIN",
+    "WAITSPIN_COPILOT_BIN",
+    "WAITSPIN_ANTIGRAVITY_BIN",
+    "COPILOT_HOME",
   ] as const;
   const originalExperimentalEnv = Object.fromEntries(
     experimentalEnvNames.map((name) => [name, process.env[name]]),
@@ -126,6 +133,27 @@ describe("waitspin extension install", () => {
     "tui.json",
   );
   const opencodeTuiPluginEntry = "./plugins/waitspin-opencode.plugin.tsx";
+  const copilotStatePath = path.join(
+    os.homedir(),
+    ".waitspin",
+    "copilot-install.json",
+  );
+  const copilotSettingsPath = path.join(
+    os.homedir(),
+    ".copilot",
+    "settings.json",
+  );
+  const antigravityStatePath = path.join(
+    os.homedir(),
+    ".waitspin",
+    "antigravity-install.json",
+  );
+  const antigravitySettingsPath = path.join(
+    os.homedir(),
+    ".gemini",
+    "antigravity-cli",
+    "settings.json",
+  );
   const mimocodeStatePath = path.join(
     os.homedir(),
     ".waitspin",
@@ -146,12 +174,14 @@ describe("waitspin extension install", () => {
   const experimentalPatchPaths = {
     grok: path.join(os.tmpdir(), "waitspin-grok-app.tsx"),
     cline: path.join(os.tmpdir(), "waitspin-cline-status-bar.tsx"),
+    kilo: path.join(os.tmpdir(), "waitspin-kilo-footer.tsx"),
     kimi: path.join(os.tmpdir(), "waitspin-kimi-footer.ts"),
     mmx: path.join(os.tmpdir(), "waitspin-mmx-status-bar.ts"),
   };
   const experimentalStatePaths = {
     grok: path.join(os.homedir(), ".waitspin", "grok-install.json"),
     cline: path.join(os.homedir(), ".waitspin", "cline-install.json"),
+    kilo: path.join(os.homedir(), ".waitspin", "kilo-install.json"),
     kimi: path.join(os.homedir(), ".waitspin", "kimi-install.json"),
     mmx: path.join(os.homedir(), ".waitspin", "mmx-install.json"),
   };
@@ -186,6 +216,7 @@ describe("waitspin extension install", () => {
     process.env.WAITSPIN_ALLOW_EXPERIMENTAL_PATCH_FILE = "1";
     process.env.WAITSPIN_GROK_PATCH_FILE = experimentalPatchPaths.grok;
     process.env.WAITSPIN_CLINE_PATCH_FILE = experimentalPatchPaths.cline;
+    process.env.WAITSPIN_KILO_PATCH_FILE = experimentalPatchPaths.kilo;
     process.env.WAITSPIN_KIMI_PATCH_FILE = experimentalPatchPaths.kimi;
     process.env.WAITSPIN_MMX_PATCH_FILE = experimentalPatchPaths.mmx;
   }
@@ -225,6 +256,7 @@ describe("waitspin extension install", () => {
     global.fetch = fetchMock as typeof fetch;
     access.mockResolvedValue(undefined);
     chmod.mockResolvedValue(undefined);
+    readdir.mockResolvedValue([]);
     rename.mockResolvedValue(undefined);
     stat.mockResolvedValue({ mode: 0o755 });
     realpathSync.mockImplementation((value: string) => value);
@@ -256,7 +288,14 @@ describe("waitspin extension install", () => {
       if (filePath === opencodeTuiConfigPath) {
         throw enoent();
       }
-      if (filePath === claudeSettingsPath || filePath === claudeStatePath) {
+      if (
+        filePath === claudeSettingsPath ||
+        filePath === claudeStatePath ||
+        filePath === copilotSettingsPath ||
+        filePath === copilotStatePath ||
+        filePath === antigravitySettingsPath ||
+        filePath === antigravityStatePath
+      ) {
         throw enoent();
       }
       if (filePath === opencodeStatePath || filePath === mimocodeStatePath) {
@@ -338,8 +377,13 @@ describe("waitspin extension install", () => {
     expect(text).toContain("waitspin opencode status");
     expect(text).toContain("waitspin grok install");
     expect(text).toContain("waitspin grok status");
+    expect(text).toContain("waitspin antigravity install");
+    expect(text).toContain("waitspin antigravity status");
+    expect(text).toContain("waitspin copilot install");
+    expect(text).toContain("waitspin copilot status");
     expect(text).toContain("mimocode");
     expect(text).not.toContain("--include-experimental");
+    expect(text).not.toContain("waitspin kilo");
     expect(text).not.toContain("cline|kimi|mmx");
     expect(text).not.toContain("Hidden experimental targets");
     expect(text).not.toContain("codex");
@@ -511,6 +555,8 @@ describe("waitspin extension install", () => {
       "mimocode",
       "opencode",
       "grok",
+      "antigravity",
+      "copilot",
     ]);
     expect(output.would_install.every((item) => item.result.dry_run)).toBe(
       true,
@@ -544,6 +590,8 @@ describe("waitspin extension install", () => {
       "claude-code",
       "mimocode",
       "opencode",
+      "antigravity",
+      "copilot",
     ]);
     expect(output.skipped_conflict).toEqual([
       expect.objectContaining({
@@ -593,6 +641,8 @@ describe("waitspin extension install", () => {
       "mimocode",
       "opencode",
       "grok",
+      "antigravity",
+      "copilot",
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -629,6 +679,8 @@ describe("waitspin extension install", () => {
       "mimocode",
       "opencode",
       "grok",
+      "antigravity",
+      "copilot",
     ]);
     expect(output.statuses.every((item) => item.result.installed === false)).toBe(
       true,
@@ -661,6 +713,11 @@ describe("waitspin extension install", () => {
       include_experimental: boolean;
       next_command: string;
       would_install: Array<{ target: string; result: { experimental?: boolean } }>;
+      skipped_conflict: Array<{
+        target: string;
+        reason: string;
+        result?: { failure_kind?: string; experimental?: boolean };
+      }>;
       failed_rollback: unknown[];
     };
     expect(output.ok).toBe(true);
@@ -674,15 +731,36 @@ describe("waitspin extension install", () => {
       "mimocode",
       "opencode",
       "grok",
+      "antigravity",
+      "copilot",
       "cline",
       "kimi",
       "mmx",
     ]);
     expect(
       output.would_install
-        .filter((item) => ["grok", "cline", "kimi", "mmx"].includes(item.target))
+        .filter((item) =>
+          [
+            "grok",
+            "cline",
+            "kimi",
+            "mmx",
+          ].includes(item.target),
+        )
         .every((item) => item.result.experimental === true),
     ).toBe(true);
+    expect(output.skipped_conflict).toEqual([
+      expect.objectContaining({
+        target: "kilo",
+        reason: expect.stringContaining(
+          "private TUI slot runtime is not exposed to external plugins",
+        ),
+        result: expect.objectContaining({
+          experimental: true,
+          failure_kind: "unsupported_native_cli",
+        }),
+      }),
+    ]);
     expect(execFile).toHaveBeenCalledWith(
       "cline",
       ["version"],
@@ -976,6 +1054,59 @@ describe("waitspin extension install", () => {
       fallback_target: "vscode",
       fallback_command: "waitspin extension install --target vscode",
     });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("keeps Kilo CLI hidden and fail-closed until external footer slots are stable", async () => {
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+    execFile.mockImplementation((_file, args, _options, callback) => {
+      if (Array.isArray(args) && args[0] === "--version") {
+        callback(null, "7.3.54\n", "");
+        return;
+      }
+      callback(null, "2.1.152 (Claude Code)\n", "");
+    });
+
+    await main(["kilo", "install", "--dry-run"]);
+    await main(["kilo", "status"]);
+
+    const [installOutput, statusOutput] = stdout
+      .join("")
+      .trim()
+      .split(/\n(?=\{)/)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(installOutput).toMatchObject({
+      target: "kilo",
+      experimental: true,
+      hidden_until_accepted: true,
+      public_support: false,
+      dry_run: true,
+      target_version: "7.3.54",
+      would_fail: true,
+      failure_kind: "unsupported_native_cli",
+      patch_supported: false,
+    });
+    expect(String(installOutput.human_message)).toContain(
+      "private TUI slot runtime is not exposed to external plugins",
+    );
+    expect(statusOutput).toMatchObject({
+      target: "kilo",
+      installed: false,
+      unsupported_reason: "unsupported_native_cli",
+    });
+    expect(String(statusOutput.human_message)).toContain(
+      "stable footer/status plugin surface",
+    );
     expect(fetchMock).not.toHaveBeenCalled();
     expect(writeFile).not.toHaveBeenCalled();
   });
@@ -2332,7 +2463,11 @@ describe("waitspin extension install", () => {
     expect(runtimeWrite?.[1]).toContain(
       "await heartbeatVisibleAfter(heartbeatPath, lockedVisibleAt)",
     );
-    expect(runtimeWrite?.[1]).toContain("await recordImpression(state, lockedSession);");
+    expect(runtimeWrite?.[1]).toContain(
+      "await recordImpression(runtimeState, lockedSession);",
+    );
+    expect(runtimeWrite?.[1]).toContain("function safeSessionKey");
+    expect(runtimeWrite?.[1]).toContain("await pruneSessions(state.cache_path, cache)");
     expect(runtimeWrite?.[1]).toContain("fetchedAt: Date.now()");
     expect(runtimeWrite?.[1]).toContain("shownAt: 0");
     expect(runtimeWrite?.[1]).toContain(
@@ -3065,6 +3200,7 @@ describe("waitspin extension install", () => {
       unsafeRuntimePath,
       unsafeCachePath,
       claudeStatePath,
+      `${unsafeCachePath}.*.heartbeat`,
     ]);
     expect(String(output.settings_warning)).toContain(
       "leaving user settings unchanged",
