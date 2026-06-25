@@ -2,13 +2,13 @@
   "schema_version": 1,
   "extension_id": "waitspin.waitspin-vscode",
   "version": "0.1.12",
-  "source_commit": "5a3c49dc63da3c02031e7ff0c29b216b5d0ed095",
+  "source_commit": "7cafde2eee9d5b87f786b0d02c6742b9915c7f30",
   "source_repo": "https://github.com/citedy/waitspin",
   "source_directory": "extensions/waitspin-vscode",
   "marketplace_url": "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
-  "generated_at": "2026-06-21T23:33:19.796Z",
+  "generated_at": "2026-06-25T18:06:55.058Z",
   "vsix_filename": "waitspin-vscode-0.1.12.vsix",
   "vsix_sha256": "288c3be354058a5c0e196cb662142d04de31e2f3928e5bfb543840b6021a1e25",
-  "npm_package_version": "0.1.9",
-  "npm_package_url": "https://www.npmjs.com/package/waitspin/v/0.1.9"
+  "npm_package_version": "0.1.10",
+  "npm_package_url": "https://www.npmjs.com/package/waitspin/v/0.1.10"
 }
