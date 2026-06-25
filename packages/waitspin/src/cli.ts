@@ -1742,6 +1742,27 @@ function statusLineEquals(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
+function managedCommandStatusLineStillOwnsSurface(
+  left: unknown,
+  right: unknown,
+): boolean {
+  if (
+    !isRecord(left) ||
+    !isRecord(right) ||
+    typeof left.command !== "string" ||
+    typeof right.command !== "string" ||
+    left.command !== right.command
+  ) {
+    return false;
+  }
+  if (right.type !== undefined && left.type !== right.type) return false;
+  if (right.enabled !== undefined && left.enabled === false) return false;
+  return (
+    left.enabled !== false &&
+    right.enabled !== false
+  );
+}
+
 function claudeCodeScopedStatusLineBlocker(
   scopedStatusLine: ClaudeCodeScopedStatusLine | null,
   managedStatusLine: ClaudeCodeStatusLine,
@@ -1888,6 +1909,106 @@ async function readJson(filePath, fallback) {
   }
 }
 
+function stripJsoncSyntax(raw) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < raw.length; index += 1) {
+    const current = raw[index];
+    const next = raw[index + 1];
+    if (inString) {
+      output += current;
+      if (escaped) {
+        escaped = false;
+      } else if (current === "\\") {
+        escaped = true;
+      } else if (current === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (current === '"') {
+      inString = true;
+      output += current;
+      continue;
+    }
+    if (current === "/" && next === "/") {
+      while (index < raw.length && raw[index] !== "\n" && raw[index] !== "\r") {
+        index += 1;
+      }
+      output += " ";
+      if (index < raw.length) output += raw[index];
+      continue;
+    }
+    if (current === "/" && next === "*") {
+      index += 2;
+      let closed = false;
+      while (index < raw.length) {
+        if (raw[index] === "*" && raw[index + 1] === "/") {
+          closed = true;
+          break;
+        }
+        index += 1;
+      }
+      if (!closed) throw new Error("Unterminated JSONC block comment.");
+      index += 1;
+      output += " ";
+      continue;
+    }
+    output += current;
+  }
+  return stripTrailingJsonCommas(output);
+}
+
+function stripTrailingJsonCommas(raw) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < raw.length; index += 1) {
+    const current = raw[index];
+    if (inString) {
+      output += current;
+      if (escaped) {
+        escaped = false;
+      } else if (current === "\\") {
+        escaped = true;
+      } else if (current === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (current === '"') {
+      inString = true;
+      output += current;
+      continue;
+    }
+    if (current === ",") {
+      let lookahead = index + 1;
+      while (/\s/.test(raw[lookahead] || "")) lookahead += 1;
+      let previous = index - 1;
+      while (/\s/.test(raw[previous] || "")) previous -= 1;
+      const previousToken = raw[previous] || "";
+      const hasValueBeforeComma = !["", "[", "{", ",", ":"].includes(previousToken);
+      if (
+        hasValueBeforeComma &&
+        (raw[lookahead] === "}" || raw[lookahead] === "]")
+      ) {
+        continue;
+      }
+    }
+    output += current;
+  }
+  return output;
+}
+
+async function readJsonc(filePath, fallback) {
+  try {
+    return JSON.parse(stripJsoncSyntax(await readFile(filePath, "utf8")));
+  } catch {
+    return fallback;
+  }
+}
+
 async function readSecret(filePath) {
   if (!filePath) return "";
   try {
@@ -1989,21 +2110,58 @@ function expandExecutablePath(command) {
   return expanded;
 }
 
+function isWindowsCommandScript(commandPath) {
+  return process.platform === "win32" && /\.(?:cmd|bat)$/i.test(commandPath);
+}
+
+function unsafeWindowsCommandScriptPath(commandPath) {
+  return /["\r\n\u0000%]/.test(commandPath);
+}
+
+function spawnResolvedCommandPath(commandPath) {
+  if (isWindowsCommandScript(commandPath)) {
+    if (unsafeWindowsCommandScriptPath(commandPath)) return null;
+    const previousCommandEnv = "WAITSPIN_PREVIOUS_STATUSLINE_CMD";
+    return spawn(process.env.ComSpec || "cmd.exe", [
+      "/d",
+      "/v:off",
+      "/c",
+      'call "%' + previousCommandEnv + '%"',
+    ], {
+      shell: false,
+      stdio: ["pipe", "pipe", "ignore"],
+      env: { ...process.env, [previousCommandEnv]: commandPath },
+      windowsVerbatimArguments: true,
+    });
+  }
+  return spawn(commandPath, [], {
+    shell: false,
+    stdio: ["pipe", "pipe", "ignore"],
+    env: process.env,
+  });
+}
+
 async function runPreviousStatusLine(command, input, mode = "shell") {
   if (!command) return "";
   return await new Promise((resolve) => {
+    const expandedCommand =
+      mode === "exec-path" ? expandExecutablePath(command) : "";
+    if (mode === "exec-path" && !expandedCommand) {
+      resolve("");
+      return;
+    }
     const child =
       mode === "exec-path"
-        ? spawn(expandExecutablePath(command), [], {
-            shell: false,
-            stdio: ["pipe", "pipe", "ignore"],
-            env: process.env,
-          })
+        ? spawnResolvedCommandPath(expandedCommand)
         : spawn(command, {
             shell: true,
             stdio: ["pipe", "pipe", "ignore"],
             env: process.env,
           });
+    if (!child) {
+      resolve("");
+      return;
+    }
     let stdout = "";
     let settled = false;
     let killTimer = null;
@@ -2250,7 +2408,10 @@ function commandStatusLineMatches(current, managed) {
 
 async function installedSurfaceStillConfigured(state) {
   if (!state?.settings_path || !state?.managed_status_line) return false;
-  const settings = await readJson(state.settings_path, null);
+  const settings =
+    state.target === "copilot" || state.target === "antigravity"
+      ? await readJsonc(state.settings_path, null)
+      : await readJson(state.settings_path, null);
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
     return false;
   }
@@ -3479,7 +3640,13 @@ export async function runAntigravityUninstall(flags: Map<string, string[]>) {
     | "not-managed" = "not-managed";
   let settingsWarning: string | null = null;
   if (state?.managed_status_line) {
-    if (!antigravityStatusLineEquals(settings.statusLine, state.managed_status_line)) {
+    if (
+      !antigravityStatusLineEquals(settings.statusLine, state.managed_status_line) &&
+      !managedCommandStatusLineStillOwnsSurface(
+        settings.statusLine,
+        state.managed_status_line,
+      )
+    ) {
       settingsAction = "skip-user-settings";
       settingsWarning =
         "Antigravity statusLine is no longer the WaitSpin managed command; leaving user settings unchanged while removing WaitSpin-managed files.";
@@ -4166,7 +4333,19 @@ export async function runCopilotUninstall(flags: Map<string, string[]>) {
     | "not-managed" = "not-managed";
   let settingsWarning: string | null = null;
   if (state?.managed_status_line) {
-    if (!copilotStatusLineEquals(settings.statusLine, state.managed_status_line)) {
+    const footerCustomEnabled = isRecord(settings.footer)
+      ? settings.footer.showCustom === true
+      : false;
+    if (
+      !copilotStatusLineEquals(settings.statusLine, state.managed_status_line) &&
+      !(
+        footerCustomEnabled &&
+        managedCommandStatusLineStillOwnsSurface(
+          settings.statusLine,
+          state.managed_status_line,
+        )
+      )
+    ) {
       settingsAction = "skip-user-settings";
       settingsWarning =
         "GitHub Copilot CLI statusLine is no longer the WaitSpin managed command; leaving user settings unchanged while removing WaitSpin-managed files.";

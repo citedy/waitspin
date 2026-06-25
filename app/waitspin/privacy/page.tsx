@@ -55,7 +55,8 @@ export default function WaitSpinPrivacyPage() {
       <Section title="User Surface Behavior">
         <p>
           Verified user earning surfaces include the VS Code Activity Bar/status-bar
-          extension, Claude Code statusline command, MiMo Code shell hook,
+          extension, VS Code-compatible Cursor Editor Mode and Devin Desktop
+          editor surfaces, Claude Code statusline command, MiMo Code shell hook,
           OpenCode TUI plugin slot, and Grok Code CLI footer. They poll the
           WaitSpin API for a sponsored message, show the message in the relevant
           wait-state surface, open the advertiser destination only after user
@@ -74,7 +75,7 @@ export default function WaitSpinPrivacyPage() {
         </p>
         <ul className="list-disc space-y-2 pl-5">
           {WAITSPIN_PUBLIC_PUBLISHER_TARGETS.map((target) => (
-            <li key={target.target}>
+            <li key={`${target.label}-${target.target}`}>
               {"href" in target ? (
                 <a
                   className="underline"
@@ -94,14 +95,21 @@ export default function WaitSpinPrivacyPage() {
           ))}
         </ul>
         <p>
-          The VS Code extension is distributed through the{" "}
+          The VS Code-compatible extension is distributed through the{" "}
           <a
             className="underline"
             href="https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode"
           >
             Visual Studio Marketplace
-          </a>
-          . Public source is published at{" "}
+          </a>{" "}
+          for VS Code and Cursor, and through{" "}
+          <a
+            className="underline"
+            href="https://open-vsx.org/extension/waitspin/waitspin-vscode"
+          >
+            Open VSX
+          </a>{" "}
+          for Devin Desktop. Public source is published at{" "}
           <a className="underline" href={WAITSPIN_PUBLIC_TRUST_REPO_URL}>
             github.com/citedy/waitspin
           </a>

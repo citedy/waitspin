@@ -75,8 +75,13 @@ export default function WaitSpinTermsPage() {
           Advertisers create campaign drafts with a short ad line, an HTTPS
           destination URL, block count, and price per block. Destinations are
           validated to reduce SSRF and unsafe URL risk, but advertisers remain
-          responsible for destination content, claims, tracking, and legal
-          compliance. WaitSpin does not guarantee impressions, conversions,
+          responsible for all advertising text, promoted names, brands,
+          destination links, destination content, claims, tracking, and legal
+          compliance. Illegal, abusive, deceptive, infringing, or prohibited
+          promotion may result in permanent account blocking without restoration
+          or refund, and WaitSpin may disclose available account, campaign,
+          payment, network, and audit data to law enforcement when required or
+          appropriate. WaitSpin does not guarantee impressions, conversions,
           ranking, traffic quality, or continuous availability.
         </p>
       </Section>

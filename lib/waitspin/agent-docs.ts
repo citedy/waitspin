@@ -62,7 +62,7 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
     path: "/v1/publishers/register",
     auth: "publishers:write",
     purpose:
-      "Register a user install ID for VS Code Activity Bar/status-bar extension, Claude Code statusline, MiMo Code shell hook, OpenCode TUI slot, Grok Code CLI footer, Antigravity CLI statusline, or GitHub Copilot CLI statusline.",
+      "Register a user install ID for VS Code Activity Bar/status-bar extension, Cursor Editor Mode through the VS Code-compatible extension path, Devin Desktop through Open VSX, Claude Code statusline, MiMo Code shell hook, OpenCode TUI slot, Grok Code CLI footer, Antigravity CLI statusline, or GitHub Copilot CLI statusline.",
   },
   {
     method: "POST",
@@ -165,9 +165,14 @@ ${endpointTable()}
 The verified public user earning surfaces are:
 VS Code Activity Bar/status-bar extension, installed from
 https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
-with \`code --install-extension waitspin.waitspin-vscode\` and connected by running
-\`WaitSpin: Connect and earn\` inside VS Code. The CLI fallback is
-\`waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY\`. Claude Code statusline command,
+with \`code --install-extension waitspin.waitspin-vscode\` for VS Code or
+\`cursor --install-extension waitspin.waitspin-vscode\` for Cursor Editor Mode,
+or from Open VSX for Devin Desktop with
+\`devin-desktop --install-extension waitspin.waitspin-vscode\` when the desktop
+CLI is on PATH,
+then connected by running \`WaitSpin: Connect and earn\` inside the matching
+editor. The VS Code CLI fallback is \`waitspin extension install --target vscode
+--api-key PASTE_PUBLISHER_EXTENSION_KEY\`. Claude Code statusline command,
 installed by \`waitspin claude-code install --compose-existing\`; Antigravity
 CLI statusline command, installed by \`waitspin antigravity install
 --compose-existing\`; GitHub Copilot CLI statusline command, installed by
@@ -179,9 +184,10 @@ support use first-class \`statusLine.command\` paths; MiMo Code uses a bash
 hook; OpenCode uses its TUI \`app_bottom\` plugin slot through a managed
 \`~/.config/opencode/tui.json\` entry; Grok Code CLI uses a managed text-asset
 footer patch with hash-backed backup and restore. Cline VS Code extension
-installs are covered by the VS Code fallback; standalone Cline CLI awaits
-official statusline/plugin support. Native spinner patch targets remain
-deferred.
+installs, Cursor Editor Mode, and Devin Desktop are covered by the same VS
+Code-compatible extension ID; Devin uses the Open VSX listing, and standalone
+Cline CLI awaits official statusline/plugin support. Native spinner patch
+targets remain deferred.
 
 The public clients do not read or send workspace files, source code, open
 editor text, prompts, model responses, integrated terminal output, shell
@@ -237,7 +243,7 @@ waitspin bid create --line "Your ad" --url https://example.com --price-per-block
 waitspin bid checkout CAMPAIGN_ID
 npx --yes waitspin init --email you@example.com --key-profile publisher-extension
 
-# Install every detected supported target
+# Install every detected all-install target
 waitspin install --all --dry-run --api-key wts_live_... --compose-existing
 waitspin install --all --api-key wts_live_... --compose-existing
 waitspin status --all
@@ -245,8 +251,17 @@ waitspin status --all
 # VS Code Activity Bar/status-bar extension
 # Marketplace: https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
 code --install-extension waitspin.waitspin-vscode
-# Then run "WaitSpin: Connect and earn" in VS Code.
-# CLI fallback:
+
+# Cursor Editor Mode user extension
+cursor --install-extension waitspin.waitspin-vscode
+# Then run "WaitSpin: Connect and earn" in the matching editor.
+
+# Devin Desktop user extension
+# Open VSX: https://open-vsx.org/extension/waitspin/waitspin-vscode
+devin-desktop --install-extension waitspin.waitspin-vscode
+# Then run "WaitSpin: Connect and earn" in Devin Desktop.
+
+# VS Code CLI fallback:
 waitspin extension install --target vscode --api-key wts_live_...
 waitspin extension status --target vscode
 

@@ -68,12 +68,17 @@ describe("WaitSpin public docs contract", () => {
     }
     expect(markdown).toContain("publisher-extension");
     expect(markdown).toContain("VS Code Activity Bar/status-bar extension");
+    expect(markdown).toContain("Cursor Editor Mode");
+    expect(markdown).toContain("Devin Desktop");
+    expect(markdown).toContain(
+      "devin-desktop --install-extension waitspin.waitspin-vscode",
+    );
     expect(markdown).toContain("Claude Code statusline");
     expect(markdown).toContain("MiMo Code shell hook");
     expect(markdown).toContain("OpenCode TUI plugin");
     expect(markdown).toContain("Grok Code CLI footer");
     expect(markdown).toContain("waitspin grok install");
-    expect(markdown).toContain("standalone Cline CLI");
+    expect(markdown).toContain("Cline CLI awaits");
     expect(markdown).not.toContain("Kilo CLI");
     expect(markdown).toContain("waitspin install --all --dry-run");
     expect(markdown).toContain("waitspin status --all");
@@ -270,6 +275,17 @@ describe("WaitSpin public docs contract", () => {
     expect(sources.join("\n")).toContain("waitspin antigravity install");
     expect(sources.join("\n")).toContain("copilot");
     expect(sources.join("\n")).toContain("waitspin copilot install");
+    expect(sources.join("\n")).toContain("Cursor Editor Mode");
+    expect(sources.join("\n")).toContain(
+      "cursor --install-extension waitspin.waitspin-vscode",
+    );
+    expect(sources.join("\n")).toContain("Devin Desktop");
+    expect(sources.join("\n")).toContain(
+      "https://open-vsx.org/extension/waitspin/waitspin-vscode",
+    );
+    expect(sources.join("\n")).toContain(
+      "devin-desktop --install-extension waitspin.waitspin-vscode",
+    );
     expect(sources.join("\n")).toContain("standalone Cline CLI");
     expect(sources.join("\n")).toContain("waitspin install --all");
     expect(sources.join("\n")).toContain("waitspin status --all");
@@ -277,6 +293,24 @@ describe("WaitSpin public docs contract", () => {
     expect(publicCopySources).not.toContain("Kilo CLI");
     expect(publicCopySources).not.toContain("waitspin kilo");
     expect(publicCopySources).not.toMatch(/\bkilo\b/i);
+    expect(sources[1]).not.toContain('"target": "cursor"');
+    expect(sources[1]).not.toContain("`cursor`");
+    expect(sources[0]).not.toContain('"target": "devin"');
+    expect(sources[1]).not.toContain('"target": "devin"');
+    expect(sources[1]).not.toContain("`devin`");
+
+    const apiTargetSources = (
+      await Promise.all(
+        [
+          "openapi/waitspin-api.openapi.json",
+          "public/openapi/waitspin-api.openapi.json",
+          "lib/waitspin/generated/openapi.types.ts",
+        ].map((file) => readFile(path.join(repoRoot, file), "utf8")),
+      )
+    ).join("\n");
+    expect(apiTargetSources).toContain("status-bar-fallback");
+    expect(apiTargetSources).not.toContain("devin");
+    expect(apiTargetSources).not.toContain("cursor");
   });
 
   it("does not advertise an automated account-credit balance before redemption ships", async () => {
@@ -366,6 +400,13 @@ describe("WaitSpin public docs contract", () => {
     expect(terms).toContain("payout policy eligibility checks");
     expect(terms).toContain("does not guarantee that any balance is immediately");
     expect(terms).toContain("withdrawable");
+    expect(terms).toContain("responsible for all advertising text");
+    expect(terms).toContain("promoted names, brands");
+    expect(terms).toContain("permanent account blocking without restoration");
+    expect(terms).toContain("without restoration");
+    expect(terms).toContain("or refund");
+    expect(terms).toContain("disclose available account, campaign");
+    expect(terms).toContain("law enforcement");
     expect(combined).not.toMatch(/explicit operator flags/i);
     expect(combined).not.toMatch(/deployed E2E/i);
     expect(combined).not.toMatch(/not public paid-launch capabilities/i);
@@ -386,7 +427,20 @@ describe("WaitSpin public docs contract", () => {
     expect(terms).toContain('href="/wallet/connect"');
     expect(privacy).toContain("WAITSPIN_PUBLIC_PUBLISHER_TARGETS");
     expect(publicTrustSource).toContain("Grok Code CLI");
+    expect(publicTrustSource).toContain("Cursor Editor Mode");
+    expect(publicTrustSource).toContain(
+      "cursor --install-extension waitspin.waitspin-vscode",
+    );
+    expect(publicTrustSource).toContain("Devin Desktop");
+    expect(publicTrustSource).toContain(
+      "https://open-vsx.org/extension/waitspin/waitspin-vscode",
+    );
+    expect(publicTrustSource).toContain(
+      "devin-desktop --install-extension waitspin.waitspin-vscode",
+    );
     expect(privacy).toContain("no separate analytics telemetry stream");
+    expect(privacy).toContain("Devin Desktop");
+    expect(privacy).toContain("Open VSX");
     for (const item of WAITSPIN_NEVER_SENT_DATA) {
       expect(publicTrustSource).toContain(item);
     }
@@ -445,6 +499,16 @@ describe("WaitSpin public docs contract", () => {
     for (const target of WAITSPIN_PUBLIC_TARGET_IDS) {
       expect(publicTrustSource).toContain(target);
     }
+    expect(WAITSPIN_PUBLIC_TARGET_IDS).toContain("status-bar-fallback");
+    expect(
+      WAITSPIN_PUBLIC_TARGET_IDS.filter(
+        (target) => target === "status-bar-fallback",
+      ),
+    ).toHaveLength(1);
+    expect(publicTrustSource).toContain("Devin Desktop");
+    expect(publicTrustSource).toContain("Open VSX");
+    expect(trustPage).toContain("Devin Desktop");
+    expect(trustPage).toContain("Open VSX");
     for (const hiddenTarget of ["kilo"]) {
       expect(publicTrustSource).not.toContain(hiddenTarget);
       expect(exportScript).not.toContain(hiddenTarget);
@@ -473,6 +537,14 @@ describe("WaitSpin public docs contract", () => {
     expect(exportScript).toContain("skills/waitspin/SKILL.md");
     expect(exportScript).toContain("skills/waitspin/skill-card.md");
     expect(exportScript).toContain("npx skills add citedy/waitspin");
+    expect(exportScript).toContain("Cursor Editor Mode: status-bar-fallback");
+    expect(exportScript).toContain("Devin Desktop: status-bar-fallback");
+    expect(exportScript).toContain(
+      "Open VSX-published VS Code-compatible extension",
+    );
+    expect(exportScript).toContain(
+      "devin-desktop --install-extension waitspin.waitspin-vscode",
+    );
     expect(exportScript).toContain(
       "Cline, Kimi, MMX, and other experimental native CLI targets are not public targets",
     );
@@ -721,7 +793,18 @@ describe("WaitSpin public docs contract", () => {
     expect(llmsBody).toContain("WaitSpin is an agent-first ad marketplace");
     expect(llmsBody).toContain("## WebMCP Browser Tools");
     expect(llmsBody).toContain(
-      "Verified user earning surfaces: VS Code Activity Bar/status-bar extension, Claude Code statusline command, Antigravity CLI statusline command, GitHub Copilot CLI statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer",
+      "Verified user earning surfaces: VS Code Activity Bar/status-bar extension, VS Code-compatible Cursor editor, VS Code-compatible Devin Desktop editor, Claude Code statusline command, Antigravity CLI statusline command, GitHub Copilot CLI statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer",
+    );
+    expect(llmsBody).toContain("VS Code/Cursor/Devin install path");
+    expect(llmsBody).toContain(
+      "Cursor Editor Mode uses cursor --install-extension waitspin.waitspin-vscode",
+    );
+    expect(llmsBody).toContain(
+      "Devin Desktop uses Open VSX or devin-desktop --install-extension waitspin.waitspin-vscode",
+    );
+    expect(llmsBody).toContain("status-bar-fallback");
+    expect(llmsBody).toContain(
+      "not separate cursor or devin targets",
     );
     expect(llmsBody).toContain(
       "Advanced agent install: waitspin install --all",
@@ -829,17 +912,93 @@ describe("WaitSpin public docs contract", () => {
     expect(launchClient).toContain("How does advertiser billing work?");
     expect(launchClient).toContain("How do users earn?");
     expect(launchClient).toContain("How do I install WaitSpin for VS Code?");
+    expect(launchClient).toContain("How do I install WaitSpin for Cursor?");
+    expect(launchClient).toContain("How do I install WaitSpin for Devin?");
     expect(launchClient).toContain("Which VS Code install is covered?");
     expect(launchClient).toContain(
       "WaitSpin is installed into Visual Studio Code itself",
     );
+    expect(launchClient).toContain("VS Code-compatible Cursor Editor Mode");
+    expect(launchClient).toContain("cursor.svg");
+    expect(launchClient).toContain("devin.svg");
+    expect(launchClient).toContain("Same VS Code Marketplace extension");
+    expect(launchClient).toContain("Cursor Marketplace install");
+    expect(launchClient).toContain(
+      "Install the same VS Code-compatible extension into Cursor",
+    );
+    expect(launchClient).toContain(
+      "cursor --install-extension waitspin.waitspin-vscode",
+    );
+    expect(launchClient).toContain("separate Cursor package or backend target");
+    expect(launchClient).not.toContain("separate Cursor install path");
+    expect(launchClient).toContain(
+      "code --install-extension waitspin.waitspin-vscode",
+    );
+    expect(launchClient).toContain(
+      "https://open-vsx.org/extension/waitspin/waitspin-vscode",
+    );
+    expect(launchClient).toContain("Open VSX install for Devin Desktop");
+    expect(launchClient).toContain(
+      "Install the Open VSX-published WaitSpin extension in Devin Desktop",
+    );
+    expect(launchClient).toContain(
+      "devin-desktop --install-extension waitspin.waitspin-vscode",
+    );
+    expect(launchClient).toContain("selectedMarketplaceVersionLabel");
+    expect(launchClient).toContain("openVsxVersionLabel");
+    expect(launchClient).toContain("separate Devin package or backend target");
+    const marketplaceCardBlock = launchClient.slice(
+      launchClient.indexOf('className="waitspin-marketplace-card"'),
+      launchClient.indexOf('className="waitspin-cli-actions"'),
+    );
+    expect(marketplaceCardBlock).toContain(
+      "selectedPublisherTarget.marketplaceInstallTitle",
+    );
+    expect(marketplaceCardBlock).toContain(
+      "selectedPublisherTarget.marketplaceInstallNote",
+    );
+    expect(marketplaceCardBlock).toContain("selectedMarketplaceVersionLabel");
+    expect(marketplaceCardBlock).not.toContain(
+      "vscodeMarketplaceVersionLabel",
+    );
+    const installAllCoverageBlock = launchClient.slice(
+      launchClient.indexOf("const installAllCoveredTargets"),
+      launchClient.indexOf("const publisherFullSetupCommands"),
+    );
+    expect(installAllCoverageBlock).toContain('"vscode"');
+    expect(installAllCoverageBlock).not.toContain('"cursor"');
+    expect(installAllCoverageBlock).not.toContain('"devin"');
+    const cursorTargetBlock = launchClient.slice(
+      launchClient.indexOf("  cursor: {"),
+      launchClient.indexOf("  devin: {"),
+    );
+    expect(cursorTargetBlock).toContain('target: "status-bar-fallback"');
+    expect(cursorTargetBlock).toContain(
+      "installCommand: cursorMarketplaceInstallCommand",
+    );
+    expect(cursorTargetBlock).not.toContain(
+      "installCommand: vscodeMarketplaceInstallCommand",
+    );
+    expect(cursorTargetBlock).not.toContain("vscodeCliFallbackInstallCommand");
+    const devinTargetBlock = launchClient.slice(
+      launchClient.indexOf("  devin: {"),
+      launchClient.indexOf('  "claude-code": {'),
+    );
+    expect(devinTargetBlock).toContain('target: "status-bar-fallback"');
+    expect(devinTargetBlock).toContain(
+      "installCommand: devinDesktopInstallCommand",
+    );
+    expect(devinTargetBlock).toContain("marketplaceUrl: openVsxMarketplaceUrl");
+    expect(devinTargetBlock).not.toContain(
+      "installCommand: vscodeMarketplaceInstallCommand",
+    );
+    expect(devinTargetBlock).not.toContain("vscodeCliFallbackInstallCommand");
     expect(launchClient).toContain("Roo Code");
     expect(launchClient).toContain("Windsurf");
     expect(launchClient).toContain("Gemini Code Assist");
     expect(launchClient).toContain(
       "It does not read their prompts, responses, files, or extension data.",
     );
-    expect(launchClient).not.toContain("Cursor");
     expect(launchClient).not.toContain("VSCodium");
     expect(launchClient).not.toContain("Code OSS");
     expect(launchClient).toContain(
@@ -889,10 +1048,10 @@ describe("WaitSpin public docs contract", () => {
     expect(launchClient).toContain("Copy install-all");
     expect(launchClient).not.toContain("How can agents install the skill?");
     expect(launchPage).toContain(
-      "verified earning surfaces for VS Code, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, or Grok Code CLI",
+      "verified earning surfaces for VS Code, Cursor, Devin, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, or Grok Code CLI",
     );
     expect(launchPage).toContain(
-      "Web, CLI, VS Code, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, Grok Code CLI",
+      "Web, CLI, VS Code, Cursor, Devin, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, Grok Code CLI",
     );
     expect(launchPage).not.toContain(
       "publishers run the verified VS Code Activity Bar/status-bar extension",

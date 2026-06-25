@@ -9,6 +9,20 @@ export const WAITSPIN_PUBLIC_PUBLISHER_TARGETS = [
       "Uses VS Code SecretStorage for the extension API key and user-scoped extension state for the install ID. The Marketplace extension provides an Activity Bar user view, status-bar mini state, wallet balance, pending balance, recent ledger entries, current sponsor card, no-inventory state, connect/polling/refresh/open commands, and a five-second visible impression hold.",
   },
   {
+    label: "Cursor Editor Mode",
+    target: "status-bar-fallback",
+    href: "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
+    localBehavior:
+      "Uses the same VS Code-compatible WaitSpin extension in Cursor, installed with cursor --install-extension waitspin.waitspin-vscode or through Cursor's Extensions panel. It stores keys through the VS Code-compatible SecretStorage API and uses the same Activity Bar/status-bar privacy boundary as the VS Code surface.",
+  },
+  {
+    label: "Devin Desktop",
+    target: "status-bar-fallback",
+    href: "https://open-vsx.org/extension/waitspin/waitspin-vscode",
+    localBehavior:
+      "Uses the Open VSX-published WaitSpin VS Code-compatible extension in Devin Desktop, installed from the Devin Desktop Extensions panel/Open VSX or with devin-desktop --install-extension waitspin.waitspin-vscode when that desktop CLI is on PATH. It stores keys through the VS Code-compatible SecretStorage API and uses the same Activity Bar/status-bar privacy boundary as the VS Code surface.",
+  },
+  {
     label: "Claude Code",
     target: "claude-code",
     installCommand:
@@ -60,6 +74,9 @@ export const WAITSPIN_PUBLIC_PUBLISHER_TARGETS = [
 
 export const WAITSPIN_PUBLIC_TARGET_IDS = WAITSPIN_PUBLIC_PUBLISHER_TARGETS.map(
   (target) => target.target,
+).filter(
+  (target, index, targets): target is (typeof targets)[number] =>
+    targets.indexOf(target) === index,
 );
 
 export const WAITSPIN_NEVER_SENT_DATA = [

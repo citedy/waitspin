@@ -12,8 +12,12 @@ import {
 import {
   WTS_VSCODE_MARKETPLACE_STATUS,
   WTS_VSCODE_MARKETPLACE_STATUS_PATH,
+  WTS_VSCODE_OPEN_VSX_STATUS,
+  WTS_VSCODE_OPEN_VSX_STATUS_PATH,
   waitSpinVscodeMarketplaceStateLabel,
   waitSpinVscodeMarketplaceVersionLabel,
+  waitSpinVscodeOpenVsxStateLabel,
+  waitSpinVscodeOpenVsxVersionLabel,
   waitSpinVscodeProvenanceVersionLabel,
 } from "@/lib/waitspin/vscode-marketplace-status";
 import { Section, WaitSpinLegalPage } from "../legal-content";
@@ -73,11 +77,18 @@ export default function WaitSpinTrustPage() {
 
       <Section title="VS Code Extension Provenance">
         <p>
-          The VS Code extension is installed from the{" "}
+          The VS Code-compatible extension is installed from the{" "}
           <a className="underline" href={marketplaceUrl}>
             Visual Studio Marketplace
-          </a>
-          . WaitSpin publishes the client source at{" "}
+          </a>{" "}
+          for VS Code and Cursor, or from{" "}
+          <a
+            className="underline"
+            href="https://open-vsx.org/extension/waitspin/waitspin-vscode"
+          >
+            Open VSX
+          </a>{" "}
+          for Devin Desktop. WaitSpin publishes the client source at{" "}
           <a className="underline" href={sourceUrl}>
             github.com/citedy/waitspin
           </a>{" "}
@@ -89,7 +100,7 @@ export default function WaitSpinTrustPage() {
           packages them and records the SHA256 in the manifest.
         </p>
         <p>
-          Published version:{" "}
+          Visual Studio Marketplace version:{" "}
           <code>
             {waitSpinVscodeMarketplaceVersionLabel(
               WTS_VSCODE_MARKETPLACE_STATUS,
@@ -116,6 +127,24 @@ export default function WaitSpinTrustPage() {
           </Link>
           .
         </p>
+        <p>
+          Open VSX version for Devin Desktop:{" "}
+          <code>
+            {waitSpinVscodeOpenVsxVersionLabel(WTS_VSCODE_OPEN_VSX_STATUS)}
+          </code>
+          . State:{" "}
+          <code>
+            {waitSpinVscodeOpenVsxStateLabel(WTS_VSCODE_OPEN_VSX_STATUS)}
+          </code>
+          . Live Open VSX status is published at{" "}
+          <Link
+            className="underline"
+            href={WTS_VSCODE_OPEN_VSX_STATUS_PATH}
+          >
+            {WTS_VSCODE_OPEN_VSX_STATUS_PATH}
+          </Link>
+          .
+        </p>
       </Section>
 
       <Section title="Client Privacy Boundary">
@@ -134,7 +163,7 @@ export default function WaitSpinTrustPage() {
       <Section title="Supported Public Surfaces">
         <ul className="list-disc space-y-2 pl-5">
           {WAITSPIN_PUBLIC_PUBLISHER_TARGETS.map((target) => (
-            <li key={target.target}>
+            <li key={`${target.label}-${target.target}`}>
               {"href" in target ? (
                 <a
                   className="underline"
@@ -156,7 +185,8 @@ export default function WaitSpinTrustPage() {
         </ul>
         <p>
           The current public user earning surfaces are the VS Code Marketplace
-          Activity Bar/status-bar extension, Claude Code statusline command, MiMo
+          Activity Bar/status-bar extension, the VS Code-compatible Cursor and
+          Devin Desktop editor surfaces, Claude Code statusline command, MiMo
           Code shell hook, OpenCode TUI plugin slot, and Grok Code CLI footer.
           Native spinner patching beyond these supported status surfaces remains
           outside the public contract until separately shipped and documented.

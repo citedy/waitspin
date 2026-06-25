@@ -187,6 +187,13 @@ describe("statusline CLI targets", () => {
     expect(runtimeWrite?.[1]).toContain("detectOwnerPid");
     expect(runtimeWrite?.[1]).toContain("ownerAliveAfterVisible");
     expect(runtimeWrite?.[1]).toContain("installedSurfaceStillConfigured");
+    expect(runtimeWrite?.[1]).toContain("function stripJsoncSyntax(raw)");
+    expect(runtimeWrite?.[1]).toContain("function stripTrailingJsonCommas(raw)");
+    expect(runtimeWrite?.[1]).toContain("? await readJsonc(state.settings_path, null)");
+    expect(runtimeWrite?.[1]).toContain(": await readJson(state.settings_path, null)");
+    expect(runtimeWrite?.[1]).toContain("const hasValueBeforeComma");
+    expect(runtimeWrite?.[1]).toContain('state.target === "copilot" || state.target === "antigravity"');
+    expect(runtimeWrite?.[1]).toContain('output += " "');
     expect(runtimeWrite?.[1]).toContain("Get-CimInstance Win32_Process");
     expect(runtimeWrite?.[1]).toContain("powershell.exe");
     expect(runtimeWrite?.[1]).toContain("SHELL_PROCESS_NAMES");
@@ -296,7 +303,8 @@ describe("statusline CLI targets", () => {
     const previousCommandPath = path.join(
       os.tmpdir(),
       "WaitSpin Test App",
-      "custom statusline",
+      "R&D ! ^ tools",
+      "custom statusline.cmd",
     );
     const stdout: string[] = [];
     jest.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
@@ -338,7 +346,21 @@ describe("statusline CLI targets", () => {
     );
     expect(runtimeWrite?.[1]).toContain("function expandExecutablePath(command)");
     expect(runtimeWrite?.[1]).toContain(".replace(/\\$\\{HOME\\}/g, home)");
-    expect(runtimeWrite?.[1]).toContain("spawn(expandExecutablePath(command), []");
+    expect(runtimeWrite?.[1]).toContain("function spawnResolvedCommandPath(commandPath)");
+    expect(runtimeWrite?.[1]).toContain("function unsafeWindowsCommandScriptPath(commandPath)");
+    expect(runtimeWrite?.[1]).toContain("/\\.(?:cmd|bat)$/i");
+    expect(runtimeWrite?.[1]).toContain('process.env.ComSpec || "cmd.exe"');
+    expect(runtimeWrite?.[1]).toContain('"/d"');
+    expect(runtimeWrite?.[1]).toContain('"/v:off"');
+    expect(runtimeWrite?.[1]).not.toContain('"/s"');
+    expect(runtimeWrite?.[1]).toContain('"/c"');
+    expect(runtimeWrite?.[1]).toContain("WAITSPIN_PREVIOUS_STATUSLINE_CMD");
+    expect(runtimeWrite?.[1]).toContain('call "%\' + previousCommandEnv + \'%"');
+    expect(runtimeWrite?.[1]).toContain("env: { ...process.env, [previousCommandEnv]: commandPath }");
+    expect(runtimeWrite?.[1]).toContain("windowsVerbatimArguments: true");
+    expect(runtimeWrite?.[1]).toContain("const expandedCommand =");
+    expect(runtimeWrite?.[1]).toContain('mode === "exec-path" && !expandedCommand');
+    expect(runtimeWrite?.[1]).toContain("spawnResolvedCommandPath(expandedCommand)");
     expect(JSON.parse(stdout.join(""))).toMatchObject({
       target: "copilot",
       settings_action: "compose-existing",
@@ -605,6 +627,121 @@ describe("statusline CLI targets", () => {
     expect(JSON.parse(stdout.join(""))).toMatchObject({ settings_action: "restore-previous" });
   });
 
+  it("cleans Copilot settings on uninstall when only managed statusline metadata changed", async () => {
+    const { runCopilotUninstall: rawRunCopilotUninstall } = await import("../cli");
+    const managed = { type: "command", command: copilotCommandPath, padding: 0 };
+    const drifted = { ...managed, padding: 1, refreshInterval: 5 };
+    const installedSettingsPath = path.join(os.tmpdir(), "waitspin-copilot-home", "settings.json");
+    const stdout: string[] = [];
+    jest.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === copilotStatePath) {
+        return JSON.stringify({
+          target: "copilot",
+          install_id: "wins_copilot",
+          publisher_id: "wpub_copilot",
+          publisher_target: "copilot",
+          registered_at: "2026-06-23T00:00:00.000Z",
+          base_url: "https://api.waitspin.com",
+          api_key_path: copilotApiKeyPath,
+          command_path: copilotCommandPath,
+          runtime_path: copilotRuntimePath,
+          cache_path: copilotCachePath,
+          settings_path: installedSettingsPath,
+          managed_status_line: managed,
+          had_previous_footer_show_custom: false,
+          installed_at: "2026-06-23T00:00:00.000Z",
+        });
+      }
+      if (filePath === installedSettingsPath) {
+        return JSON.stringify({
+          footer: { showCustom: true, showDirectory: true },
+          statusLine: drifted,
+          theme: "dark",
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await rawRunCopilotUninstall(withJsonFlag());
+
+    const settingsWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === installedSettingsPath,
+    );
+    expect(settingsWrite).toBeDefined();
+    expect(JSON.parse(settingsWrite[1])).toEqual({
+      footer: { showDirectory: true },
+      theme: "dark",
+    });
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      settings_action: "remove-managed",
+    });
+    expect(JSON.parse(stdout.join(""))).not.toHaveProperty("settings_warning");
+    expect(rm).toHaveBeenCalledWith(copilotCommandPath, {
+      force: true,
+      recursive: true,
+    });
+  });
+
+  it("preserves Copilot settings on uninstall when custom footer was disabled", async () => {
+    const { runCopilotUninstall: rawRunCopilotUninstall } = await import("../cli");
+    const managed = { type: "command", command: copilotCommandPath, padding: 0 };
+    const drifted = { ...managed, padding: 1, refreshInterval: 5 };
+    const installedSettingsPath = path.join(os.tmpdir(), "waitspin-copilot-home", "settings.json");
+    const stdout: string[] = [];
+    jest.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === copilotStatePath) {
+        return JSON.stringify({
+          target: "copilot",
+          install_id: "wins_copilot",
+          publisher_id: "wpub_copilot",
+          publisher_target: "copilot",
+          registered_at: "2026-06-23T00:00:00.000Z",
+          base_url: "https://api.waitspin.com",
+          api_key_path: copilotApiKeyPath,
+          command_path: copilotCommandPath,
+          runtime_path: copilotRuntimePath,
+          cache_path: copilotCachePath,
+          settings_path: installedSettingsPath,
+          managed_status_line: managed,
+          had_previous_footer_show_custom: false,
+          installed_at: "2026-06-23T00:00:00.000Z",
+        });
+      }
+      if (filePath === installedSettingsPath) {
+        return JSON.stringify({
+          footer: { showCustom: false, showDirectory: true },
+          statusLine: drifted,
+          theme: "dark",
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await rawRunCopilotUninstall(withJsonFlag());
+
+    const settingsWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === installedSettingsPath,
+    );
+    expect(settingsWrite).toBeUndefined();
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      settings_action: "skip-user-settings",
+      settings_warning:
+        "GitHub Copilot CLI statusLine is no longer the WaitSpin managed command; leaving user settings unchanged while removing WaitSpin-managed files.",
+    });
+    expect(rm).toHaveBeenCalledWith(copilotCommandPath, {
+      force: true,
+      recursive: true,
+    });
+  });
+
   it("installs Antigravity support with command statusline type and no raw key in state", async () => {
     const { runAntigravityInstall: rawRunAntigravityInstall } = await import("../cli");
     const stdout: string[] = [];
@@ -658,6 +795,12 @@ describe("statusline CLI targets", () => {
     expect(runtimeWrite?.[1]).toContain("detectOwnerPid");
     expect(runtimeWrite?.[1]).toContain("ownerAliveAfterVisible");
     expect(runtimeWrite?.[1]).toContain("installedSurfaceStillConfigured");
+    expect(runtimeWrite?.[1]).toContain("function stripJsoncSyntax(raw)");
+    expect(runtimeWrite?.[1]).toContain('output += " "');
+    expect(runtimeWrite?.[1]).toContain("? await readJsonc(state.settings_path, null)");
+    expect(runtimeWrite?.[1]).toContain(": await readJson(state.settings_path, null)");
+    expect(runtimeWrite?.[1]).toContain("const hasValueBeforeComma");
+    expect(runtimeWrite?.[1]).toContain('state.target === "copilot" || state.target === "antigravity"');
     expect(runtimeWrite?.[1]).toContain("Get-CimInstance Win32_Process");
     expect(runtimeWrite?.[1]).toContain("powershell.exe");
     expect(runtimeWrite?.[1]).toContain("SHELL_PROCESS_NAMES");
@@ -913,5 +1056,59 @@ describe("statusline CLI targets", () => {
       expect(rm).toHaveBeenCalledWith(filePath, { force: true, recursive: true });
     }
     expect(JSON.parse(stdout.join(""))).toMatchObject({ settings_action: "restore-previous" });
+  });
+
+  it("preserves disabled Antigravity statusline metadata on uninstall", async () => {
+    const { runAntigravityUninstall: rawRunAntigravityUninstall } = await import("../cli");
+    const managed = {
+      type: "command",
+      command: antigravityCommandPath,
+      enabled: true,
+    };
+    const disabled = { ...managed, enabled: false };
+    const stdout: string[] = [];
+    jest.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === antigravityStatePath) {
+        return JSON.stringify({
+          target: "antigravity",
+          install_id: "wins_antigravity",
+          publisher_id: "wpub_antigravity",
+          publisher_target: "antigravity",
+          registered_at: "2026-06-23T00:00:00.000Z",
+          base_url: "https://api.waitspin.com",
+          api_key_path: antigravityApiKeyPath,
+          command_path: antigravityCommandPath,
+          runtime_path: antigravityRuntimePath,
+          cache_path: antigravityCachePath,
+          settings_path: antigravitySettingsPath,
+          managed_status_line: managed,
+          installed_at: "2026-06-23T00:00:00.000Z",
+        });
+      }
+      if (filePath === antigravitySettingsPath) {
+        return JSON.stringify({ statusLine: disabled, colorScheme: "terminal" });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await rawRunAntigravityUninstall(withJsonFlag());
+
+    const settingsWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === antigravitySettingsPath,
+    );
+    expect(settingsWrite).toBeUndefined();
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      settings_action: "skip-user-settings",
+      settings_warning:
+        "Antigravity statusLine is no longer the WaitSpin managed command; leaving user settings unchanged while removing WaitSpin-managed files.",
+    });
+    expect(rm).toHaveBeenCalledWith(antigravityCommandPath, {
+      force: true,
+      recursive: true,
+    });
   });
 });

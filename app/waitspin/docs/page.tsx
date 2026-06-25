@@ -6,7 +6,11 @@ import { Section, WaitSpinLegalPage } from "../legal-content";
 import {
   WTS_VSCODE_MARKETPLACE_STATUS,
   WTS_VSCODE_MARKETPLACE_STATUS_PATH,
+  WTS_VSCODE_OPEN_VSX_STATUS,
+  WTS_VSCODE_OPEN_VSX_STATUS_PATH,
   waitSpinVscodeMarketplaceVersionLabel,
+  waitSpinVscodeOpenVsxStateLabel,
+  waitSpinVscodeOpenVsxVersionLabel,
 } from "@/lib/waitspin/vscode-marketplace-status";
 import { WAITSPIN_PUBLIC_PUBLISHER_POLICY_COPY } from "@/lib/waitspin/public-publisher-policy-copy";
 
@@ -14,6 +18,8 @@ const docsUrl = "https://waitspin.com/docs";
 const publisherPolicyCopy = WAITSPIN_PUBLIC_PUBLISHER_POLICY_COPY;
 const vscodeMarketplaceUrl =
   "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode";
+const openVsxMarketplaceUrl =
+  "https://open-vsx.org/extension/waitspin/waitspin-vscode";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://waitspin.com"),
@@ -424,8 +430,18 @@ export default function WaitSpinDocsPage() {
           <Link className="underline" href={vscodeMarketplaceUrl}>
             VS Code Marketplace
           </Link>{" "}
-          with <code>code --install-extension waitspin.waitspin-vscode</code> and connected
-          inside VS Code with <code>WaitSpin: Connect and earn</code>,{" "}
+          in VS Code with{" "}
+          <code>code --install-extension waitspin.waitspin-vscode</code> or in
+          Cursor Editor Mode with{" "}
+          <code>cursor --install-extension waitspin.waitspin-vscode</code>,
+          or from{" "}
+          <Link className="underline" href={openVsxMarketplaceUrl}>
+            Open VSX
+          </Link>{" "}
+          in Devin Desktop with{" "}
+          <code>devin-desktop --install-extension waitspin.waitspin-vscode</code>,
+          then connected inside that editor with{" "}
+          <code>WaitSpin: Connect and earn</code>,{" "}
           <code>claude-code</code>, installed by{" "}
           <code>waitspin claude-code install --compose-existing</code>,{" "}
           <code>antigravity</code>, installed by{" "}
@@ -440,10 +456,12 @@ export default function WaitSpinDocsPage() {
           first-class <code>statusLine.command</code> paths; MiMo Code uses a
           managed shell hook; OpenCode uses a managed TUI plugin entry; Grok
           Code CLI uses a managed text-asset footer patch with hash-backed
-          restore. Cline VS Code extension installs are covered by the WaitSpin
-          VS Code Marketplace extension; standalone Cline CLI remains outside
-          the public install contract. Other native spinner patch targets remain
-          deferred until official statusline/plugin support exists.
+          restore. Cursor Editor Mode, Devin Desktop, and Cline VS Code
+          extension installs are covered by the WaitSpin VS Code-compatible
+          extension; Devin uses the Open VSX listing while standalone Cline CLI
+          remains outside the public install contract. Other native spinner
+          patch targets remain deferred until official statusline/plugin support
+          exists.
         </p>
         </Section>
 
@@ -464,18 +482,28 @@ export default function WaitSpinDocsPage() {
         </p>
       </Section>
 
-      <Section title="VS Code User Setup">
+      <Section title="VS Code, Cursor, And Devin User Setup">
         <p>
-          The first-class VS Code user path is the{" "}
+          The first-class VS Code, Cursor Editor Mode, and Devin Desktop user
+          path is the{" "}
           <Link className="underline" href={vscodeMarketplaceUrl}>
             WaitSpin VS Code Marketplace extension
           </Link>
-          . Install it with{" "}
-          <code>code --install-extension waitspin.waitspin-vscode</code>,
-          then run <code>WaitSpin: Connect and earn</code> inside VS Code.
+          . Install it in VS Code with{" "}
+          <code>code --install-extension waitspin.waitspin-vscode</code> or in
+          Cursor with{" "}
+          <code>cursor --install-extension waitspin.waitspin-vscode</code>,
+          or install the same extension ID from{" "}
+          <Link className="underline" href={openVsxMarketplaceUrl}>
+            Open VSX
+          </Link>{" "}
+          in Devin Desktop with{" "}
+          <code>devin-desktop --install-extension waitspin.waitspin-vscode</code>,
+          then run <code>WaitSpin: Connect and earn</code> inside the matching
+          editor.
         </p>
         <p>
-          Latest VS Code extension:{" "}
+          Latest VS Code Marketplace extension for VS Code and Cursor:{" "}
           <code>
             {waitSpinVscodeMarketplaceVersionLabel(
               WTS_VSCODE_MARKETPLACE_STATUS,
@@ -484,10 +512,31 @@ export default function WaitSpinDocsPage() {
           .
         </p>
         <p>
+          Latest Open VSX extension for Devin Desktop:{" "}
+          <code>
+            {waitSpinVscodeOpenVsxVersionLabel(WTS_VSCODE_OPEN_VSX_STATUS)}
+          </code>
+          . State:{" "}
+          <code>
+            {waitSpinVscodeOpenVsxStateLabel(WTS_VSCODE_OPEN_VSX_STATUS)}
+          </code>
+          . Status artifact:{" "}
+          <Link
+            className="underline"
+            href={WTS_VSCODE_OPEN_VSX_STATUS_PATH}
+          >
+            {WTS_VSCODE_OPEN_VSX_STATUS_PATH}
+          </Link>
+          .
+        </p>
+        <p>
           The extension requests or accepts an extension API key, registers
-          the VS Code install through <code>POST /v1/publishers/register</code>,
-          stores the key in VS Code SecretStorage, and starts wallet/sponsor
-          polling against <code>https://api.waitspin.com</code>.
+          the VS Code-compatible install through{" "}
+          <code>POST /v1/publishers/register</code>, stores the key in VS Code
+          SecretStorage, and starts wallet/sponsor polling against{" "}
+          <code>https://api.waitspin.com</code>. Cursor and Devin Desktop use
+          the same SecretStorage-backed extension path; there is no separate
+          Cursor or Devin API target or WaitSpin package.
         </p>
         <p>
           CLI setup remains the advanced fallback:{" "}
@@ -518,8 +567,16 @@ waitspin status --all
 # VS Code user extension
 # Marketplace: ${vscodeMarketplaceUrl}
 code --install-extension waitspin.waitspin-vscode
-# Then run "WaitSpin: Connect and earn" in VS Code.
-# CLI fallback:
+
+# Cursor Editor Mode user extension
+cursor --install-extension waitspin.waitspin-vscode
+
+# Devin Desktop user extension
+# Open VSX: ${openVsxMarketplaceUrl}
+devin-desktop --install-extension waitspin.waitspin-vscode
+# Then run "WaitSpin: Connect and earn" in the matching editor.
+
+# VS Code CLI fallback:
 waitspin extension install --target vscode --api-key KEY_FROM_JSON
 waitspin extension status --target vscode
 
@@ -555,9 +612,11 @@ waitspin grok status`}
           <code>skipped_not_detected</code>, <code>skipped_conflict</code>, and{" "}
           <code>failed_rollback</code> arrays. Use an extension API key for
           polling/events. The VS Code extension can connect a user install inside
-          VS Code and stores keys in SecretStorage; the Claude Code installer
-          stores managed runtime state under <code>~/.waitspin</code> and does
-          not write the key into Claude settings.
+          VS Code and stores keys in SecretStorage; the Claude Code,
+          Antigravity CLI, and GitHub Copilot CLI installers store managed
+          runtime state under <code>~/.waitspin</code>, preserve existing status
+          lines with <code>--compose-existing</code>, and do not patch native
+          binaries.
         </p>
         <p>
           Extension keys created with the <code>publisher-extension</code>{" "}

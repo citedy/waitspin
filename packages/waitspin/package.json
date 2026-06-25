@@ -1,7 +1,7 @@
 {
   "name": "waitspin",
-  "version": "0.1.9",
-  "description": "CLI for WaitSpin sponsored wait-state ads: auth, campaigns, checkout, and user installs for VS Code, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, and Grok Code CLI.",
+  "version": "0.1.10",
+  "description": "CLI for WaitSpin sponsored wait-state ads: auth, campaigns, checkout, and user installs for VS Code, Cursor, Devin Desktop, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, and Grok Code CLI.",
   "type": "module",
   "homepage": "https://waitspin.com",
   "repository": {

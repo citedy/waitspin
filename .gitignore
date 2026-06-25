@@ -18,4 +18,16 @@ extensions/waitspin-vscode/*.vsix
 
 # Local promo (remotion, renders, generated assets)
 */promo/*
-docs/waitspin/promo/
+docs/waitspin/promo/*
+!docs/waitspin/promo/pics/
+docs/waitspin/promo/pics/*
+!docs/waitspin/promo/pics/promo-copy.mjs
+!docs/waitspin/promo/pics/generate-social-announce-docs.mjs
+!docs/waitspin/promo/pics/generate-x-ads-sheet.mjs
+!docs/waitspin/promo/pics/viral-fomo-hooks.mjs
+!docs/waitspin/promo/pics/viral-fomo/
+docs/waitspin/promo/pics/viral-fomo/*
+!docs/waitspin/promo/pics/viral-fomo/winners-terminal/
+docs/waitspin/promo/pics/viral-fomo/winners-terminal/*
+!docs/waitspin/promo/pics/viral-fomo/winners-terminal/announce/
+!docs/waitspin/promo/pics/viral-fomo/winners-terminal/announce/**
