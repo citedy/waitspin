@@ -70,6 +70,14 @@ export const WAITSPIN_PUBLIC_PUBLISHER_TARGETS = [
     localBehavior:
       "Manages GitHub Copilot CLI statusLine.command in ~/.copilot/settings.json or COPILOT_HOME/settings.json and stores WaitSpin state/cache under ~/.waitspin without patching native binaries.",
   },
+  {
+    label: "Qoder CLI",
+    target: "qoder",
+    installCommand:
+      "waitspin qoder install --api-key PASTE_PUBLISHER_EXTENSION_KEY",
+    localBehavior:
+      "Installs through Qoder's official UserPromptSubmit/Stop hooks, returns sponsored copy with statusMessage/systemMessage, discards prompt and assistant-message hook fields locally before cache/API work, merges ~/.qoder/settings.json without patching Qoder binaries, and stores WaitSpin runtime/state/cache under ~/.waitspin.",
+  },
 ] as const;
 
 export const WAITSPIN_PUBLIC_TARGET_IDS = WAITSPIN_PUBLIC_PUBLISHER_TARGETS.map(

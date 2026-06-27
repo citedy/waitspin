@@ -765,7 +765,7 @@
           "install_id": { "type": "string", "minLength": 8, "maxLength": 128 },
           "target": {
             "type": "string",
-            "enum": ["status-bar-fallback", "claude-code", "mimocode", "opencode", "grok", "antigravity", "copilot"]
+            "enum": ["status-bar-fallback", "claude-code", "mimocode", "opencode", "grok", "antigravity", "copilot", "qoder"]
           }
         },
         "additionalProperties": false

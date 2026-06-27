@@ -18,7 +18,7 @@ const statSync = jest.fn();
 const realpathSync = jest.fn((value: string) => value);
 
 jest.mock("node:fs", () => ({
-  constants: { F_OK: 0 },
+  constants: { F_OK: 0, R_OK: 4, X_OK: 1 },
   realpathSync: (...args: unknown[]) => realpathSync(...(args as [string])),
   statSync: (...args: unknown[]) => statSync(...args),
 }));
@@ -66,6 +66,7 @@ describe("waitspin extension install", () => {
     "WAITSPIN_MMX_BIN",
     "WAITSPIN_COPILOT_BIN",
     "WAITSPIN_ANTIGRAVITY_BIN",
+    "WAITSPIN_QODER_BIN",
     "COPILOT_HOME",
   ] as const;
   const originalExperimentalEnv = Object.fromEntries(
@@ -152,6 +153,31 @@ describe("waitspin extension install", () => {
     os.homedir(),
     ".gemini",
     "antigravity-cli",
+    "settings.json",
+  );
+  const qoderStatePath = path.join(
+    os.homedir(),
+    ".waitspin",
+    "qoder-install.json",
+  );
+  const qoderRuntimePath = path.join(
+    os.homedir(),
+    ".waitspin",
+    "qoder-hook-runtime.mjs",
+  );
+  const qoderCachePath = path.join(
+    os.homedir(),
+    ".waitspin",
+    "qoder-hook-cache.json",
+  );
+  const qoderApiKeyPath = path.join(
+    os.homedir(),
+    ".waitspin",
+    "qoder-api-key.secret",
+  );
+  const qoderSettingsPath = path.join(
+    os.homedir(),
+    ".qoder",
     "settings.json",
   );
   const mimocodeStatePath = path.join(
@@ -263,8 +289,12 @@ describe("waitspin extension install", () => {
     statSync.mockImplementation(() => {
       throw enoent();
     });
-    execFile.mockImplementation((_file, _args, _options, callback) => {
-      callback(null, "2.1.152 (Claude Code)\n", "");
+    execFile.mockImplementation((file, _args, _options, callback) => {
+      callback(
+        null,
+        file === "qodercli" ? "1.0.31\n" : "2.1.152 (Claude Code)\n",
+        "",
+      );
     });
     (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
       if (filePath.endsWith("package.json")) {
@@ -294,7 +324,9 @@ describe("waitspin extension install", () => {
         filePath === copilotSettingsPath ||
         filePath === copilotStatePath ||
         filePath === antigravitySettingsPath ||
-        filePath === antigravityStatePath
+        filePath === antigravityStatePath ||
+        filePath === qoderSettingsPath ||
+        filePath === qoderStatePath
       ) {
         throw enoent();
       }
@@ -381,6 +413,8 @@ describe("waitspin extension install", () => {
     expect(text).toContain("waitspin antigravity status");
     expect(text).toContain("waitspin copilot install");
     expect(text).toContain("waitspin copilot status");
+    expect(text).toContain("waitspin qoder install");
+    expect(text).toContain("waitspin qoder status");
     expect(text).toContain("mimocode");
     expect(text).not.toContain("--include-experimental");
     expect(text).not.toContain("waitspin kilo");
@@ -557,6 +591,7 @@ describe("waitspin extension install", () => {
       "grok",
       "antigravity",
       "copilot",
+      "qoder",
     ]);
     expect(output.would_install.every((item) => item.result.dry_run)).toBe(
       true,
@@ -592,6 +627,7 @@ describe("waitspin extension install", () => {
       "opencode",
       "antigravity",
       "copilot",
+      "qoder",
     ]);
     expect(output.skipped_conflict).toEqual([
       expect.objectContaining({
@@ -643,6 +679,7 @@ describe("waitspin extension install", () => {
       "grok",
       "antigravity",
       "copilot",
+      "qoder",
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -681,6 +718,7 @@ describe("waitspin extension install", () => {
       "grok",
       "antigravity",
       "copilot",
+      "qoder",
     ]);
     expect(output.statuses.every((item) => item.result.installed === false)).toBe(
       true,
@@ -733,6 +771,7 @@ describe("waitspin extension install", () => {
       "grok",
       "antigravity",
       "copilot",
+      "qoder",
       "cline",
       "kimi",
       "mmx",
@@ -3344,6 +3383,561 @@ describe("waitspin extension install", () => {
     });
     const output = JSON.parse(stdout.join("")) as Record<string, unknown>;
     expect(output.settings_action).toBe("restore-previous");
+  });
+
+  it("installs Qoder UserPromptSubmit hook support without exposing secrets", async () => {
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
+    const stdout: string[] = [];
+    const testKey = "test_waitspin_publisher_extension_key";
+    const previousReadFile = (readFile as jest.Mock).getMockImplementation();
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === qoderSettingsPath) {
+        return JSON.stringify({
+          hooks: {
+            UserPromptSubmit: [
+              {
+                hooks: [
+                  {
+                    type: "command",
+                    command: "existing-qoder-hook",
+                    timeout: 9,
+                    statusMessage: "Existing hook",
+                  },
+                ],
+              },
+            ],
+          },
+        });
+      }
+      return previousReadFile?.(filePath);
+    });
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await main(["qoder", "install", "--api-key", testKey]);
+
+    const registerBody = JSON.parse(
+      (fetchMock.mock.calls[0][1] as RequestInit).body as string,
+    ) as { target: string };
+    const outputText = stdout.join("");
+    const output = JSON.parse(outputText) as Record<string, unknown>;
+    const runtimeWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === qoderRuntimePath,
+    );
+    const secretWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === qoderApiKeyPath,
+    );
+    const stateWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === qoderStatePath,
+    );
+    const settingsWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === qoderSettingsPath,
+    );
+    const state = JSON.parse(String(stateWrite?.[1])) as Record<string, unknown>;
+    const settings = JSON.parse(String(settingsWrite?.[1])) as {
+      hooks: {
+        Stop: Array<{ hooks: Array<Record<string, unknown>> }>;
+        UserPromptSubmit: Array<{ hooks: Array<Record<string, unknown>> }>;
+      };
+    };
+    const managedHook = settings.hooks.UserPromptSubmit[1].hooks[0];
+    const managedStopHook = settings.hooks.Stop[0].hooks[0];
+
+    expect(registerBody.target).toBe("qoder");
+    expect(output).toMatchObject({
+      target: "qoder",
+      mode: "qoder-hook-system-message",
+      publisher_registered: true,
+      hook_events: ["UserPromptSubmit", "Stop"],
+      hook_status_message: "WaitSpin sponsor check",
+      qoder_version: "1.0.31",
+      next_command: "qodercli",
+    });
+    expect(outputText).not.toContain(testKey);
+    expect(secretWrite?.[1]).toBe(`${testKey}\n`);
+    expect(secretWrite?.[2]).toMatchObject({ mode: 0o600 });
+    expect(chmod).toHaveBeenCalledWith(qoderApiKeyPath, 0o600);
+    expect(state).toMatchObject({
+      target: "qoder",
+      publisher_target: "qoder",
+      api_key_path: qoderApiKeyPath,
+      runtime_path: qoderRuntimePath,
+      cache_path: qoderCachePath,
+      settings_path: qoderSettingsPath,
+    });
+    expect(JSON.stringify(state)).not.toContain(testKey);
+    expect(settings.hooks.UserPromptSubmit[0].hooks[0].command).toBe(
+      "existing-qoder-hook",
+    );
+    expect(managedHook).toMatchObject({
+      type: "command",
+      timeout: 15,
+      statusMessage: "WaitSpin sponsor check",
+    });
+    expect(managedStopHook).toMatchObject(managedHook);
+    expect(String(managedHook.command)).toContain(qoderRuntimePath);
+    expect(String(managedHook.command)).toContain(qoderStatePath);
+    expect(JSON.stringify(settings)).not.toContain(testKey);
+    expect(runtimeWrite?.[1]).toContain("/v1/serve/next");
+    expect(runtimeWrite?.[1]).toContain("/v1/events/impression");
+    expect(runtimeWrite?.[1]).toContain("systemMessage");
+    expect(runtimeWrite?.[1]).toContain("Sponsored: ");
+    expect(runtimeWrite?.[1]).toContain("UserPromptSubmit");
+    expect(runtimeWrite?.[1]).toContain("sanitizeQoderHookInput");
+    expect(runtimeWrite?.[1]).toContain("parseQoderHookInput");
+    expect(runtimeWrite?.[1]).toContain("delete sanitized.prompt");
+    expect(runtimeWrite?.[1]).toContain("delete sanitized.last_assistant_message");
+    expect(runtimeWrite?.[1]).toContain("readJsonc");
+    expect(runtimeWrite?.[1]).toContain("stripJsoncComments");
+    expect(runtimeWrite?.[1]).toContain('createHash("sha256")');
+    expect(runtimeWrite?.[1]).toContain("SHELL_PROCESS_NAMES");
+    expect(runtimeWrite?.[1]).toContain("processInfo");
+    expect(runtimeWrite?.[1]).toContain("isQoderProcess");
+    expect(runtimeWrite?.[1]).toContain("detectOwnerPid");
+    expect(runtimeWrite?.[1]).toContain("powershell.exe");
+    expect(runtimeWrite?.[1]).toContain("process.kill(pid, 0)");
+    expect(runtimeWrite?.[1]).toContain("recordVisibleImpressionFromHook");
+    expect(runtimeWrite?.[1]).toContain("scheduleVisibleImpressionRetry");
+    expect(runtimeWrite?.[1]).toContain('"--record-visible"');
+    expect(runtimeWrite?.[1]).toContain('"--session-key"');
+    expect(runtimeWrite?.[1]).toContain("env: { ...process.env }");
+    expect(runtimeWrite?.[1]).toContain(
+      'allowRetry: inputJson.hook_event_name === "Stop"',
+    );
+    expect(runtimeWrite?.[1]).toContain('hook_event_name !== "UserPromptSubmit"');
+    expect(runtimeWrite?.[1]).toContain("installedSurfaceStillConfigured");
+    expect(runtimeWrite?.[1]).not.toContain("--impression-tick");
+    expect(runtimeWrite?.[1]).not.toContain(testKey);
+  });
+
+  it("restores the previous Qoder secret when settings write fails during refresh", async () => {
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
+    const oldKey = "old_waitspin_publisher_extension_key";
+    const newKey = "new_waitspin_publisher_extension_key";
+    const oldRuntimeSource = "#!/usr/bin/env node\n// old qoder runtime\n";
+    const managedHook = {
+      type: "command",
+      command: `'${process.execPath}' '${qoderRuntimePath}' --state '${qoderStatePath}'`,
+      timeout: 15,
+      statusMessage: "WaitSpin sponsor check",
+    };
+    const existingState = {
+      target: "qoder",
+      install_id: "wins_qoder_existing",
+      publisher_id: "wpub_qoder_existing",
+      publisher_target: "qoder",
+      registered_at: "2026-06-26T00:00:00.000Z",
+      base_url: "https://api.waitspin.com",
+      api_key_path: qoderApiKeyPath,
+      runtime_path: qoderRuntimePath,
+      cache_path: qoderCachePath,
+      settings_path: qoderSettingsPath,
+      managed_hook: managedHook,
+      qoder_version: "1.0.31",
+      installed_at: "2026-06-26T00:00:00.000Z",
+    };
+    const existingSettings = {
+      hooks: {
+        Stop: [{ hooks: [managedHook] }],
+        UserPromptSubmit: [{ hooks: [managedHook] }],
+      },
+    };
+    const previousReadFile = (readFile as jest.Mock).getMockImplementation();
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === qoderStatePath) return JSON.stringify(existingState);
+      if (filePath === qoderSettingsPath) return JSON.stringify(existingSettings);
+      if (filePath === qoderApiKeyPath) return `${oldKey}\n`;
+      if (filePath === qoderRuntimePath) return oldRuntimeSource;
+      return previousReadFile?.(filePath);
+    });
+    let qoderSettingsWrites = 0;
+    (writeFile as jest.Mock).mockImplementation(
+      async (filePath: string, _value: unknown) => {
+        if (filePath === qoderSettingsPath) {
+          qoderSettingsWrites += 1;
+          if (qoderSettingsWrites === 1) {
+            throw new Error("settings write failed");
+          }
+        }
+      },
+    );
+
+    await expect(main(["qoder", "install", "--api-key", newKey])).rejects.toThrow(
+      "settings write failed",
+    );
+
+    const secretWrites = (writeFile as jest.Mock).mock.calls
+      .filter(([filePath]) => filePath === qoderApiKeyPath)
+      .map(([, value]) => value);
+    expect(secretWrites).toEqual([`${newKey}\n`, `${oldKey}\n`]);
+    const runtimeWrites = (writeFile as jest.Mock).mock.calls
+      .filter(([filePath]) => filePath === qoderRuntimePath)
+      .map(([, value]) => String(value));
+    expect(runtimeWrites[0]).toContain("scheduleVisibleImpressionRetry");
+    expect(runtimeWrites.at(-1)).toBe(oldRuntimeSource);
+    const stateWrites = (writeFile as jest.Mock).mock.calls
+      .filter(([filePath]) => filePath === qoderStatePath)
+      .map(([, value]) => JSON.parse(String(value)) as Record<string, unknown>);
+    expect(stateWrites.at(-1)).toMatchObject({
+      install_id: "wins_qoder_existing",
+      publisher_id: "wpub_qoder_existing",
+    });
+    const settingsWrites = (writeFile as jest.Mock).mock.calls
+      .filter(([filePath]) => filePath === qoderSettingsPath)
+      .map(([, value]) => JSON.parse(String(value)) as Record<string, unknown>);
+    expect(settingsWrites.at(-1)).toEqual(existingSettings);
+  });
+
+  it("reports Qoder status from readable managed files and hook settings", async () => {
+    const { runQoderStatus: rawRunQoderStatus } = await import("../cli");
+    const runQoderStatus = (flags: Map<string, string[]> = new Map()) =>
+      rawRunQoderStatus(withJsonFlag(flags));
+    process.env.WAITSPIN_QODER_BIN = "/opt/qoder/bin/qodercli";
+    const stdout: string[] = [];
+    const managedHook = {
+      type: "command",
+      command: `'${process.execPath}' '${qoderRuntimePath}' --state '${qoderStatePath}'`,
+      timeout: 15,
+      statusMessage: "WaitSpin sponsor check",
+    };
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === qoderStatePath) {
+        return JSON.stringify({
+          target: "qoder",
+          install_id: "wins_qoder",
+          publisher_id: "wpub_qoder",
+          publisher_target: "qoder",
+          base_url: "https://api.waitspin.com",
+          api_key_path: qoderApiKeyPath,
+          runtime_path: qoderRuntimePath,
+          cache_path: qoderCachePath,
+          settings_path: qoderSettingsPath,
+          managed_hook: managedHook,
+          qoder_version: "1.0.31",
+          installed_at: "2026-06-26T00:00:00.000Z",
+        });
+      }
+      if (filePath === qoderSettingsPath) {
+        return JSON.stringify({
+          hooks: {
+            Stop: [{ hooks: [managedHook] }],
+            UserPromptSubmit: [{ hooks: [managedHook] }],
+          },
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await runQoderStatus();
+
+    expect(access).toHaveBeenCalledWith(qoderRuntimePath, 4);
+    expect(access).toHaveBeenCalledWith(qoderStatePath, 4);
+    expect(access).toHaveBeenCalledWith(qoderApiKeyPath, 4);
+    const output = JSON.parse(stdout.join("")) as Record<string, unknown>;
+    expect(output).toMatchObject({
+      target: "qoder",
+      mode: "qoder-hook-system-message",
+      installed: true,
+      hook_configured: true,
+      expected_managed_hook_count: 2,
+      managed_hook_count: 2,
+      runtime_readable: true,
+      state_readable: true,
+      api_key_readable: true,
+      next: "launch_qoder",
+      next_command: "/opt/qoder/bin/qodercli",
+    });
+  });
+
+  it("reports Qoder status as degraded when the managed hook is missing", async () => {
+    const { runQoderStatus: rawRunQoderStatus } = await import("../cli");
+    const runQoderStatus = (flags: Map<string, string[]> = new Map()) =>
+      rawRunQoderStatus(withJsonFlag(flags));
+    const stdout: string[] = [];
+    const managedHook = {
+      type: "command",
+      command: `${process.execPath} ${qoderRuntimePath} --state ${qoderStatePath}`,
+      timeout: 15,
+      statusMessage: "WaitSpin sponsor check",
+    };
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === qoderStatePath) {
+        return JSON.stringify({
+          target: "qoder",
+          install_id: "wins_qoder",
+          publisher_id: "wpub_qoder",
+          publisher_target: "qoder",
+          base_url: "https://api.waitspin.com",
+          api_key_path: qoderApiKeyPath,
+          runtime_path: qoderRuntimePath,
+          cache_path: qoderCachePath,
+          settings_path: qoderSettingsPath,
+          managed_hook: managedHook,
+          installed_at: "2026-06-26T00:00:00.000Z",
+        });
+      }
+      if (filePath === qoderSettingsPath) {
+        return JSON.stringify({
+          hooks: {
+            UserPromptSubmit: [
+              { hooks: [{ type: "command", command: "existing-qoder-hook" }] },
+            ],
+          },
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await runQoderStatus();
+
+    const output = JSON.parse(stdout.join("")) as Record<string, unknown>;
+    expect(output).toMatchObject({
+      target: "qoder",
+      installed: false,
+      hook_configured: false,
+      managed_hook_count: 0,
+      next: "install_qoder",
+    });
+  });
+
+  it("reports Qoder status as degraded when managed hooks are duplicated in one event", async () => {
+    const { runQoderStatus: rawRunQoderStatus } = await import("../cli");
+    const runQoderStatus = (flags: Map<string, string[]> = new Map()) =>
+      rawRunQoderStatus(withJsonFlag(flags));
+    const stdout: string[] = [];
+    const managedHook = {
+      type: "command",
+      command: `${process.execPath} ${qoderRuntimePath} --state ${qoderStatePath}`,
+      timeout: 15,
+      statusMessage: "WaitSpin sponsor check",
+    };
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === qoderStatePath) {
+        return JSON.stringify({
+          target: "qoder",
+          install_id: "wins_qoder",
+          publisher_id: "wpub_qoder",
+          publisher_target: "qoder",
+          base_url: "https://api.waitspin.com",
+          api_key_path: qoderApiKeyPath,
+          runtime_path: qoderRuntimePath,
+          cache_path: qoderCachePath,
+          settings_path: qoderSettingsPath,
+          managed_hook: managedHook,
+          installed_at: "2026-06-26T00:00:00.000Z",
+        });
+      }
+      if (filePath === qoderSettingsPath) {
+        return JSON.stringify({
+          hooks: {
+            UserPromptSubmit: [{ hooks: [managedHook, managedHook] }],
+          },
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await runQoderStatus();
+
+    const output = JSON.parse(stdout.join("")) as Record<string, unknown>;
+    expect(output).toMatchObject({
+      target: "qoder",
+      installed: false,
+      hook_configured: false,
+      managed_hook_count: 2,
+      next: "install_qoder",
+    });
+  });
+
+  it("uninstalls only the managed Qoder hook and local state", async () => {
+    const { runQoderUninstall: rawRunQoderUninstall } = await import("../cli");
+    const runQoderUninstall = (flags: Map<string, string[]> = new Map()) =>
+      rawRunQoderUninstall(withJsonFlag(flags));
+    const stdout: string[] = [];
+    const managedHook = {
+      type: "command",
+      command: `${process.execPath} ${qoderRuntimePath} --state ${qoderStatePath}`,
+      timeout: 15,
+      statusMessage: "WaitSpin sponsor check",
+    };
+    const existingHook = {
+      type: "command",
+      command: "existing-qoder-hook",
+      timeout: 9,
+      statusMessage: "Existing hook",
+    };
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === qoderStatePath) {
+        return JSON.stringify({
+          target: "qoder",
+          install_id: "wins_qoder",
+          publisher_id: "wpub_qoder",
+          publisher_target: "qoder",
+          base_url: "https://api.waitspin.com",
+          api_key_path: qoderApiKeyPath,
+          runtime_path: qoderRuntimePath,
+          cache_path: qoderCachePath,
+          settings_path: qoderSettingsPath,
+          managed_hook: managedHook,
+          installed_at: "2026-06-26T00:00:00.000Z",
+        });
+      }
+      if (filePath === qoderSettingsPath) {
+        return JSON.stringify({
+          hooks: {
+            Stop: [{ hooks: [managedHook] }],
+            UserPromptSubmit: [
+              { hooks: [existingHook] },
+              { hooks: [managedHook] },
+            ],
+          },
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await runQoderUninstall();
+
+    const settingsWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === qoderSettingsPath,
+    );
+    const settings = JSON.parse(String(settingsWrite?.[1])) as {
+      hooks: { UserPromptSubmit: Array<{ hooks: Array<Record<string, unknown>> }> };
+    };
+    expect(settings.hooks.UserPromptSubmit).toHaveLength(1);
+    expect(settings.hooks.UserPromptSubmit[0].hooks[0]).toMatchObject(
+      existingHook,
+    );
+    expect(rm).toHaveBeenCalledWith(qoderRuntimePath, {
+      force: true,
+      recursive: true,
+    });
+    expect(rm).toHaveBeenCalledWith(qoderCachePath, {
+      force: true,
+      recursive: true,
+    });
+    expect(rm).toHaveBeenCalledWith(qoderApiKeyPath, {
+      force: true,
+      recursive: true,
+    });
+    expect(rm).toHaveBeenCalledWith(qoderStatePath, {
+      force: true,
+      recursive: true,
+    });
+    const output = JSON.parse(stdout.join("")) as Record<string, unknown>;
+    expect(output).toMatchObject({
+      target: "qoder",
+      uninstalled: true,
+      settings_action: "remove-managed",
+      removed_hooks: 2,
+    });
+  });
+
+  it("removes orphaned Qoder hooks when managed state is missing", async () => {
+    const { runQoderUninstall: rawRunQoderUninstall } = await import("../cli");
+    const runQoderUninstall = (flags: Map<string, string[]> = new Map()) =>
+      rawRunQoderUninstall(withJsonFlag(flags));
+    const stdout: string[] = [];
+    const managedHook = {
+      type: "command",
+      command: `'${process.execPath}' '${qoderRuntimePath}' --state '${qoderStatePath}'`,
+      timeout: 15,
+      statusMessage: "WaitSpin sponsor check",
+    };
+    const existingHook = {
+      type: "command",
+      command: "existing-qoder-hook",
+      timeout: 9,
+      statusMessage: "Existing hook",
+    };
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+    (readFile as jest.Mock).mockImplementation(async (filePath: string) => {
+      if (filePath === qoderStatePath) throw enoent();
+      if (filePath === qoderSettingsPath) {
+        return JSON.stringify({
+          hooks: {
+            Stop: [{ hooks: [managedHook] }],
+            UserPromptSubmit: [
+              { hooks: [existingHook] },
+              { hooks: [managedHook] },
+            ],
+          },
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    await runQoderUninstall();
+
+    const settingsWrite = (writeFile as jest.Mock).mock.calls.find(
+      ([filePath]) => filePath === qoderSettingsPath,
+    );
+    const settings = JSON.parse(String(settingsWrite?.[1])) as {
+      hooks: { UserPromptSubmit: Array<{ hooks: Array<Record<string, unknown>> }> };
+    };
+    expect(settings.hooks).not.toHaveProperty("Stop");
+    expect(settings.hooks.UserPromptSubmit).toHaveLength(1);
+    expect(settings.hooks.UserPromptSubmit[0].hooks[0]).toMatchObject(
+      existingHook,
+    );
+    expect(rm).toHaveBeenCalledWith(qoderRuntimePath, {
+      force: true,
+      recursive: true,
+    });
+    expect(rm).toHaveBeenCalledWith(qoderCachePath, {
+      force: true,
+      recursive: true,
+    });
+    expect(rm).toHaveBeenCalledWith(qoderApiKeyPath, {
+      force: true,
+      recursive: true,
+    });
+    expect(rm).toHaveBeenCalledWith(qoderStatePath, {
+      force: true,
+      recursive: true,
+    });
+    const output = JSON.parse(stdout.join("")) as Record<string, unknown>;
+    expect(output).toMatchObject({
+      target: "qoder",
+      uninstalled: true,
+      settings_action: "remove-managed",
+      removed_hooks: 2,
+    });
   });
 
   // ─── OpenCode ────────────────────────────────────────────

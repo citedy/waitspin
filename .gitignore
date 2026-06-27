@@ -31,3 +31,12 @@ docs/waitspin/promo/pics/viral-fomo/*
 docs/waitspin/promo/pics/viral-fomo/winners-terminal/*
 !docs/waitspin/promo/pics/viral-fomo/winners-terminal/announce/
 !docs/waitspin/promo/pics/viral-fomo/winners-terminal/announce/**
+!docs/waitspin/promo/splash/
+docs/waitspin/promo/splash/*
+!docs/waitspin/promo/splash/WAITSPIN_OG_SPLASH_SPEC.md
+!docs/waitspin/promo/splash/research/
+!docs/waitspin/promo/splash/research/**
+!docs/waitspin/promo/splash/remotion/
+!docs/waitspin/promo/splash/remotion/**
+docs/waitspin/promo/splash/remotion/node_modules/
+docs/waitspin/promo/splash/out/

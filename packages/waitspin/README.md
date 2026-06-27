@@ -64,6 +64,10 @@ waitspin opencode status
 # Or install for Grok Code CLI footer
 waitspin grok install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 waitspin grok status
+
+# Or install for Qoder CLI UserPromptSubmit/Stop hooks
+waitspin qoder install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin qoder status
 ```
 
 ## Commands
@@ -105,6 +109,9 @@ waitspin grok status
 - `waitspin grok install` — install the Grok Code CLI footer surface
 - `waitspin grok status` — inspect managed Grok Code CLI runtime state
 - `waitspin grok uninstall` — restore Grok Code CLI and remove managed state
+- `waitspin qoder install` — install the Qoder CLI UserPromptSubmit/Stop hooks
+- `waitspin qoder status` — inspect managed Qoder CLI runtime state
+- `waitspin qoder uninstall` — remove the managed Qoder hook and local state
 
 API base: `https://api.waitspin.com`
 
@@ -112,13 +119,17 @@ The public package manages the public target set: the status-bar-fallback
 extension path for VS Code, Cursor Editor Mode, and Devin Desktop through Open
 VSX, the Claude Code statusline command, the Antigravity CLI statusline command,
 the GitHub Copilot CLI statusline command, the MiMo Code shell hook, the
-OpenCode TUI plugin slot, and the Grok Code CLI footer. Claude Code,
+OpenCode TUI plugin slot, the Grok Code CLI footer, and the Qoder CLI
+UserPromptSubmit/Stop hooks. Claude Code,
 Antigravity CLI, and GitHub Copilot CLI support use
 first-class `statusLine.command` paths and do not patch native binaries. MiMo
 Code uses a bash hook that polls the API for sponsored messages. OpenCode uses
 its TUI `app_bottom` plugin slot. Grok Code CLI uses a managed text-asset
 footer patch with hash-backed backup/restore and does not patch native
-binaries.
+binaries. Qoder CLI uses the official `UserPromptSubmit` hook with
+`statusMessage`/`systemMessage` plus the official `Stop` hook for the later
+visibility callback; it does not patch native binaries or npm
+package files.
 
 `waitspin install --all` is an advanced agent command for installing every
 detected all-install target: VS Code plus CLI-managed targets. Cursor Editor
@@ -157,6 +168,7 @@ npx waitspin copilot install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-e
 npx waitspin mimocode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 npx waitspin opencode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 npx waitspin grok install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+npx waitspin qoder install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 ```
 
 - `WAITSPIN_API_KEY` — temporary extension API key for CLI fallback flows
@@ -194,6 +206,14 @@ The Grok Code CLI installer writes a managed runtime/state under `~/.waitspin`
 and patches the verified OpenTUI footer text asset with a hash-backed backup so
 uninstall can restore the original file.
 
+The Qoder CLI installer writes a managed hook runtime/state/cache under
+`~/.waitspin` and adds managed `UserPromptSubmit` and `Stop` hook entries to
+`~/.qoder/settings.json`. The hook returns dynamic sponsored copy through
+Qoder's `systemMessage` response only after fetching WaitSpin inventory; the
+static hook `statusMessage` is a generic sponsor check and is not billable by
+itself. A billable Qoder impression also requires a later official Qoder hook
+callback after the minimum visible interval.
+
 Cline VS Code extension installs, Cursor Editor Mode, and Devin Desktop are
 covered by the VS Code-compatible Activity Bar/status-bar extension target.
 Standalone Cline CLI is not a public install target until Cline exposes an
@@ -213,4 +233,5 @@ npx --yes waitspin@latest opencode status
 npx --yes waitspin@latest grok status
 npx --yes waitspin@latest antigravity status
 npx --yes waitspin@latest copilot status
+npx --yes waitspin@latest qoder status
 ```

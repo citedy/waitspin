@@ -153,8 +153,8 @@ request:  { "campaign_id": "wcamp_..." }
 response: { "checkout_url": "https://checkout.stripe.com/...", "block_purchase_id": "wbp_..." }
 
 POST /v1/publishers/register
-request:  { "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "antigravity" | "copilot" | "mimocode" | "opencode" | "grok" }
-response: { "publisher_id": "wpub_...", "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "antigravity" | "copilot" | "mimocode" | "opencode" | "grok" }
+request:  { "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "antigravity" | "copilot" | "mimocode" | "opencode" | "grok" | "qoder" }
+response: { "publisher_id": "wpub_...", "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "antigravity" | "copilot" | "mimocode" | "opencode" | "grok" | "qoder" }
 
 POST /v1/serve/next
 request:  { "install_id": "wins_...", "slot_id": "optional" }
@@ -451,12 +451,17 @@ export default function WaitSpinDocsPage() {
           <code>mimocode</code>, installed by{" "}
           <code>waitspin mimocode install</code>, and <code>opencode</code>,
           installed by <code>waitspin opencode install</code>, and{" "}
-          <code>grok</code>, installed by <code>waitspin grok install</code>.
+          <code>grok</code>, installed by <code>waitspin grok install</code>,
+          and <code>qoder</code>, installed by{" "}
+          <code>waitspin qoder install</code>.
           Claude Code, Antigravity CLI, and GitHub Copilot CLI support use
           first-class <code>statusLine.command</code> paths; MiMo Code uses a
           managed shell hook; OpenCode uses a managed TUI plugin entry; Grok
           Code CLI uses a managed text-asset footer patch with hash-backed
-          restore. Cursor Editor Mode, Devin Desktop, and Cline VS Code
+          restore; Qoder CLI uses the official <code>UserPromptSubmit</code>{" "}
+          hook with <code>statusMessage</code>/<code>systemMessage</code> plus
+          the official <code>Stop</code> hook for the later visibility callback.
+          Cursor Editor Mode, Devin Desktop, and Cline VS Code
           extension installs are covered by the WaitSpin VS Code-compatible
           extension; Devin uses the Open VSX listing while standalone Cline CLI
           remains outside the public install contract. Other native spinner
@@ -602,7 +607,11 @@ waitspin opencode status
 
 # Grok Code CLI footer
 waitspin grok install --api-key KEY_FROM_JSON
-waitspin grok status`}
+waitspin grok status
+
+# Qoder CLI UserPromptSubmit/Stop hooks
+waitspin qoder install --api-key KEY_FROM_JSON
+waitspin qoder status`}
         </pre>
         <p>
           Explicit target commands remain the canonical debug path.{" "}
@@ -616,7 +625,10 @@ waitspin grok status`}
           Antigravity CLI, and GitHub Copilot CLI installers store managed
           runtime state under <code>~/.waitspin</code>, preserve existing status
           lines with <code>--compose-existing</code>, and do not patch native
-          binaries.
+          binaries. Qoder CLI stores a managed hook runtime under{" "}
+          <code>~/.waitspin</code> and configures Qoder&apos;s official{" "}
+          <code>UserPromptSubmit</code>/<code>Stop</code> hooks without
+          patching native binaries.
         </p>
         <p>
           Extension keys created with the <code>publisher-extension</code>{" "}
@@ -657,8 +669,8 @@ waitspin grok status`}
         <p>
           WaitSpin uses hashed API-key storage, host isolation, trusted-edge
           checks, rate limits, and audit logging. Keep API keys secret and do
-          not commit VS Code, Claude Code, or environment files containing
-          credentials.
+          not commit VS Code, Claude Code, Qoder, or environment files
+          containing credentials.
         </p>
         </Section>
       </WaitSpinLegalPage>

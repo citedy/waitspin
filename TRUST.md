@@ -2,7 +2,7 @@
 
 WaitSpin measures wait-state ad visibility, not developer work.
 
-Public targets: status-bar-fallback (VS Code, Cursor Editor Mode, Devin Desktop), claude-code, mimocode, opencode, grok, antigravity, copilot.
+Public targets: status-bar-fallback (VS Code, Cursor Editor Mode, Devin Desktop), claude-code, mimocode, opencode, grok, antigravity, copilot, qoder.
 
 Never sent: workspace files, source code, open editor text, prompts, model
 responses, terminal output, shell history, repository URLs, screenshots,

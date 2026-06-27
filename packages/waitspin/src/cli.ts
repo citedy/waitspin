@@ -127,6 +127,12 @@ const COPILOT_DEFAULT_BIN = "copilot";
 const ANTIGRAVITY_PUBLISHER_TARGET = "antigravity";
 const ANTIGRAVITY_BIN_ENV = "WAITSPIN_ANTIGRAVITY_BIN";
 const ANTIGRAVITY_DEFAULT_BIN = "agy";
+const QODER_PUBLISHER_TARGET = "qoder";
+const QODER_BIN_ENV = "WAITSPIN_QODER_BIN";
+const QODER_DEFAULT_BIN = "qodercli";
+const QODER_HOOK_TIMEOUT_SECONDS = 15;
+const QODER_HOOK_STATUS_MESSAGE = "WaitSpin sponsor check";
+const QODER_HOOK_EVENTS = ["UserPromptSubmit", "Stop"] as const;
 
 const extensionTargets = {
   vscode: "vscode",
@@ -171,11 +177,14 @@ export function usageText(): string {
       "  waitspin copilot install [--json] [--api-key KEY] [--compose-existing] [--dry-run]",
       "  waitspin copilot status [--json]",
       "  waitspin copilot uninstall [--json] [--dry-run]",
+      "  waitspin qoder install [--json] [--api-key KEY] [--dry-run]",
+      "  waitspin qoder status [--json]",
+      "  waitspin qoder uninstall [--json] [--dry-run]",
       "",
       "Defaults:",
       "  API base: https://api.waitspin.com",
       "  API key: WAITSPIN_API_KEY env var",
-      "  Public user targets: status-bar-fallback, claude-code, mimocode, opencode, grok, antigravity, copilot",
+      "  Public user targets: status-bar-fallback, claude-code, mimocode, opencode, grok, antigravity, copilot, qoder",
     ].join("\n") + "\n"
   );
 }
@@ -1013,6 +1022,25 @@ async function registerPublisherInstall(input: {
           "For production:",
           "  deploy the backend target allowlist only after full public acceptance, then rerun:",
           `  waitspin ${ANTIGRAVITY_PUBLISHER_TARGET} install`,
+          "",
+          "For developer-local acceptance only, use an explicit loopback API with --allow-dev-api-base.",
+        ].join("\n"),
+      );
+    }
+    if (
+      input.target === QODER_PUBLISHER_TARGET &&
+      error instanceof WaitSpinCliHttpError &&
+      error.status === 400 &&
+      /Invalid input|Validation error/.test(error.message)
+    ) {
+      throw new Error(
+        [
+          `WaitSpin API rejected target "${QODER_PUBLISHER_TARGET}".`,
+          "Your local CLI supports Qoder CLI, but the selected API base does not.",
+          "",
+          "For production:",
+          "  deploy the backend target allowlist after full Qoder public acceptance, then rerun:",
+          `  waitspin ${QODER_PUBLISHER_TARGET} install`,
           "",
           "For developer-local acceptance only, use an explicit loopback API with --allow-dev-api-base.",
         ].join("\n"),
@@ -5814,6 +5842,1289 @@ export async function runOpencodeUninstall(flags: Map<string, string[]>) {
   printCliOutput(flags, output, formatTargetUninstallResult(output));
 }
 
+type QoderManagedHook = {
+  type: "command";
+  command: string;
+  timeout: number;
+  statusMessage: string;
+};
+
+type QoderInstallState = InstallState & {
+  target: typeof QODER_PUBLISHER_TARGET;
+  base_url: string;
+  api_key_path: string;
+  runtime_path: string;
+  cache_path: string;
+  settings_path: string;
+  managed_hook: QoderManagedHook;
+  qoder_version?: string;
+  installed_at: string;
+};
+
+function qoderInstallDir(): string {
+  return path.join(os.homedir(), ".waitspin");
+}
+
+function qoderStatePath(): string {
+  return path.join(qoderInstallDir(), "qoder-install.json");
+}
+
+function qoderRuntimePath(): string {
+  return path.join(qoderInstallDir(), "qoder-hook-runtime.mjs");
+}
+
+function qoderCachePath(): string {
+  return path.join(qoderInstallDir(), "qoder-hook-cache.json");
+}
+
+function qoderApiKeyPath(): string {
+  return path.join(qoderInstallDir(), "qoder-api-key.secret");
+}
+
+function qoderSettingsPath(): string {
+  return path.join(os.homedir(), ".qoder", "settings.json");
+}
+
+function qoderHookCommand(input: {
+  runtimePath: string;
+  statePath: string;
+}): string {
+  return claudeCodeStatusLineCommand(input);
+}
+
+function managedQoderHook(input: {
+  runtimePath: string;
+  statePath: string;
+}): QoderManagedHook {
+  return {
+    type: "command",
+    command: qoderHookCommand(input),
+    timeout: QODER_HOOK_TIMEOUT_SECONDS,
+    statusMessage: QODER_HOOK_STATUS_MESSAGE,
+  };
+}
+
+async function loadQoderSettings(): Promise<{
+  settings: Record<string, unknown>;
+  existed: boolean;
+}> {
+  const parsed = await readJsonObjectFile(qoderSettingsPath(), { jsonc: true });
+  return { settings: parsed ?? {}, existed: parsed !== null };
+}
+
+async function loadQoderInstallState(): Promise<QoderInstallState | null> {
+  const parsed = await readJsonObjectFile(qoderStatePath());
+  if (!parsed?.install_id || parsed.target !== QODER_PUBLISHER_TARGET) {
+    return null;
+  }
+  return parsed as QoderInstallState;
+}
+
+function qoderHookContainer(hook: QoderManagedHook): Record<string, unknown> {
+  return { hooks: [hook] };
+}
+
+function qoderHooksObject(settings: Record<string, unknown>): Record<string, unknown> {
+  const hooks = settings.hooks;
+  if (hooks === undefined) return {};
+  if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) {
+    throw new Error(
+      "Qoder settings hooks field must be an object before WaitSpin can manage it.",
+    );
+  }
+  return hooks as Record<string, unknown>;
+}
+
+function qoderHookEventEntries(
+  hooks: Record<string, unknown>,
+  eventName: (typeof QODER_HOOK_EVENTS)[number],
+): unknown[] {
+  const entries = hooks[eventName];
+  if (entries === undefined) return [];
+  if (!Array.isArray(entries)) {
+    throw new Error(
+      `Qoder settings hooks.${eventName} must be an array before WaitSpin can manage it.`,
+    );
+  }
+  return entries;
+}
+
+function qoderHookMatches(value: unknown, commands: Set<string>): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const hook = value as { type?: unknown; command?: unknown };
+  return hook.type === "command" && typeof hook.command === "string"
+    ? commands.has(hook.command)
+    : false;
+}
+
+function qoderManagedCommands(input: {
+  managedHook: QoderManagedHook;
+  existingState?: QoderInstallState | null;
+}): Set<string> {
+  const commands = new Set<string>([input.managedHook.command]);
+  const previous = input.existingState?.managed_hook?.command;
+  if (previous) commands.add(previous);
+  return commands;
+}
+
+function removeQoderManagedHookEntries(
+  entries: unknown[],
+  commands: Set<string>,
+): { entries: unknown[]; removed: number } {
+  let removed = 0;
+  const nextEntries: unknown[] = [];
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      nextEntries.push(entry);
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    if (!Array.isArray(record.hooks)) {
+      nextEntries.push(entry);
+      continue;
+    }
+    const nextHooks = record.hooks.filter((hook) => {
+      const matches = qoderHookMatches(hook, commands);
+      if (matches) removed += 1;
+      return !matches;
+    });
+    if (nextHooks.length === record.hooks.length) {
+      nextEntries.push(entry);
+    } else if (nextHooks.length > 0) {
+      nextEntries.push({ ...record, hooks: nextHooks });
+    }
+  }
+
+  return { entries: nextEntries, removed };
+}
+
+function resolveQoderSettingsInstall(input: {
+  settings: Record<string, unknown>;
+  managedHook: QoderManagedHook;
+  existingState: QoderInstallState | null;
+}): {
+  nextSettings: Record<string, unknown>;
+  action: "install" | "refresh-managed";
+  existingManagedHooks: number;
+} {
+  const hooks = qoderHooksObject(input.settings);
+  const commands = qoderManagedCommands({
+    managedHook: input.managedHook,
+    existingState: input.existingState,
+  });
+  const cleanedByEvent = QODER_HOOK_EVENTS.map((eventName) => ({
+    eventName,
+    cleaned: removeQoderManagedHookEntries(
+      qoderHookEventEntries(hooks, eventName),
+      commands,
+    ),
+  }));
+  const removed = cleanedByEvent.reduce(
+    (count, entry) => count + entry.cleaned.removed,
+    0,
+  );
+  if (removed > QODER_HOOK_EVENTS.length) {
+    throw new Error(
+      "Qoder settings contain multiple WaitSpin-managed hooks; refusing to guess which ones to refresh.",
+    );
+  }
+  const nextHooks = { ...hooks };
+  for (const { eventName, cleaned } of cleanedByEvent) {
+    nextHooks[eventName] = [
+      ...cleaned.entries,
+      qoderHookContainer(input.managedHook),
+    ];
+  }
+  return {
+    nextSettings: { ...input.settings, hooks: nextHooks },
+    action: removed > 0 ? "refresh-managed" : "install",
+    existingManagedHooks: removed,
+  };
+}
+
+function resolveQoderSettingsUninstall(input: {
+  settings: Record<string, unknown>;
+  state: QoderInstallState | null;
+  managedHook: QoderManagedHook;
+}): {
+  nextSettings: Record<string, unknown> | null;
+  action: "remove-managed" | "skip-user-settings" | "not-managed";
+  removedHooks: number;
+  warning?: string;
+} {
+  const hooks = qoderHooksObject(input.settings);
+  const commands = qoderManagedCommands({
+    managedHook: input.managedHook,
+    existingState: input.state,
+  });
+  const cleanedByEvent = QODER_HOOK_EVENTS.map((eventName) => ({
+    eventName,
+    cleaned: removeQoderManagedHookEntries(
+      qoderHookEventEntries(hooks, eventName),
+      commands,
+    ),
+  }));
+  const removed = cleanedByEvent.reduce(
+    (count, entry) => count + entry.cleaned.removed,
+    0,
+  );
+  if (removed === 0) {
+    if (!input.state?.managed_hook?.command) {
+      return { nextSettings: null, action: "not-managed", removedHooks: 0 };
+    }
+    return {
+      nextSettings: null,
+      action: "skip-user-settings",
+      removedHooks: 0,
+      warning:
+        "Qoder hooks are no longer the WaitSpin managed command; leaving user settings unchanged while removing WaitSpin-managed files.",
+    };
+  }
+  if (removed > QODER_HOOK_EVENTS.length) {
+    throw new Error(
+      "Qoder settings contain multiple WaitSpin-managed hooks; refusing to guess which ones to remove.",
+    );
+  }
+
+  const nextHooks = { ...hooks };
+  for (const { eventName, cleaned } of cleanedByEvent) {
+    if (cleaned.removed === 0) continue;
+    if (cleaned.entries.length > 0) {
+      nextHooks[eventName] = cleaned.entries;
+    } else {
+      delete nextHooks[eventName];
+    }
+  }
+  const nextSettings = { ...input.settings };
+  if (Object.keys(nextHooks).length > 0) {
+    nextSettings.hooks = nextHooks;
+  } else {
+    delete nextSettings.hooks;
+  }
+  return {
+    nextSettings,
+    action: "remove-managed",
+    removedHooks: removed,
+  };
+}
+
+function qoderManagedHookCountsByEvent(
+  settings: Record<string, unknown>,
+  state: QoderInstallState | null,
+): number[] {
+  if (!state?.managed_hook?.command) return QODER_HOOK_EVENTS.map(() => 0);
+  const hooks = qoderHooksObject(settings);
+  return QODER_HOOK_EVENTS.map(
+    (eventName) =>
+      removeQoderManagedHookEntries(
+        qoderHookEventEntries(hooks, eventName),
+        new Set([state.managed_hook.command]),
+      ).removed,
+  );
+}
+
+function redactedQoderState(
+  state: QoderInstallState | null,
+): Record<string, unknown> | null {
+  if (!state) return null;
+  return {
+    target: state.target,
+    install_id: state.install_id,
+    publisher_id: state.publisher_id,
+    publisher_target: state.publisher_target,
+    registered_at: state.registered_at,
+    base_url: state.base_url,
+    runtime_path: state.runtime_path,
+    cache_path: state.cache_path,
+    api_key_path: state.api_key_path,
+    settings_path: state.settings_path,
+    qoder_version: state.qoder_version,
+    installed_at: state.installed_at,
+    api_key_present: Boolean(state.api_key_path),
+  };
+}
+
+function qoderHookRuntimeSource(): string {
+  return String.raw`#!/usr/bin/env node
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const FETCH_TIMEOUT_MS = 2500;
+const DEFAULT_MIN_VISIBLE_MS = 5000;
+const LOCK_RETRY_MS = 40;
+const LOCK_TIMEOUT_MS = 2000;
+const LOCK_STALE_MS = 10000;
+const MAX_ACTIVE_AGE_MS = 60000;
+const SHELL_PROCESS_NAMES = new Set([
+  "bash",
+  "cmd.exe",
+  "dash",
+  "fish",
+  "nu",
+  "pwsh",
+  "pwsh.exe",
+  "powershell",
+  "powershell.exe",
+  "sh",
+  "zsh",
+]);
+
+function argValue(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+async function readStdin() {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function readJson(filePath, fallback) {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function sanitizeQoderHookInput(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const sanitized = { ...value };
+  delete sanitized.prompt;
+  delete sanitized.message;
+  delete sanitized.messages;
+  delete sanitized.response;
+  delete sanitized.model_response;
+  delete sanitized.modelResponse;
+  delete sanitized.assistant_message;
+  delete sanitized.assistantMessage;
+  delete sanitized.last_assistant_message;
+  delete sanitized.lastAssistantMessage;
+  return sanitized;
+}
+
+function parseQoderHookInput(source) {
+  try {
+    return sanitizeQoderHookInput(source.trim() ? JSON.parse(source) : {});
+  } catch {
+    return {};
+  }
+}
+
+function stripJsoncComments(source) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (inString) {
+      output += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      output += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      output += "  ";
+      index += 1;
+      while (index + 1 < source.length && source[index + 1] !== "\n") {
+        output += " ";
+        index += 1;
+      }
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      output += "  ";
+      index += 1;
+      while (index + 1 < source.length) {
+        const blockChar = source[index + 1];
+        const blockNext = source[index + 2];
+        if (blockChar === "*" && blockNext === "/") {
+          output += "  ";
+          index += 2;
+          break;
+        }
+        output += blockChar === "\n" ? "\n" : " ";
+        index += 1;
+      }
+      continue;
+    }
+    output += char;
+  }
+  return output;
+}
+
+function removeJsoncTrailingCommas(source) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      output += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      output += char;
+      continue;
+    }
+    if (char === ",") {
+      let lookahead = index + 1;
+      while (/\s/.test(source[lookahead] || "")) lookahead += 1;
+      if (source[lookahead] === "}" || source[lookahead] === "]") {
+        continue;
+      }
+    }
+    output += char;
+  }
+  return output;
+}
+
+async function readJsonc(filePath, fallback) {
+  try {
+    const source = await readFile(filePath, "utf8");
+    return JSON.parse(removeJsoncTrailingCommas(stripJsoncComments(source)));
+  } catch {
+    return fallback;
+  }
+}
+
+async function readSecret(filePath) {
+  if (!filePath) return "";
+  try {
+    return (await readFile(filePath, "utf8")).trim();
+  } catch {
+    return "";
+  }
+}
+
+async function writeJson(filePath, value) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tmp = filePath + "." + process.pid + ".tmp";
+  await writeFile(tmp, JSON.stringify(value, null, 2) + "\n", {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  await rename(tmp, filePath);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function acquireCacheLock(cachePath) {
+  const lockPath = cachePath + ".lock";
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < LOCK_TIMEOUT_MS) {
+    try {
+      await mkdir(lockPath);
+      return async () => {
+        await rm(lockPath, { recursive: true, force: true });
+      };
+    } catch {
+      try {
+        const lockStat = await stat(lockPath);
+        if (Date.now() - lockStat.mtimeMs > LOCK_STALE_MS) {
+          await rm(lockPath, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+      }
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
+  throw new Error("Timed out waiting for WaitSpin Qoder cache lock.");
+}
+
+async function withCacheLock(cachePath, callback) {
+  const release = await acquireCacheLock(cachePath);
+  try {
+    return await callback();
+  } finally {
+    await release();
+  }
+}
+
+function cleanLine(value) {
+  return String(value || "")
+    .replace(
+      /(?:\u001B\[[0-?]*[ -/]*[@-~]|\u001B\][^\u0007]*(?:\u0007|\u001B\\)|\u001B[P^_][\s\S]*?\u001B\\|\u001B[@-Z\\-_]|\u009B[0-?]*[ -/]*[@-~])/g,
+      " ",
+    )
+    .replace(/[\r\n\u0000-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
+async function waitspinFetch(url, init) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseServe(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const creative = payload.creative;
+  if (!creative || typeof creative !== "object") return null;
+  const line = cleanLine(creative.line);
+  if (!line) return null;
+  if (
+    typeof payload.serve_id !== "string" ||
+    typeof payload.serve_receipt !== "string"
+  ) {
+    return null;
+  }
+  const parsedExpiresAt = Date.parse(payload.expires_at || "");
+  return {
+    serveId: payload.serve_id,
+    serveReceipt: payload.serve_receipt,
+    line,
+    shownAt: Date.now(),
+    expiresAtMs: Number.isFinite(parsedExpiresAt)
+      ? parsedExpiresAt
+      : Date.now() + MAX_ACTIVE_AGE_MS,
+    minVisibleMs:
+      typeof payload.min_visible_ms === "number" &&
+      payload.min_visible_ms >= DEFAULT_MIN_VISIBLE_MS
+        ? payload.min_visible_ms
+        : DEFAULT_MIN_VISIBLE_MS,
+    impressionRecorded: false,
+  };
+}
+
+function serveIsExpired(serve) {
+  return (
+    Date.now() >= (serve.expiresAtMs || 0) ||
+    Date.now() - (serve.shownAt || Date.now()) > MAX_ACTIVE_AGE_MS
+  );
+}
+
+function processAlive(pid) {
+  if (!Number.isFinite(pid) || pid <= 1) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function processInfo(pid) {
+  if (!processAlive(pid)) return null;
+  if (process.platform === "win32") {
+    return await new Promise((resolve) => {
+      const numericPid = Math.trunc(Number(pid));
+      const command = [
+        "$p=Get-CimInstance Win32_Process -Filter 'ProcessId = " + numericPid + "';",
+        "if ($p) { Write-Output ([string]$p.ParentProcessId + ' ' + [string]$p.Name + ' ' + [string]$p.CommandLine) }",
+      ].join(" ");
+      const child = spawn("powershell.exe", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        command,
+      ], {
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      let stdout = "";
+      let settled = false;
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      }
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk.toString("utf8");
+        if (stdout.length > 4000) stdout = stdout.slice(0, 4000);
+      });
+      child.on("error", () => finish(null));
+      child.on("close", (code) => {
+        if (code !== 0) {
+          finish(null);
+          return;
+        }
+        const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop() || "";
+        const match = line.trim().match(/^(\d+)\s+(.+)$/);
+        if (!match) {
+          finish(null);
+          return;
+        }
+        finish({ ppid: Number(match[1]), command: match[2] });
+      });
+    });
+  }
+  return await new Promise((resolve) => {
+    const child = spawn("ps", ["-o", "ppid=,comm=,args=", "-p", String(pid)], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let stdout = "";
+    let settled = false;
+    function finish(value) {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    }
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+      if (stdout.length > 4000) stdout = stdout.slice(0, 4000);
+    });
+    child.on("error", () => finish(null));
+    child.on("close", (code) => {
+      if (code !== 0) {
+        finish(null);
+        return;
+      }
+      const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop() || "";
+      const match = line.trim().match(/^(\d+)\s+(.+)$/);
+      if (!match) {
+        finish(null);
+        return;
+      }
+      finish({ ppid: Number(match[1]), command: match[2] });
+    });
+  });
+}
+
+function isShellProcess(command) {
+  const first = String(command || "").trim().split(/\s+/)[0] || "";
+  const base = path.basename(first).toLowerCase();
+  return SHELL_PROCESS_NAMES.has(base);
+}
+
+function isQoderProcess(command) {
+  const normalized = String(command || "").replace(/\\/g, "/").toLowerCase();
+  const first = normalized.trim().split(/\s+/)[0] || "";
+  const base = path.basename(first);
+  return (
+    base === "qoder" ||
+    base === "qodercli" ||
+    normalized.includes("/qodercli") ||
+    normalized.includes("@qoder-ai/qodercli")
+  );
+}
+
+async function detectOwnerPid() {
+  let pid = Number(process.ppid);
+  let fallbackPid = 0;
+  for (let depth = 0; depth < 10; depth += 1) {
+    const info = await processInfo(pid);
+    if (!info) return fallbackPid;
+    if (isQoderProcess(info.command)) return pid;
+    if (!fallbackPid && !isShellProcess(info.command)) fallbackPid = pid;
+    const nextPid = Number(info.ppid);
+    if (!Number.isFinite(nextPid) || nextPid <= 1 || nextPid === pid) break;
+    pid = nextPid;
+  }
+  return 0;
+}
+
+function ownerAlive(ownerPid) {
+  return processAlive(Number(ownerPid || 0));
+}
+
+function numericArgValue(name, fallback) {
+  const parsed = Number(argValue(name));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function sessionKey(inputJson) {
+  const raw = String(
+    inputJson.session_id ||
+    inputJson.conversation_id ||
+    inputJson.transcript_path ||
+    inputJson.cwd ||
+    "qoder"
+  );
+  return createHash("sha256").update(raw).digest("hex");
+}
+
+function settingsStillConfigured(settings, managedCommand) {
+  const entries = settings?.hooks?.UserPromptSubmit;
+  if (!Array.isArray(entries)) return false;
+  return entries.some(
+    (entry) =>
+      Array.isArray(entry?.hooks) &&
+      entry.hooks.some(
+        (hook) => hook?.type === "command" && hook.command === managedCommand,
+      ),
+  );
+}
+
+async function installedSurfaceStillConfigured(state) {
+  if (!state?.settings_path || !state?.managed_hook?.command) return false;
+  const settings = await readJsonc(state.settings_path, null);
+  return settingsStillConfigured(settings, state.managed_hook.command);
+}
+
+async function fetchNextServe(state, apiKey) {
+  const response = await waitspinFetch(state.base_url + "/v1/serve/next", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ install_id: state.install_id }),
+  });
+  if (response.status === 204 || !response.ok) return null;
+  return parseServe(await response.json());
+}
+
+async function recordImpression(state, apiKey, serve) {
+  const visibleMs = Date.now() - serve.shownAt;
+  if (visibleMs < serve.minVisibleMs) return false;
+  const response = await waitspinFetch(state.base_url + "/v1/events/impression", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      serve_id: serve.serveId,
+      serve_receipt: serve.serveReceipt,
+      install_id: state.install_id,
+      visible_ms: Math.max(visibleMs, serve.minVisibleMs),
+    }),
+  });
+  return response.ok;
+}
+
+function scheduleVisibleImpressionRetry(input) {
+  if (!process.argv[1]) return;
+  const delayMs = Math.min(
+    Math.max(Math.ceil(input.delayMs || 0), 0),
+    MAX_ACTIVE_AGE_MS,
+  );
+  try {
+    const child = spawn(process.execPath, [
+      process.argv[1],
+      "--state",
+      input.statePath,
+      "--record-visible",
+      "--session-key",
+      input.sessionKeyValue,
+      "--owner-pid",
+      String(input.ownerPid),
+      "--delay-ms",
+      String(delayMs),
+    ], {
+      detached: true,
+      env: { ...process.env },
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+  } catch {
+  }
+}
+
+async function recordVisibleImpressionFromHook(state, apiKey, sessionKeyValue, ownerPid, options = {}) {
+  if (!ownerAlive(ownerPid) || !(await installedSurfaceStillConfigured(state))) {
+    return;
+  }
+  await withCacheLock(state.cache_path, async () => {
+    const lockedCache = await readJson(state.cache_path, { sessions: {} });
+    const lockedSession = lockedCache.sessions?.[sessionKeyValue];
+    const lockedServe = lockedSession?.activeServe;
+    const visibleMs = Date.now() - (lockedServe?.shownAt || Date.now());
+    const minVisibleMs = Math.max(
+      lockedServe?.minVisibleMs || DEFAULT_MIN_VISIBLE_MS,
+      DEFAULT_MIN_VISIBLE_MS,
+    );
+    if (
+      !lockedServe ||
+      lockedServe.impressionRecorded ||
+      serveIsExpired(lockedServe) ||
+      !ownerAlive(ownerPid) ||
+      !(await installedSurfaceStillConfigured(state))
+    ) {
+      return;
+    }
+    if (visibleMs < minVisibleMs) {
+      if (options.allowRetry && options.statePath) {
+        scheduleVisibleImpressionRetry({
+          statePath: options.statePath,
+          sessionKeyValue,
+          ownerPid,
+          delayMs: minVisibleMs - visibleMs + LOCK_RETRY_MS,
+        });
+      }
+      return;
+    }
+    if (await recordImpression(state, apiKey, lockedServe)) {
+      lockedServe.impressionRecorded = true;
+      await writeJson(state.cache_path, lockedCache);
+    }
+  });
+}
+
+async function main() {
+  const statePath = argValue("--state");
+  if (!statePath) return;
+  const state = await readJson(statePath, null);
+  const apiKey = await readSecret(state?.api_key_path);
+  if (!apiKey || !state?.install_id || !state.base_url || !state.cache_path) {
+    return;
+  }
+  if (process.argv.includes("--record-visible")) {
+    const key = argValue("--session-key");
+    const ownerPid = numericArgValue("--owner-pid", 0);
+    const delayMs = numericArgValue("--delay-ms", 0);
+    if (!key || !ownerPid) return;
+    if (delayMs > 0) await sleep(delayMs);
+    await recordVisibleImpressionFromHook(state, apiKey, key, ownerPid, {
+      allowRetry: false,
+      statePath,
+    });
+    return;
+  }
+  const stdin = await readStdin();
+  const inputJson = parseQoderHookInput(stdin);
+  const key = sessionKey(inputJson);
+  const ownerPid = await detectOwnerPid();
+  if (!ownerPid) return;
+  await recordVisibleImpressionFromHook(state, apiKey, key, ownerPid, {
+    allowRetry: inputJson.hook_event_name === "Stop",
+    statePath,
+  });
+  if (inputJson.hook_event_name !== "UserPromptSubmit") return;
+  const serve = await fetchNextServe(state, apiKey);
+  if (!serve) return;
+  await withCacheLock(state.cache_path, async () => {
+    const cache = await readJson(state.cache_path, { sessions: {} });
+    if (!cache.sessions || typeof cache.sessions !== "object") cache.sessions = {};
+    cache.sessions[key] = {
+      lastSeenAt: Date.now(),
+      ownerPid,
+      activeServe: serve,
+    };
+    await writeJson(state.cache_path, cache);
+  });
+  process.stdout.write(JSON.stringify({
+    systemMessage: "Sponsored: " + serve.line,
+  }));
+}
+
+main().catch(() => {});
+  `;
+}
+
+async function writeQoderRuntime(runtimePath: string): Promise<void> {
+  await mkdir(path.dirname(runtimePath), { recursive: true });
+  await writeFile(runtimePath, qoderHookRuntimeSource(), {
+    encoding: "utf8",
+    mode: 0o755,
+  });
+  await chmod(runtimePath, 0o755);
+}
+
+async function readManagedQoderSecretSnapshot(
+  filePath: string | undefined,
+): Promise<string | null> {
+  if (!filePath) return null;
+  try {
+    return await readFile(assertSafeQoderManagedPath(filePath), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+async function writeManagedQoderSecretSnapshot(
+  filePath: string,
+  value: string,
+): Promise<void> {
+  const safePath = assertSafeQoderManagedPath(filePath);
+  await mkdir(path.dirname(safePath), { recursive: true });
+  await writeFile(safePath, value, { encoding: "utf8", mode: 0o600 });
+  await chmod(safePath, 0o600);
+}
+
+async function readManagedQoderRuntimeSnapshot(
+  filePath: string | undefined,
+): Promise<string | null> {
+  if (!filePath) return null;
+  try {
+    return await readFile(assertSafeQoderManagedPath(filePath), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+async function writeManagedQoderRuntimeSnapshot(
+  filePath: string,
+  value: string,
+): Promise<void> {
+  const safePath = assertSafeQoderManagedPath(filePath);
+  await mkdir(path.dirname(safePath), { recursive: true });
+  await writeFile(safePath, value, { encoding: "utf8", mode: 0o755 });
+  await chmod(safePath, 0o755);
+}
+
+function assertSafeQoderManagedPath(filePath: string): string {
+  const installRoot = path.resolve(qoderInstallDir());
+  const resolved = path.resolve(filePath);
+  if (
+    !resolved.startsWith(`${installRoot}${path.sep}`) ||
+    !path.basename(resolved).startsWith("qoder-")
+  ) {
+    throw new Error("Refusing to manage a Qoder WaitSpin file outside ~/.waitspin.");
+  }
+  return resolved;
+}
+
+function assertSafeQoderSettingsPath(filePath: string): string {
+  const expected = path.resolve(qoderSettingsPath());
+  const resolved = path.resolve(filePath);
+  if (resolved !== expected) {
+    throw new Error(
+      "Refusing to manage a Qoder settings file outside ~/.qoder/settings.json.",
+    );
+  }
+  return resolved;
+}
+
+async function readQoderVersion(): Promise<string> {
+  return executableVersion(QODER_BIN_ENV, QODER_DEFAULT_BIN, "Qoder CLI");
+}
+
+export async function runQoderInstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const statePath = qoderStatePath();
+  const runtimePath = qoderRuntimePath();
+  const cachePath = qoderCachePath();
+  const apiKeyPath = qoderApiKeyPath();
+  const settingsPath = qoderSettingsPath();
+  const existingState = await loadQoderInstallState();
+  const installId = existingState?.install_id || generateInstallId();
+  const managedHook = managedQoderHook({ runtimePath, statePath });
+  const loadedSettings = await loadQoderSettings();
+  let settingsUpdate: ReturnType<typeof resolveQoderSettingsInstall> | null =
+    null;
+  let settingsBlockedReason: string | null = null;
+
+  try {
+    settingsUpdate = resolveQoderSettingsInstall({
+      settings: loadedSettings.settings,
+      managedHook,
+      existingState,
+    });
+  } catch (error) {
+    if (!dryRun) throw error;
+    settingsBlockedReason =
+      error instanceof Error ? error.message : String(error);
+  }
+
+  const summary = {
+    ok: true,
+    target: QODER_PUBLISHER_TARGET,
+    mode: "qoder-hook-system-message",
+    install_id: installId,
+    publisher_target: QODER_PUBLISHER_TARGET,
+    state_path: statePath,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    api_key_path: apiKeyPath,
+    settings_path: settingsPath,
+    settings_action: settingsUpdate?.action ?? "blocked",
+    hook_events: [...QODER_HOOK_EVENTS],
+    hook_status_message: QODER_HOOK_STATUS_MESSAGE,
+    note: "Installs WaitSpin through Qoder's official UserPromptSubmit and Stop hook surfaces.",
+    next: "check_status",
+    next_command: "waitspin qoder status",
+  };
+
+  if (dryRun) {
+    const output = {
+      ...summary,
+      dry_run: true,
+      publisher_registered: false,
+      qoder_settings_exists: loadedSettings.existed,
+      existing_managed_hooks: settingsUpdate?.existingManagedHooks ?? 0,
+      ...(settingsBlockedReason
+        ? {
+            would_fail: true,
+            settings_blocked_reason: settingsBlockedReason,
+            next: "resolve_qoder_hook_conflict",
+          }
+        : {}),
+    };
+    printCliOutput(flags, output, formatTargetInstallResult(output));
+    return;
+  }
+
+  if (!settingsUpdate) {
+    throw new Error("Unable to resolve Qoder settings update.");
+  }
+  const qoderVersion = await readQoderVersion();
+  const qoderExecutable = executableFromEnv(QODER_BIN_ENV, QODER_DEFAULT_BIN);
+  const apiKey = requireApiKey(flags);
+  const previousApiKeySecret = await readManagedQoderSecretSnapshot(
+    existingState?.api_key_path,
+  );
+  const previousRuntimeSource = await readManagedQoderRuntimeSnapshot(
+    existingState?.runtime_path,
+  );
+  const registration = await registerPublisherInstall({
+    baseUrl,
+    apiKey,
+    installId,
+    target: QODER_PUBLISHER_TARGET,
+  });
+  const installedAt = new Date().toISOString();
+  const installState: QoderInstallState = {
+    target: QODER_PUBLISHER_TARGET,
+    install_id: registration.install_id,
+    publisher_id: registration.publisher_id,
+    publisher_target: registration.target,
+    registered_at: installedAt,
+    base_url: baseUrl,
+    api_key_path: apiKeyPath,
+    runtime_path: runtimePath,
+    cache_path: cachePath,
+    settings_path: settingsPath,
+    managed_hook: managedHook,
+    qoder_version: qoderVersion,
+    installed_at: installedAt,
+  };
+
+  try {
+    await writeQoderRuntime(runtimePath);
+    await writeSecretFile(apiKeyPath, apiKey);
+    await writeJsonObjectFile(statePath, installState, 0o600);
+    await writeJsonObjectFile(settingsPath, settingsUpdate.nextSettings);
+  } catch (error) {
+    if (existingState) {
+      if (previousRuntimeSource !== null) {
+        await writeManagedQoderRuntimeSnapshot(
+          existingState.runtime_path,
+          previousRuntimeSource,
+        ).catch(() => {});
+      }
+      await writeJsonObjectFile(statePath, existingState, 0o600).catch(
+        () => {},
+      );
+      if (previousApiKeySecret !== null) {
+        await writeManagedQoderSecretSnapshot(
+          existingState.api_key_path,
+          previousApiKeySecret,
+        ).catch(() => {});
+      }
+    } else {
+      await Promise.all(
+        [statePath, runtimePath, apiKeyPath].map((filePath) =>
+          rm(filePath, { force: true, recursive: true }).catch(() => {}),
+        ),
+      );
+    }
+    if (loadedSettings.existed) {
+      await writeJsonObjectFile(settingsPath, loadedSettings.settings).catch(
+        () => {},
+      );
+    } else {
+      await rm(settingsPath, { force: true, recursive: true }).catch(() => {});
+    }
+    throw error;
+  }
+
+  const output = {
+    ...summary,
+    ...redactedQoderState(installState),
+    publisher_registered: true,
+    qoder_version: qoderVersion,
+    next: "launch_qoder",
+    next_command: qoderExecutable,
+    acceptance_hint:
+      "Run a real Qoder TUI prompt, keep the sponsored system message visible for at least 5 seconds, then let Qoder fire a Stop or next-prompt hook before verifying an impression.",
+  };
+  printCliOutput(flags, output, formatTargetInstallResult(output));
+}
+
+export async function runQoderStatus(
+  flags: Map<string, string[]> = new Map(),
+) {
+  const state = await loadQoderInstallState();
+  const loadedSettings = await loadQoderSettings();
+  const managedHookCounts = qoderManagedHookCountsByEvent(
+    loadedSettings.settings,
+    state,
+  );
+  const managedHookCount = managedHookCounts.reduce(
+    (count, eventCount) => count + eventCount,
+    0,
+  );
+  const runtimeReadable = state
+    ? await pathAccessible(
+        assertSafeQoderManagedPath(state.runtime_path),
+        fsConstants.R_OK,
+      )
+    : false;
+  const stateReadable = state
+    ? await pathAccessible(
+        assertSafeQoderManagedPath(qoderStatePath()),
+        fsConstants.R_OK,
+      )
+    : false;
+  const apiKeyReadable = state
+    ? await pathAccessible(
+        assertSafeQoderManagedPath(state.api_key_path),
+        fsConstants.R_OK,
+      )
+    : false;
+  const hookConfigured = managedHookCounts.every(
+    (eventCount) => eventCount === 1,
+  );
+  const installed = Boolean(
+    state &&
+      stateReadable &&
+      runtimeReadable &&
+      apiKeyReadable &&
+      hookConfigured,
+  );
+  const output = {
+    ok: true,
+    target: QODER_PUBLISHER_TARGET,
+    mode: "qoder-hook-system-message",
+    installed,
+    publisher_registered: Boolean(state?.publisher_id),
+    install_id: state?.install_id ?? null,
+    publisher_id: state?.publisher_id ?? null,
+    publisher_target: state?.publisher_target ?? QODER_PUBLISHER_TARGET,
+    state_path: qoderStatePath(),
+    runtime_path: state?.runtime_path ?? qoderRuntimePath(),
+    cache_path: state?.cache_path ?? qoderCachePath(),
+    api_key_path: state?.api_key_path ?? qoderApiKeyPath(),
+    settings_path: qoderSettingsPath(),
+    runtime_readable: runtimeReadable,
+    state_readable: stateReadable,
+    api_key_readable: apiKeyReadable,
+    hook_configured: hookConfigured,
+    expected_managed_hook_count: QODER_HOOK_EVENTS.length,
+    managed_hook_count: managedHookCount,
+    qoder_version: state?.qoder_version ?? null,
+    ...(installed
+      ? {
+          next: "launch_qoder",
+          next_command: executableFromEnv(QODER_BIN_ENV, QODER_DEFAULT_BIN),
+          acceptance_hint:
+            "Run a real Qoder TUI prompt, keep the sponsored system message visible for at least 5 seconds, then let Qoder fire a Stop or next-prompt hook before verifying an impression.",
+        }
+      : {
+          next: "install_qoder",
+          next_command: "waitspin qoder install",
+          human_message:
+            "Qoder CLI WaitSpin hook support is not installed for this user.",
+        }),
+  };
+  printCliOutput(flags, output, formatTargetStatusResult(output));
+}
+
+export async function runQoderUninstall(flags: Map<string, string[]>) {
+  const dryRun = booleanFlag(flags, "dry-run");
+  const state = await loadQoderInstallState();
+  const loadedSettings = await loadQoderSettings();
+  const defaultManagedHook = managedQoderHook({
+    runtimePath: qoderRuntimePath(),
+    statePath: qoderStatePath(),
+  });
+  const settingsUpdate = resolveQoderSettingsUninstall({
+    settings: loadedSettings.settings,
+    state,
+    managedHook: defaultManagedHook,
+  });
+  const removePaths: string[] = [];
+  const skippedUnsafePaths: string[] = [];
+  const declaredRemovePaths = state
+    ? [state.runtime_path, state.cache_path, state.api_key_path, qoderStatePath()]
+    : [
+        qoderRuntimePath(),
+        qoderCachePath(),
+        qoderApiKeyPath(),
+        qoderStatePath(),
+      ];
+
+  for (const filePath of declaredRemovePaths) {
+    try {
+      removePaths.push(assertSafeQoderManagedPath(filePath));
+    } catch {
+      skippedUnsafePaths.push(filePath);
+    }
+  }
+
+  if (dryRun) {
+    const output = {
+      ok: true,
+      target: QODER_PUBLISHER_TARGET,
+      dry_run: true,
+      uninstalled: false,
+      would_remove: removePaths,
+      settings_action: settingsUpdate.action,
+      removed_hooks: settingsUpdate.removedHooks,
+      settings_warning: settingsUpdate.warning ?? null,
+      ...(skippedUnsafePaths.length > 0
+        ? { skipped_unsafe_paths: skippedUnsafePaths }
+        : {}),
+    };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
+    return;
+  }
+
+  if (settingsUpdate.nextSettings) {
+    await writeJsonObjectFile(
+      assertSafeQoderSettingsPath(state?.settings_path || qoderSettingsPath()),
+      settingsUpdate.nextSettings,
+    );
+  }
+
+  await Promise.all(
+    removePaths.map((filePath) =>
+      rm(filePath, { force: true, recursive: true }),
+    ),
+  );
+
+  const output = {
+    ok: true,
+    target: QODER_PUBLISHER_TARGET,
+    uninstalled: true,
+    removed: removePaths,
+    settings_action: settingsUpdate.action,
+    removed_hooks: settingsUpdate.removedHooks,
+    settings_warning: settingsUpdate.warning ?? null,
+    ...(skippedUnsafePaths.length > 0
+      ? { skipped_unsafe_paths: skippedUnsafePaths }
+      : {}),
+  };
+  printCliOutput(flags, output, formatTargetUninstallResult(output));
+}
+
 type PublicAllInstallTarget = {
   target:
     | "vscode"
@@ -5821,7 +7132,8 @@ type PublicAllInstallTarget = {
     | "mimocode"
     | "opencode"
     | "copilot"
-    | "antigravity";
+    | "antigravity"
+    | "qoder";
   command: string;
   statusCommand: string;
   preflight: (flags: Map<string, string[]>) => Promise<string | null>;
@@ -5909,6 +7221,10 @@ async function preflightAntigravity(): Promise<string> {
   return readAntigravityVersion();
 }
 
+async function preflightQoder(): Promise<string> {
+  return readQoderVersion();
+}
+
 function experimentalCliDeps(): ExperimentalCliDeps {
   return {
     booleanFlag,
@@ -5974,6 +7290,14 @@ function allInstallTargets(flags: Map<string, string[]>): AllInstallTarget[] {
       install: runCopilotInstall,
       status: runCopilotStatus,
     },
+    {
+      target: QODER_PUBLISHER_TARGET,
+      command: "waitspin qoder install",
+      statusCommand: "waitspin qoder status",
+      preflight: preflightQoder,
+      install: runQoderInstall,
+      status: runQoderStatus,
+    },
   ];
   if (booleanFlag(flags, "include-experimental")) {
     targets.push(
@@ -5996,7 +7320,7 @@ function isNotDetectedError(message: string): boolean {
   if (/WaitSpin extension package not found|assets not found/i.test(message)) {
     return false;
   }
-  return /not detected|Unable to run Claude Code|Unable to run GitHub Copilot CLI|Unable to run Antigravity CLI|Unsupported Claude Code version|ENOENT|spawn .*ENOENT|command not found|executable path/i.test(
+  return /not detected|Unable to run Claude Code|Unable to run GitHub Copilot CLI|Unable to run Antigravity CLI|Qoder CLI was not detected|Unsupported Claude Code version|ENOENT|spawn .*ENOENT|command not found|executable path/i.test(
     message,
   );
 }
@@ -6339,6 +7663,21 @@ export async function main(argv: string[] = process.argv.slice(2)) {
 
   if (command === "antigravity" && positionals[0] === "uninstall") {
     await runAntigravityUninstall(flags);
+    return;
+  }
+
+  if (command === "qoder" && positionals[0] === "install") {
+    await runQoderInstall(flags);
+    return;
+  }
+
+  if (command === "qoder" && positionals[0] === "status") {
+    await runQoderStatus(flags);
+    return;
+  }
+
+  if (command === "qoder" && positionals[0] === "uninstall") {
+    await runQoderUninstall(flags);
     return;
   }
 

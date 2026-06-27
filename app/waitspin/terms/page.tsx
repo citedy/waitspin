@@ -41,9 +41,9 @@ export default function WaitSpinTermsPage() {
           API-first and documents the verified VS Code Activity Bar/status-bar
           extension, Claude Code statusline command, Antigravity CLI
           statusline command, GitHub Copilot CLI statusline command, MiMo Code
-          shell hook, OpenCode TUI plugin slot, Grok Code CLI integration, and
-          install-all orchestration for detected supported targets. Wallet visibility,
-          ledger history,{" "}
+          shell hook, OpenCode TUI plugin slot, Grok Code CLI integration,
+          Qoder CLI UserPromptSubmit/Stop hooks, and install-all orchestration for
+          detected supported targets. Wallet visibility, ledger history,{" "}
           <Link className="underline" href="/wallet/connect">
             Stripe Connect onboarding
           </Link>

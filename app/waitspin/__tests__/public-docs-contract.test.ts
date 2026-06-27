@@ -78,6 +78,8 @@ describe("WaitSpin public docs contract", () => {
     expect(markdown).toContain("OpenCode TUI plugin");
     expect(markdown).toContain("Grok Code CLI footer");
     expect(markdown).toContain("waitspin grok install");
+    expect(markdown).toContain("Qoder CLI UserPromptSubmit/Stop hooks");
+    expect(markdown).toContain("waitspin qoder install");
     expect(markdown).toContain("Cline CLI awaits");
     expect(markdown).not.toContain("Kilo CLI");
     expect(markdown).toContain("waitspin install --all --dry-run");
@@ -87,6 +89,7 @@ describe("WaitSpin public docs contract", () => {
     );
     expect(markdown).toContain("waitspin antigravity install");
     expect(markdown).toContain("waitspin copilot install");
+    expect(markdown).toContain("waitspin qoder install");
     expect(markdown).not.toContain("waitspin kilo");
     expect(markdown).toContain("`POST /v1/events/click`");
     expect(markdown).not.toContain("| POST | `/v1/events/click` |");
@@ -590,7 +593,7 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSyncScript).not.toContain("node:vm");
     expect(publicSyncScript).not.toContain("runInNewContext");
     expect(publicSyncScript).toContain("Unable to read npm latest version");
-    expect(publicSkillScript).toContain("v0.1.14");
+    expect(publicSkillScript).toContain("v0.1.16");
     expect(publicSkillScript).toContain("clawhub");
     expect(publicSkillScript).toContain("skills@1.5.12");
     expect(publicSkillScript).toContain("clawhub@0.22.0");
@@ -713,7 +716,7 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("WAITSPIN_VERIFICATION_CODE");
     expect(skill).not.toContain('--code "$WAITSPIN_VERIFICATION_CODE"');
     expect(skill).toContain(
-      "npx --yes waitspin@0.1.9 init --email you@example.com --key-profile control --json",
+      "npx --yes waitspin@0.1.11 init --email you@example.com --key-profile control --json",
     );
     expect(skill).toContain("next: \"enter_email_code\"");
     expect(skill).toContain("Validate user-supplied emails");
@@ -729,7 +732,7 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("waitspin install --all --dry-run");
     expect(skill).toContain("A `publisher-extension` key is appropriate for publisher earnings reads");
     expect(skill).toContain("do not echo it in chat");
-    expect(skill).toContain("npx --yes waitspin@0.1.9");
+    expect(skill).toContain("npx --yes waitspin@0.1.11");
     expect(skill).not.toContain("waitspin@latest");
     expect(skill).not.toContain("USER_EMAIL");
     expect(skill).not.toContain("CODE_FROM_EMAIL");
@@ -900,6 +903,9 @@ describe("WaitSpin public docs contract", () => {
     expect(brandIconsSource).not.toContain("app/waitspin/brand-assets");
     expect(launchPage).toContain("openGraph");
     expect(launchPage).toContain("twitter");
+    expect(launchPage).toContain("/og/waitspin-home.png?v=20260625-linkedin");
+    expect(launchPage).toContain('type: "image/png"');
+    expect(launchPage).toContain("summary_large_image");
     expect(rootLayout).toContain("waitspinBrandIcons");
     expect(rootLayout).toContain("icons: waitspinBrandIcons");
     expect(launchPage).toContain('type="application/ld+json"');
@@ -1048,10 +1054,10 @@ describe("WaitSpin public docs contract", () => {
     expect(launchClient).toContain("Copy install-all");
     expect(launchClient).not.toContain("How can agents install the skill?");
     expect(launchPage).toContain(
-      "verified earning surfaces for VS Code, Cursor, Devin, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, or Grok Code CLI",
+      "verified earning surfaces for VS Code, Cursor, Devin, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, Grok Code CLI, or Qoder CLI",
     );
     expect(launchPage).toContain(
-      "Web, CLI, VS Code, Cursor, Devin, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, Grok Code CLI",
+      "Web, CLI, VS Code, Cursor, Devin, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, Grok Code CLI, Qoder CLI",
     );
     expect(launchPage).not.toContain(
       "publishers run the verified VS Code Activity Bar/status-bar extension",

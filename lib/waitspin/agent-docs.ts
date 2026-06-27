@@ -62,7 +62,7 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
     path: "/v1/publishers/register",
     auth: "publishers:write",
     purpose:
-      "Register a user install ID for VS Code Activity Bar/status-bar extension, Cursor Editor Mode through the VS Code-compatible extension path, Devin Desktop through Open VSX, Claude Code statusline, MiMo Code shell hook, OpenCode TUI slot, Grok Code CLI footer, Antigravity CLI statusline, or GitHub Copilot CLI statusline.",
+      "Register a user install ID for VS Code Activity Bar/status-bar extension, Cursor Editor Mode through the VS Code-compatible extension path, Devin Desktop through Open VSX, Claude Code statusline, MiMo Code shell hook, OpenCode TUI slot, Grok Code CLI footer, Antigravity CLI statusline, GitHub Copilot CLI statusline, or Qoder CLI UserPromptSubmit/Stop hooks.",
   },
   {
     method: "POST",
@@ -179,22 +179,27 @@ CLI statusline command, installed by \`waitspin antigravity install
 \`waitspin copilot install --compose-existing\`; MiMo Code shell hook, installed
 by \`waitspin mimocode install\`; OpenCode TUI plugin slot, installed by
 \`waitspin opencode install\`; and Grok Code CLI footer, installed by
-\`waitspin grok install\`. Claude Code, Antigravity CLI, and GitHub Copilot CLI
+\`waitspin grok install\`; and Qoder CLI UserPromptSubmit/Stop hooks, installed by
+\`waitspin qoder install\`. Claude Code, Antigravity CLI, and GitHub Copilot CLI
 support use first-class \`statusLine.command\` paths; MiMo Code uses a bash
 hook; OpenCode uses its TUI \`app_bottom\` plugin slot through a managed
 \`~/.config/opencode/tui.json\` entry; Grok Code CLI uses a managed text-asset
-footer patch with hash-backed backup and restore. Cline VS Code extension
+footer patch with hash-backed backup and restore; Qoder CLI uses the official
+\`UserPromptSubmit\` hook with \`statusMessage\`/\`systemMessage\` plus the
+official \`Stop\` hook for the later visibility callback. Cline VS Code extension
 installs, Cursor Editor Mode, and Devin Desktop are covered by the same VS
 Code-compatible extension ID; Devin uses the Open VSX listing, and standalone
 Cline CLI awaits official statusline/plugin support. Native spinner patch
 targets remain deferred.
 
-The public clients do not read or send workspace files, source code, open
-editor text, prompts, model responses, integrated terminal output, shell
-history, repository URLs, screenshots, clipboard contents, or raw keystrokes.
-Serve polling sends only the install ID; impression events send serve ID, serve
-receipt, install ID, and visible milliseconds, plus normal network metadata for
-rate limits and fraud controls.
+The public clients do not send workspace files, source code, open editor text,
+prompts, model responses, integrated terminal output, shell history, repository
+URLs, screenshots, clipboard contents, or raw keystrokes. Qoder's official hook
+payload is delivered locally by Qoder and can include prompt or assistant
+message fields; the WaitSpin Qoder runtime discards those fields before cache or
+API work. Serve polling sends only the install ID; impression events send serve
+ID, serve receipt, install ID, and visible milliseconds, plus normal network
+metadata for rate limits and fraud controls.
 
 Advanced agent install may use \`waitspin install --all --dry-run
 --compose-existing\`, then \`waitspin install --all --compose-existing\`, and
@@ -288,6 +293,10 @@ waitspin opencode status
 # Grok Code CLI footer
 waitspin grok install --api-key wts_live_...
 waitspin grok status
+
+# Qoder CLI UserPromptSubmit/Stop hooks
+waitspin qoder install --api-key wts_live_...
+waitspin qoder status
 \`\`\`
 `;
 }

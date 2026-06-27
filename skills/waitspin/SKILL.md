@@ -1,6 +1,6 @@
 ---
 name: waitspin
-description: Use this skill for WaitSpin, the sponsored wait-state ads CLI and API. Trigger when a user wants to create or manage WaitSpin campaigns, buy prepaid impression blocks, inspect the public market, onboard with email OTP keys, install or check earning surfaces for VS Code, Cursor, Devin Desktop, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, or Grok Code CLI, inspect wallet/ledger/payout status, or reason about WaitSpin public API, trust boundary, privacy, and shipped vs not-shipped capabilities.
+description: Use this skill for WaitSpin, the sponsored wait-state ads CLI and API. Trigger when a user wants to create or manage WaitSpin campaigns, buy prepaid impression blocks, inspect the public market, onboard with email OTP keys, install or check earning surfaces for VS Code, Cursor, Devin Desktop, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, Grok Code CLI, or Qoder CLI, inspect wallet/ledger/payout status, or reason about WaitSpin public API, trust boundary, privacy, and shipped vs not-shipped capabilities.
 ---
 
 # WaitSpin
@@ -17,16 +17,16 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - Privacy: `https://waitspin.com/waitspin/privacy`
 - Public client source: `https://github.com/citedy/waitspin`
 - npm package: `waitspin`
-- Published skill release: `v0.1.15`
+- Published skill release: `v0.1.16`
 - API base: `https://api.waitspin.com`
 
-Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.15`; the npm CLI package is `waitspin@0.1.10`.
+Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.16`; the npm CLI package is `waitspin@0.1.11`.
 
 Before making a claim about current package availability, verify it:
 
 ```bash
 npm view waitspin version
-npx --yes waitspin@0.1.10 --help
+npx --yes waitspin@0.1.11 --help
 ```
 
 ## Operating Rules
@@ -54,23 +54,23 @@ Use this loop whenever the user asks to register, onboard, create a key, install
 4. Request the code with structured output. Treat these as literal examples; for the real user email, pass the value through the host tool's structured argv field rather than replacing text inside a shell string:
 
 ```bash
-npx --yes waitspin@0.1.10 init --email you@example.com --key-profile control --json
-npx --yes waitspin@0.1.10 init --email you@example.com --key-profile publisher-extension --json
+npx --yes waitspin@0.1.11 init --email you@example.com --key-profile control --json
+npx --yes waitspin@0.1.11 init --email you@example.com --key-profile publisher-extension --json
 ```
 
 5. Confirm the response has `next: "enter_email_code"`. Tell the user exactly: `I sent a 6-digit WaitSpin code to <email>. Reply with the code and I will continue.` Then stop and wait for the user.
 6. When the user returns the code, verify it with the same email and key profile. Pass the real code through structured argv or a tool-scoped environment variable after validating it is exactly 6 digits:
 
 ```bash
-npx --yes waitspin@0.1.10 init --email you@example.com --code 123456 --key-profile control --json
-npx --yes waitspin@0.1.10 init --email you@example.com --code 123456 --key-profile publisher-extension --json
+npx --yes waitspin@0.1.11 init --email you@example.com --code 123456 --key-profile control --json
+npx --yes waitspin@0.1.11 init --email you@example.com --code 123456 --key-profile publisher-extension --json
 ```
 
 If the host agent cannot safely place the code in argv, put `WAITSPIN_VERIFICATION_CODE` in the tool's environment field for the single command rather than prefixing it in the shell string:
 
 ```bash
 # WAITSPIN_VERIFICATION_CODE is supplied by the host tool's env field.
-npx --yes waitspin@0.1.10 init --email you@example.com --key-profile control --json
+npx --yes waitspin@0.1.11 init --email you@example.com --key-profile control --json
 ```
 
 7. Parse the JSON response. Keep `api_key` secret; do not echo it in chat. Store it in the host-agent secret store or pass it through `WAITSPIN_API_KEY` in the tool's environment field for each follow-up command. Do not pass live API keys in argv with `--api-key`, and do not build inline shell assignments such as `WAITSPIN_API_KEY='...' command`.
@@ -103,8 +103,8 @@ If the code expired, request one fresh code and repeat the pause. Do not guess, 
 Use this path when the user wants to buy wait-state attention.
 
 ```bash
-npx --yes waitspin@0.1.10 init --email you@example.com --key-profile control --json
-npx --yes waitspin@0.1.10 init --email you@example.com --code 123456 --key-profile control --json
+npx --yes waitspin@0.1.11 init --email you@example.com --key-profile control --json
+npx --yes waitspin@0.1.11 init --email you@example.com --code 123456 --key-profile control --json
 # WAITSPIN_API_KEY is supplied by the host tool's env field.
 waitspin bid create --line "Short sponsor line" --url https://example.com --price-per-block 500 --blocks 1 --json
 waitspin bids list --json
@@ -123,8 +123,8 @@ Notes:
 Use this path when the user wants to earn from supported developer wait states.
 
 ```bash
-npx --yes waitspin@0.1.10 init --email you@example.com --key-profile publisher-extension --json
-npx --yes waitspin@0.1.10 init --email you@example.com --code 123456 --key-profile publisher-extension --json
+npx --yes waitspin@0.1.11 init --email you@example.com --key-profile publisher-extension --json
+npx --yes waitspin@0.1.11 init --email you@example.com --code 123456 --key-profile publisher-extension --json
 # WAITSPIN_API_KEY is supplied by the host tool's env field.
 waitspin install --all --dry-run --compose-existing --json
 waitspin install --all --compose-existing --json
@@ -156,6 +156,9 @@ waitspin opencode status --json
 
 waitspin grok install --json
 waitspin grok status --json
+
+waitspin qoder install --json
+waitspin qoder status --json
 ```
 
 Target behavior:
@@ -169,6 +172,7 @@ Target behavior:
 - MiMo Code: managed bash hook and runtime.
 - OpenCode: managed TUI plugin slot.
 - Grok Code CLI: managed text-asset footer patch with hash-backed backup and restore.
+- Qoder CLI: official `UserPromptSubmit` hook with `statusMessage`/`systemMessage` plus the official `Stop` hook for the later visibility callback.
 - Standalone Cline CLI is not a public install target. Cline VS Code extension users are covered by the VS Code-compatible target, and other native CLI targets stay out of public install guidance until separately promoted.
 
 ### Inspect Wallet, Ledger, And Payout Readiness
@@ -218,7 +222,7 @@ Use `GET /v1/market` for public campaign leaderboard data. Use the OpenAPI docum
 
 ## Trust Boundary
 
-WaitSpin public clients measure wait-state ad visibility. They do not read or send workspace files, source code, editor text, prompts, model responses, terminal output, shell history, repository URLs, screenshots, clipboard contents, or raw keystrokes.
+WaitSpin public clients measure wait-state ad visibility. They do not send workspace files, source code, editor text, prompts, model responses, terminal output, shell history, repository URLs, screenshots, clipboard contents, or raw keystrokes. Qoder's official hook payload is delivered locally by Qoder and can include prompt or assistant-message fields; the WaitSpin Qoder runtime discards those fields before cache or API work.
 
 Operational payloads are limited to publisher registration, serve polling, impression receipts, wallet/accounting flows, and normal network metadata needed for rate limits, abuse response, fraud controls, and audit logs.
 
@@ -226,5 +230,5 @@ Operational payloads are limited to publisher registration, serve polling, impre
 
 - `204` from `/v1/serve/next` means empty inventory; keep the host tool's normal UI.
 - Installer conflicts should be resolved target-by-target. Do not overwrite unmanaged local config unless the CLI offers an explicit flag such as `--compose-existing`.
-- For package or install claims, verify with a fresh `npx --yes waitspin@0.1.10 ...` command rather than relying on a local workspace build.
+- For package or install claims, verify with a fresh `npx --yes waitspin@0.1.11 ...` command rather than relying on a local workspace build.
 - For public source or skill publication claims, verify with `npx skills@1.5.12 add citedy/waitspin --skill waitspin --list`.

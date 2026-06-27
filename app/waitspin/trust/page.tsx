@@ -153,10 +153,13 @@ export default function WaitSpinTrustPage() {
           the extension API key in VS Code SecretStorage, stores the
           install ID in user-scoped extension state, polls the WaitSpin API for a
           sponsored line, opens advertiser links only after user action, and
-          reports a billable impression after the required visible interval. It
-          does not read workspace files, open editor text, prompts, model
-          responses, integrated terminal output, shell history, repository URLs,
-          or source code.
+          reports a billable impression after the required visible interval. The
+          VS Code-compatible extension path does not read workspace files, open
+          editor text, prompts, model responses, integrated terminal output,
+          shell history, repository URLs, or source code. Qoder's official hook
+          payload is delivered locally by Qoder and can include prompt or
+          assistant-message fields; the WaitSpin Qoder runtime discards those
+          fields before cache or API work.
         </p>
       </Section>
 
@@ -186,8 +189,10 @@ export default function WaitSpinTrustPage() {
         <p>
           The current public user earning surfaces are the VS Code Marketplace
           Activity Bar/status-bar extension, the VS Code-compatible Cursor and
-          Devin Desktop editor surfaces, Claude Code statusline command, MiMo
-          Code shell hook, OpenCode TUI plugin slot, and Grok Code CLI footer.
+          Devin Desktop editor surfaces, Claude Code statusline command,
+          Antigravity CLI statusline command, GitHub Copilot CLI statusline
+          command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI
+          footer, and Qoder CLI UserPromptSubmit/Stop hooks.
           Native spinner patching beyond these supported status surfaces remains
           outside the public contract until separately shipped and documented.
         </p>

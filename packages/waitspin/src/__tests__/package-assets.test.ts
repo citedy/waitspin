@@ -75,6 +75,7 @@ describe("waitspin package assets", () => {
     expect(packageJson.description).toContain("MiMo Code");
     expect(packageJson.description).toContain("OpenCode");
     expect(packageJson.description).toContain("Grok Code CLI");
+    expect(packageJson.description).toContain("Qoder CLI");
     expect(packageJson.homepage).toBe("https://waitspin.com");
     expect(packageJson.repository?.url).toBe(
       "git+https://github.com/citedy/waitspin.git",
@@ -88,6 +89,7 @@ describe("waitspin package assets", () => {
     expect(packageJson.keywords).toContain("mimocode");
     expect(packageJson.keywords).toContain("opencode");
     expect(packageJson.keywords).toContain("grok");
+    expect(packageJson.keywords).toContain("qoder");
     expect(packageJson.keywords).not.toContain("codex");
   });
 

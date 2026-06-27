@@ -211,6 +211,20 @@ try {
     }
   }
 
+  const qoderStatusOutput = runInstalledBin(
+    waitspinBin,
+    ["qoder", "status", "--json"],
+    { cwd: tempRoot, env: smokeEnv },
+  );
+  const qoderStatus = JSON.parse(qoderStatusOutput);
+  if (
+    qoderStatus.target !== "qoder" ||
+    qoderStatus.mode !== "qoder-hook-system-message" ||
+    qoderStatus.installed !== false
+  ) {
+    throw new Error("clean npx qoder status returned an unexpected payload");
+  }
+
   const allStatusOutput = runInstalledBin(
     waitspinBin,
     [
@@ -224,7 +238,7 @@ try {
   if (
     allStatus.command !== "status --all" ||
     !Array.isArray(allStatus.statuses) ||
-    allStatus.statuses.length !== 7 ||
+    allStatus.statuses.length !== 8 ||
     ![
       "vscode",
       "claude-code",
@@ -233,6 +247,7 @@ try {
       "grok",
       "antigravity",
       "copilot",
+      "qoder",
     ].every((target) => allStatus.statuses.some((entry) => entry?.target === target)) ||
     !Array.isArray(allStatus.failed_status)
   ) {
@@ -277,6 +292,7 @@ try {
         clean_npx_claude_code_status: true,
         clean_npx_antigravity_status: true,
         clean_npx_copilot_status: true,
+        clean_npx_qoder_status: true,
         clean_npx_uninstall: true,
       },
       null,

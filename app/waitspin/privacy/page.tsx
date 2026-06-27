@@ -56,13 +56,18 @@ export default function WaitSpinPrivacyPage() {
         <p>
           Verified user earning surfaces include the VS Code Activity Bar/status-bar
           extension, VS Code-compatible Cursor Editor Mode and Devin Desktop
-          editor surfaces, Claude Code statusline command, MiMo Code shell hook,
-          OpenCode TUI plugin slot, and Grok Code CLI footer. They poll the
+          editor surfaces, Claude Code statusline command, Antigravity CLI
+          statusline command, GitHub Copilot CLI statusline command, MiMo Code
+          shell hook, OpenCode TUI plugin slot, Grok Code CLI footer, and Qoder
+          CLI UserPromptSubmit/Stop hooks. They poll the
           WaitSpin API for a sponsored message, show the message in the relevant
           wait-state surface, open the advertiser destination only after user
           action, and report an impression after the required visible interval.
           The documented surfaces do not need source code, keystrokes, editor
           contents, terminal output, or repository files to serve ads.
+          Qoder's official hook payload is delivered locally by Qoder and can
+          include prompt or assistant-message fields; the WaitSpin Qoder runtime
+          discards those fields before cache or API work.
         </p>
         <p>
           The VS Code extension connects a user install inside VS Code, stores
