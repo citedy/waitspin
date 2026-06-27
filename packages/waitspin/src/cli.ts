@@ -133,6 +133,8 @@ const QODER_DEFAULT_BIN = "qodercli";
 const QODER_HOOK_TIMEOUT_SECONDS = 15;
 const QODER_HOOK_STATUS_MESSAGE = "WaitSpin sponsor check";
 const QODER_HOOK_EVENTS = ["UserPromptSubmit", "Stop"] as const;
+const QODER_ACCEPTANCE_HINT =
+  "Run a real Qoder TUI prompt and keep the sponsored system message visible for at least 5 seconds. WaitSpin schedules a delayed visibility check after display; Stop or next-prompt hooks refresh the same managed state.";
 
 const extensionTargets = {
   vscode: "vscode",
@@ -6646,6 +6648,15 @@ function scheduleVisibleImpressionRetry(input) {
   }
 }
 
+function visibleImpressionCheckDelayMs(serve) {
+  const minVisibleMs = Math.max(
+    serve?.minVisibleMs ?? DEFAULT_MIN_VISIBLE_MS,
+    DEFAULT_MIN_VISIBLE_MS,
+  );
+  const maxVisibleDelayMs = Math.max(MAX_ACTIVE_AGE_MS - LOCK_RETRY_MS, 0);
+  return Math.min(minVisibleMs, maxVisibleDelayMs) + LOCK_RETRY_MS;
+}
+
 async function recordVisibleImpressionFromHook(state, apiKey, sessionKeyValue, ownerPid, options = {}) {
   if (!ownerAlive(ownerPid) || !(await installedSurfaceStillConfigured(state))) {
     return;
@@ -6731,6 +6742,12 @@ async function main() {
   process.stdout.write(JSON.stringify({
     systemMessage: "Sponsored: " + serve.line,
   }));
+  scheduleVisibleImpressionRetry({
+    statePath,
+    sessionKeyValue: key,
+    ownerPid,
+    delayMs: visibleImpressionCheckDelayMs(serve),
+  });
 }
 
 main().catch(() => {});
@@ -6962,8 +6979,7 @@ export async function runQoderInstall(flags: Map<string, string[]>) {
     qoder_version: qoderVersion,
     next: "launch_qoder",
     next_command: qoderExecutable,
-    acceptance_hint:
-      "Run a real Qoder TUI prompt, keep the sponsored system message visible for at least 5 seconds, then let Qoder fire a Stop or next-prompt hook before verifying an impression.",
+    acceptance_hint: QODER_ACCEPTANCE_HINT,
   };
   printCliOutput(flags, output, formatTargetInstallResult(output));
 }
@@ -7034,8 +7050,7 @@ export async function runQoderStatus(
       ? {
           next: "launch_qoder",
           next_command: executableFromEnv(QODER_BIN_ENV, QODER_DEFAULT_BIN),
-          acceptance_hint:
-            "Run a real Qoder TUI prompt, keep the sponsored system message visible for at least 5 seconds, then let Qoder fire a Stop or next-prompt hook before verifying an impression.",
+          acceptance_hint: QODER_ACCEPTANCE_HINT,
         }
       : {
           next: "install_qoder",

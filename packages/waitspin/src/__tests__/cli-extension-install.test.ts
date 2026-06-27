@@ -3510,6 +3510,16 @@ describe("waitspin extension install", () => {
       'allowRetry: inputJson.hook_event_name === "Stop"',
     );
     expect(runtimeWrite?.[1]).toContain('hook_event_name !== "UserPromptSubmit"');
+    expect(runtimeWrite?.[1]).toContain("systemMessage: \"Sponsored: \" + serve.line");
+    expect(runtimeWrite?.[1]).toContain("function visibleImpressionCheckDelayMs");
+    expect(runtimeWrite?.[1]).toContain(
+      "Math.max(MAX_ACTIVE_AGE_MS - LOCK_RETRY_MS, 0)",
+    );
+    expect(runtimeWrite?.[1]).toContain(
+      "Math.min(minVisibleMs, maxVisibleDelayMs) + LOCK_RETRY_MS",
+    );
+    expect(runtimeWrite?.[1]).toContain("sessionKeyValue: key");
+    expect(runtimeWrite?.[1]).toContain("delayMs: visibleImpressionCheckDelayMs(serve)");
     expect(runtimeWrite?.[1]).toContain("installedSurfaceStillConfigured");
     expect(runtimeWrite?.[1]).not.toContain("--impression-tick");
     expect(runtimeWrite?.[1]).not.toContain(testKey);

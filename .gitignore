@@ -25,6 +25,12 @@ docs/waitspin/promo/pics/*
 !docs/waitspin/promo/pics/generate-social-announce-docs.mjs
 !docs/waitspin/promo/pics/generate-x-ads-sheet.mjs
 !docs/waitspin/promo/pics/viral-fomo-hooks.mjs
+!docs/waitspin/promo/pics/generate-winners-landscape.mjs
+!docs/waitspin/promo/pics/layout-headline-landscape/
+!docs/waitspin/promo/pics/layout-headline-landscape/**
+!docs/waitspin/promo/pics/layout-split-v2-landscape/
+!docs/waitspin/promo/pics/layout-split-v2-landscape/**
+!docs/waitspin/promo/VIRAL_FOMO_WINNERS.md
 !docs/waitspin/promo/pics/viral-fomo/
 docs/waitspin/promo/pics/viral-fomo/*
 !docs/waitspin/promo/pics/viral-fomo/winners-terminal/
@@ -40,3 +46,12 @@ docs/waitspin/promo/splash/*
 !docs/waitspin/promo/splash/remotion/**
 docs/waitspin/promo/splash/remotion/node_modules/
 docs/waitspin/promo/splash/out/
+!docs/waitspin/promo/youtube/
+docs/waitspin/promo/youtube/*
+!docs/waitspin/promo/youtube/WAITSPIN_YOUTUBE_30S_SPEC.md
+!docs/waitspin/promo/youtube/voice-over-30s.txt
+!docs/waitspin/promo/youtube/storyboard.json
+!docs/waitspin/promo/youtube/remotion/
+!docs/waitspin/promo/youtube/remotion/**
+docs/waitspin/promo/youtube/remotion/node_modules/
+docs/waitspin/promo/youtube/out/

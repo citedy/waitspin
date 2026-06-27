@@ -593,7 +593,7 @@ describe("WaitSpin public docs contract", () => {
     expect(publicSyncScript).not.toContain("node:vm");
     expect(publicSyncScript).not.toContain("runInNewContext");
     expect(publicSyncScript).toContain("Unable to read npm latest version");
-    expect(publicSkillScript).toContain("v0.1.16");
+    expect(publicSkillScript).toContain("v0.1.17");
     expect(publicSkillScript).toContain("clawhub");
     expect(publicSkillScript).toContain("skills@1.5.12");
     expect(publicSkillScript).toContain("clawhub@0.22.0");
@@ -716,7 +716,7 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("WAITSPIN_VERIFICATION_CODE");
     expect(skill).not.toContain('--code "$WAITSPIN_VERIFICATION_CODE"');
     expect(skill).toContain(
-      "npx --yes waitspin@0.1.11 init --email you@example.com --key-profile control --json",
+      "npx --yes waitspin@0.1.12 init --email you@example.com --key-profile control --json",
     );
     expect(skill).toContain("next: \"enter_email_code\"");
     expect(skill).toContain("Validate user-supplied emails");
@@ -732,7 +732,7 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("waitspin install --all --dry-run");
     expect(skill).toContain("A `publisher-extension` key is appropriate for publisher earnings reads");
     expect(skill).toContain("do not echo it in chat");
-    expect(skill).toContain("npx --yes waitspin@0.1.11");
+    expect(skill).toContain("npx --yes waitspin@0.1.12");
     expect(skill).not.toContain("waitspin@latest");
     expect(skill).not.toContain("USER_EMAIL");
     expect(skill).not.toContain("CODE_FROM_EMAIL");
