@@ -30,6 +30,7 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - REST API discovery: https://api.waitspin.com/v1
 - OpenAPI: https://waitspin.com/openapi/waitspin-api.openapi.json
 - Public market: GET /v1/market
+- SDK posture: WaitSpin is CLI-first; Python, Go, and other agents shell out to npx waitspin and parse JSON. No native SDK is required.
 - Verified user earning surfaces: VS Code Activity Bar/status-bar extension, VS Code-compatible Cursor editor, VS Code-compatible Devin Desktop editor, Claude Code statusline command, Antigravity CLI statusline command, GitHub Copilot CLI statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer, Qoder CLI UserPromptSubmit/Stop hooks
 - VS Code/Cursor/Devin API target: status-bar-fallback. Cursor Editor Mode and Devin Desktop are editor aliases for the same VS Code-compatible extension path, not separate cursor or devin targets.
 - VS Code/Cursor/Devin install path: VS Code uses code --install-extension waitspin.waitspin-vscode; Cursor Editor Mode uses cursor --install-extension waitspin.waitspin-vscode; Devin Desktop uses Open VSX or devin-desktop --install-extension waitspin.waitspin-vscode. Then run WaitSpin: Connect and earn inside the matching editor. VS Code CLI fallback: waitspin extension install --target vscode --api-key KEY_FROM_JSON
