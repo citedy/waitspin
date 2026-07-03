@@ -121,6 +121,12 @@ describe("WaitSpin public docs contract", () => {
     expect(quickstart).toContain("campaigns[0].campaign_id");
     expect(quickstart).toContain("jq -e");
     expect(quickstart).toContain("--code CODE_FROM_EMAIL");
+    expect(quickstart).toContain(
+      "npx --yes waitspin init --email you@example.com --code CODE_FROM_EMAIL --key-profile control --json",
+    );
+    expect(quickstart).toContain(
+      "npx --yes waitspin init --email you@example.com --code CODE_FROM_EMAIL --key-profile publisher-extension --json",
+    );
     expect(quickstart).not.toContain("--api-key wts_live_");
     for (const tool of WAITSPIN_WEBMCP_TOOLS) {
       expect(markdown).toContain(`\`${tool.toolName}\``);

@@ -177,7 +177,7 @@ Stripe Checkout, install, publisher event, payout, or billable impression.
 npm view waitspin version
 npx --yes waitspin init --email you@example.com --key-profile control
 # Check the email inbox, then verify the OTP before using the returned key.
-npx --yes waitspin init --email you@example.com --code CODE_FROM_EMAIL --key-profile control
+npx --yes waitspin init --email you@example.com --code CODE_FROM_EMAIL --key-profile control --json
 export WAITSPIN_API_KEY=wts_live_key_returned_by_verified_init
 waitspin bid create --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1
 waitspin bid checkout CAMPAIGN_ID
@@ -185,7 +185,7 @@ waitspin bid checkout CAMPAIGN_ID
 # 402 Payment challenge until WaitSpin returns Payment-Receipt.
 npx --yes waitspin init --email you@example.com --key-profile publisher-extension
 # Check the email inbox again if prompted, then verify the publisher key.
-npx --yes waitspin init --email you@example.com --code CODE_FROM_EMAIL --key-profile publisher-extension
+npx --yes waitspin init --email you@example.com --code CODE_FROM_EMAIL --key-profile publisher-extension --json
 export WAITSPIN_API_KEY=wts_live_publisher_key_returned_by_verified_init
 
 # Install every detected all-install target.
