@@ -684,6 +684,21 @@ describe("waitspin extension install", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("redacts real WaitSpin API key and npm token formats", async () => {
+    const { redactCliSecretText } = await import("../cli");
+
+    const redacted = redactCliSecretText(
+      "upstream echoed wts_live_test_key_value_1234567890, wts_test_other_key, wts_prod_future_key, and npm_secret_token",
+    );
+
+    expect(redacted).not.toContain("wts_live_test_key_value_1234567890");
+    expect(redacted).not.toContain("wts_test_other_key");
+    expect(redacted).not.toContain("wts_prod_future_key");
+    expect(redacted).not.toContain("npm_secret_token");
+    expect(redacted).toContain("[REDACTED_WAITSPIN_KEY]");
+    expect(redacted).toContain("[REDACTED_NPM_TOKEN]");
+  });
+
   it("aggregates status-all without running target installs", async () => {
     const { main: rawMain } = await import("../cli");
     const main = (args: string[]) => rawMain([...args, "--json"]);

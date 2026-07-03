@@ -43,7 +43,9 @@ export default function WaitSpinTermsPage() {
           statusline command, GitHub Copilot CLI statusline command, MiMo Code
           shell hook, OpenCode TUI plugin slot, Grok Code CLI integration,
           Qoder CLI UserPromptSubmit/Stop hooks, and install-all orchestration for
-          detected supported targets. Wallet visibility, ledger history,{" "}
+          detected supported targets. Advertiser block purchases can be paid
+          through Stripe Checkout or the crypto MPP API rail backed by
+          Stripe/Tempo stablecoin payment. Wallet visibility, ledger history,{" "}
           <Link className="underline" href="/wallet/connect">
             Stripe Connect onboarding
           </Link>
@@ -52,10 +54,15 @@ export default function WaitSpinTermsPage() {
           <Link className="underline" href="/docs">
             /docs
           </Link>
-          . Live transfers execute only when payout policy eligibility checks
+          . MPP is an advertiser pay-in rail only: WaitSpin does not custody
+          crypto, store private keys, collect raw wallet destinations, or offer
+          direct cryptocurrency publisher withdrawals in the current EU product.
+          Live transfers execute only when payout policy eligibility checks
           pass; WaitSpin does not guarantee that any balance is immediately
-          withdrawable. Native spinner patches, account-credit redemption, and
-          self-serve cash refunds are not available yet.
+          withdrawable. Advertiser block purchases support Stripe Checkout and
+          the production Stripe/Tempo stablecoin MPP pay-in rail. Native spinner
+          patches, account-credit redemption, and self-serve cash refunds are
+          not available yet.
         </p>
       </Section>
 
@@ -73,16 +80,42 @@ export default function WaitSpinTermsPage() {
       <Section title="Advertiser Blocks">
         <p>
           Advertisers create campaign drafts with a short ad line, an HTTPS
-          destination URL, block count, and price per block. Destinations are
-          validated to reduce SSRF and unsafe URL risk, but advertisers remain
-          responsible for all advertising text, promoted names, brands,
-          destination links, destination content, claims, tracking, and legal
-          compliance. Illegal, abusive, deceptive, infringing, or prohibited
-          promotion may result in permanent account blocking without restoration
-          or refund, and WaitSpin may disclose available account, campaign,
-          payment, network, and audit data to law enforcement when required or
+          destination URL, block count, and price per block. Blocks activate
+          only after the relevant Stripe payment is confirmed: Checkout through
+          the existing Checkout/webhook path, or crypto MPP after the MPP
+          credential verifies and Stripe reports the crypto PaymentIntent as
+          succeeded. Destinations are validated to reduce SSRF and unsafe URL
+          risk, but advertisers remain responsible for all advertising text,
+          promoted names, brands, destination links, destination content,
+          claims, tracking, and legal compliance. Illegal, abusive, deceptive,
+          infringing, or prohibited promotion may result in{" "}
+          <span>
+            permanent account blocking without restoration or refund
+          </span>
+          , and WaitSpin may disclose available account, campaign, payment,
+          network, and audit data to law enforcement when required or
           appropriate. WaitSpin does not guarantee impressions, conversions,
           ranking, traffic quality, or continuous availability.
+        </p>
+      </Section>
+
+      <Section title="Payment Rails And Stablecoin Boundary">
+        <p>
+          Advertiser block purchases can be paid through Stripe Checkout or
+          through the production Stripe/Tempo stablecoin MPP endpoint at{" "}
+          <code>/v1/blocks/mpp-crypto</code>. The stablecoin MPP rail is an
+          inbound pay-in rail only: WaitSpin verifies the MPP credential,
+          verifies the bound Stripe PaymentIntent reached{" "}
+          <code>succeeded</code>, and then activates blocks through the
+          canonical block purchase path. WaitSpin does not provide crypto
+          payouts, hold customer crypto, store raw wallet addresses or private
+          keys, or operate a treasury crypto balance.
+        </p>
+        <p>
+          Publisher payouts remain standard fiat payouts through
+          Stripe-managed methods, including bank payouts, SEPA, or Instant
+          Payouts where available and allowed by payout policy. WaitSpin does
+          not offer direct EU crypto publisher payouts.
         </p>
       </Section>
 
@@ -94,7 +127,10 @@ export default function WaitSpinTermsPage() {
           request flow are public-launch blockers and are not available as
           self-serve features yet. Stripe refunds or disputes may pause future
           delivery and may reverse or hold unpaid user balances tied to
-          affected delivery.
+          affected delivery. Crypto MPP pay-ins are processed by Stripe/Tempo;
+          any supported refund, dispute, or reversal path is handled through
+          the Stripe-managed payment rail rather than a WaitSpin wallet or
+          direct crypto custody flow.
         </p>
       </Section>
 
@@ -107,8 +143,9 @@ export default function WaitSpinTermsPage() {
           <Link className="underline" href="/wallet/connect">
             Stripe Connect onboarding
           </Link>
-          , payout dry-run, and guarded payout execution are the documented
-          publisher money surfaces.
+          , payout dry-run, and guarded fiat payout execution are the
+          documented publisher money surfaces. Publisher payouts do not use the
+          crypto MPP block purchase rail.
         </p>
         <WalletTermsExplainer
           maturityHours={publisherPolicyCopy.earningMaturityHours}

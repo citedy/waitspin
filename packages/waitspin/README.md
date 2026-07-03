@@ -3,9 +3,12 @@
 Command-line client for [WaitSpin](https://waitspin.com) — sponsored
 wait-state ads for verified developer surfaces.
 
-## Install
+## Product / Agent Quickstart
 
-Run after `npm view waitspin version` succeeds in launch evidence:
+This quickstart is for using the public WaitSpin product as an advertiser,
+publisher, or agent surface. If you are validating the source repository
+itself, use the repository root README instead: Node `22.14.x`, `npm install`,
+then `npm run test:waitspin`.
 
 Before install, user registration, or Checkout, review:
 
@@ -17,6 +20,24 @@ Before install, user registration, or Checkout, review:
 Refund/account-credit disclosure: unused prepaid block handling is
 support-reviewed. No automated account-credit balance, redemption flow, or
 self-serve cash refund request flow is shipped yet.
+
+Credential-free agent demo path:
+
+```bash
+npm view waitspin version
+export WAITSPIN_API_KEY=wts_demo_agent_quickstart
+npx --yes waitspin market --demo --json
+npx --yes waitspin bid create --demo --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1 --json
+npx --yes waitspin bid checkout demo_campaign_001 --demo --json
+npx --yes waitspin status --all --demo --json
+```
+
+Done means every demo command returns `ok: true`, `"mode": "demo"`, and stable
+demo IDs such as `demo_campaign_001`. This path uses static CLI fixtures and
+does not create an account, campaign, Stripe Checkout, install, publisher event,
+payout, or billable impression.
+
+Authenticated advertiser/publisher path:
 
 ```bash
 npm view waitspin version
@@ -69,6 +90,9 @@ waitspin grok status
 waitspin qoder install --api-key PASTE_PUBLISHER_EXTENSION_KEY
 waitspin qoder status
 ```
+
+Done means the CLI returns the created campaign or install ID, and the matching
+`waitspin bids list` or `waitspin status --all` command can read that state back.
 
 ## Commands
 

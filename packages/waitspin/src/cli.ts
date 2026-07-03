@@ -67,6 +67,8 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const DEV_API_BASE_OPT_IN_ENV = "WAITSPIN_ALLOW_DEV_API_BASE";
 const DEV_EXTENSION_ASSETS_OPT_IN_ENV =
   "WAITSPIN_ALLOW_DEV_EXTENSION_ASSETS";
+const WAITSPIN_API_KEY_REDACTION_PATTERN = /\bwts_[A-Za-z0-9_-]+\b/g;
+const NPM_TOKEN_REDACTION_PATTERN = /\bnpm_[A-Za-z0-9_-]+\b/g;
 const WTS_PUBLISHER_CONNECT_COUNTRY_CODES = new Set([
   "US",
   "PT",
@@ -147,10 +149,10 @@ export function usageText(): string {
     [
       "Usage:",
       "  waitspin init --email you@example.com [--code CODE] [--key-profile control|publisher-extension] [--base-url URL]",
-      "  waitspin bid create --line TEXT --url https://example.com --price-per-block CENTS --blocks N [--json] [--base-url URL] [--api-key KEY]",
+      "  waitspin bid create --line TEXT --url https://example.com --price-per-block CENTS --blocks N [--json] [--demo] [--base-url URL] [--api-key KEY]",
       "  waitspin bids list [--json] [--base-url URL] [--api-key KEY]",
-      "  waitspin bid checkout <campaign-id> [--json] [--base-url URL] [--api-key KEY]",
-      "  waitspin market [--json] [--base-url URL]",
+      "  waitspin bid checkout <campaign-id> [--json] [--demo] [--base-url URL] [--api-key KEY]",
+      "  waitspin market [--json] [--demo] [--base-url URL]",
       "  waitspin wallet status [--json] [--base-url URL] [--api-key KEY]",
       "  waitspin wallet connect [--country US] [--json] [--base-url URL] [--api-key KEY]",
       "  waitspin wallet ledger [--limit N] [--json] [--base-url URL] [--api-key KEY]",
@@ -160,7 +162,7 @@ export function usageText(): string {
       "  waitspin extension status [--target vscode] [--json]",
       "  waitspin extension uninstall [--target vscode] [--json] [--dry-run]",
       "  waitspin install --all [--json] [--api-key KEY] [--compose-existing] [--dry-run]",
-      "  waitspin status --all [--json]",
+      "  waitspin status --all [--json] [--demo]",
       "  waitspin claude-code install [--json] [--api-key KEY] [--compose-existing] [--dry-run]",
       "  waitspin claude-code status [--json]",
       "  waitspin claude-code uninstall [--json] [--dry-run]",
@@ -227,6 +229,7 @@ function parseArgs(argv: string[]) {
     }
     if (
       key === "dry-run" ||
+      key === "demo" ||
       key === "allow-debug-auto-verify" ||
       key === "allow-dev-api-base" ||
       key === "allow-dev-extension-assets" ||
@@ -390,6 +393,12 @@ class WaitSpinCliHttpError extends Error {
   }
 }
 
+export function redactCliSecretText(value: string): string {
+  return value
+    .replace(WAITSPIN_API_KEY_REDACTION_PATTERN, "[REDACTED_WAITSPIN_KEY]")
+    .replace(NPM_TOKEN_REDACTION_PATTERN, "[REDACTED_NPM_TOKEN]");
+}
+
 async function requestJson<T>(
   input: string,
   init: RequestInit,
@@ -414,9 +423,12 @@ async function requestJson<T>(
   }
 
   if (!response.ok) {
+    const safePayload = redactCliSecretText(
+      JSON.stringify(payload).slice(0, 500),
+    );
     throw new WaitSpinCliHttpError(
       response.status,
-      `HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 500)}`,
+      `HTTP ${response.status}: ${safePayload}`,
     );
   }
 
@@ -453,6 +465,97 @@ function printCliOutput(
     return;
   }
   printText(text);
+}
+
+const DEMO_MODE = "demo";
+const DEMO_CAMPAIGN_ID = "demo_campaign_001";
+const DEMO_BLOCK_PURCHASE_ID = "demo_block_purchase_001";
+const DEMO_INSTALL_ID = "demo_install_001";
+const DEMO_PUBLISHER_ID = "demo_publisher_001";
+
+function demoMode(flags: Map<string, string[]>): boolean {
+  return booleanFlag(flags, "demo");
+}
+
+function demoMarketPayload() {
+  return {
+    ok: true,
+    mode: DEMO_MODE,
+    campaigns: [
+      {
+        campaign_id: DEMO_CAMPAIGN_ID,
+        ad_line: "Agent quickstart demo",
+        brand_name: "WaitSpin Demo",
+        bid_cpm_micros: 5_000_000,
+        impressions_served: 1200,
+        units_remaining: 999_000,
+      },
+    ],
+  };
+}
+
+function demoCampaignPayload(input: {
+  adLine: string;
+  destinationUrl: string;
+  pricePerBlockCents: number;
+  blocks: number;
+}) {
+  return {
+    ok: true,
+    mode: DEMO_MODE,
+    campaign_id: DEMO_CAMPAIGN_ID,
+    block_purchase_id: DEMO_BLOCK_PURCHASE_ID,
+    status: "draft",
+    ad_line: input.adLine,
+    destination_url: input.destinationUrl,
+    price_per_block_cents: input.pricePerBlockCents,
+    blocks: input.blocks,
+    next_command: `waitspin bid checkout ${DEMO_CAMPAIGN_ID} --demo`,
+  };
+}
+
+function demoCheckoutPayload(campaignId: string) {
+  if (campaignId !== DEMO_CAMPAIGN_ID) {
+    throw new Error(`Demo checkout accepts ${DEMO_CAMPAIGN_ID} only`);
+  }
+  return {
+    ok: true,
+    mode: DEMO_MODE,
+    campaign_id: DEMO_CAMPAIGN_ID,
+    block_purchase_id: DEMO_BLOCK_PURCHASE_ID,
+    checkout_url: "demo://waitspin/checkout/demo_campaign_001",
+    status: "demo_checkout_ready",
+    checkout_disclosure: {
+      terms_url: "https://waitspin.com/waitspin/terms",
+      privacy_url: "https://waitspin.com/waitspin/privacy",
+      refund_policy:
+        "Demo mode is a static CLI fixture. No Stripe Checkout, account, campaign, publisher event, payout, or billable impression is created.",
+    },
+  };
+}
+
+function demoStatusAllPayload() {
+  const status = {
+    target: "agent-quickstart",
+    command: "waitspin status --all --demo",
+    result: {
+      ok: true,
+      mode: DEMO_MODE,
+      installed: true,
+      publisher_registered: true,
+      install_id: DEMO_INSTALL_ID,
+      publisher_id: DEMO_PUBLISHER_ID,
+    },
+  };
+  return {
+    ok: true,
+    mode: DEMO_MODE,
+    command: "status --all",
+    include_experimental: false,
+    installed: [status],
+    statuses: [status],
+    failed_status: [],
+  };
 }
 
 async function capturePrintedJson<T>(fn: () => Promise<void>): Promise<T> {
@@ -634,8 +737,6 @@ async function runInit(flags: Map<string, string[]>) {
 }
 
 async function runBidCreate(flags: Map<string, string[]>) {
-  const baseUrl = resolveCredentialedBaseUrl(flags);
-  const apiKey = requireApiKey(flags);
   const adLine = requireFlag(flags, "line");
   const destinationUrl = requireFlag(flags, "url");
   const pricePerBlockCents = Number(requireFlag(flags, "price-per-block"));
@@ -648,6 +749,19 @@ async function runBidCreate(flags: Map<string, string[]>) {
     throw new Error("--blocks must be at least 1");
   }
 
+  if (demoMode(flags)) {
+    const output = demoCampaignPayload({
+      adLine,
+      destinationUrl,
+      pricePerBlockCents,
+      blocks,
+    });
+    printCliOutput(flags, output, formatCampaignCreateResult(output));
+    return;
+  }
+
+  const baseUrl = resolveCredentialedBaseUrl(flags);
+  const apiKey = requireApiKey(flags);
   const { body } = await requestJson<Record<string, unknown>>(
     `${baseUrl}/v1/campaigns`,
     {
@@ -691,6 +805,11 @@ async function runBidCheckout(
   if (!campaignId) {
     throw new Error("Usage: waitspin bid checkout CAMPAIGN_ID");
   }
+  if (demoMode(flags)) {
+    const output = demoCheckoutPayload(campaignId);
+    printCliOutput(flags, output, formatBidCheckoutResult(output));
+    return;
+  }
   const baseUrl = resolveCredentialedBaseUrl(flags);
   const apiKey = requireApiKey(flags);
   const { body } = await requestJson<Record<string, unknown>>(
@@ -718,6 +837,11 @@ async function runBidCheckout(
 }
 
 async function runMarket(flags: Map<string, string[]>) {
+  if (demoMode(flags)) {
+    const output = demoMarketPayload();
+    printCliOutput(flags, output, formatMarketResult(output));
+    return;
+  }
   const baseUrl = resolveBaseUrl(flags);
   const { body } = await requestJson<Record<string, unknown>>(
     `${baseUrl}/v1/market`,
@@ -7326,9 +7450,7 @@ function allInstallTargets(flags: Map<string, string[]>): AllInstallTarget[] {
 
 function safeErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return message
-    .replace(/wts_(?:live|test)__[A-Za-z0-9_-]+/g, "[REDACTED_WAITSPIN_KEY]")
-    .replace(/npm_[A-Za-z0-9_-]+/g, "[REDACTED_NPM_TOKEN]");
+  return redactCliSecretText(message);
 }
 
 function isNotDetectedError(message: string): boolean {
@@ -7494,6 +7616,12 @@ export async function runInstallAll(flags: Map<string, string[]>) {
 }
 
 export async function runStatusAll(flags: Map<string, string[]>) {
+  if (demoMode(flags)) {
+    const output = demoStatusAllPayload();
+    printCliOutput(flags, output, formatStatusAllResult(output));
+    return;
+  }
+
   const internalJsonFlags = jsonFlags(flags);
   const statuses: AllTargetSummary[] = [];
   const installed: AllTargetSummary[] = [];

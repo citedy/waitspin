@@ -23,7 +23,7 @@
     { "name": "List", "description": "Opt-in WaitSpin launch email subscription." },
     { "name": "Market", "description": "Public active campaign inventory." },
     { "name": "Campaigns", "description": "Advertiser campaign management." },
-    { "name": "Blocks", "description": "Stripe Checkout for prepaid impression blocks." },
+    { "name": "Blocks", "description": "Stripe Checkout and crypto MPP rails for prepaid impression blocks." },
     { "name": "User Installs", "description": "User install registration." },
     { "name": "Serve", "description": "Sponsored wait-state message serving." },
     { "name": "Events", "description": "User impression events." },
@@ -226,6 +226,58 @@
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/blocks/mpp-crypto": {
+      "post": {
+        "tags": ["Blocks"],
+        "operationId": "createWaitSpinMppCryptoBlockPurchase",
+        "summary": "Create or reuse a Stripe/Tempo stablecoin MPP challenge for a pending block purchase.",
+        "description": "Production Stripe/Tempo stablecoin MPP pay-in rail for existing WaitSpin block purchases. Blocks are activated only after the MPP credential verifies and Stripe reports the bound PaymentIntent as succeeded.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BlockMppCryptoRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MPP payment settled in Stripe and WaitSpin blocks were activated.",
+            "headers": {
+              "Payment-Receipt": {
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BlockMppCryptoReceiptResponse" }
+              }
+            }
+          },
+          "202": {
+            "description": "MPP credential verified but the Stripe PaymentIntent has not reached succeeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BlockMppCryptoPendingResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
         }
       }
     },
@@ -540,6 +592,14 @@
           }
         }
       },
+      "PaymentRequired": {
+        "description": "MPP payment challenge. The WWW-Authenticate header contains the Payment challenge.",
+        "headers": {
+          "WWW-Authenticate": {
+            "schema": { "type": "string" }
+          }
+        }
+      },
       "RateLimited": {
         "description": "Rate limit exceeded.",
         "headers": {
@@ -757,6 +817,42 @@
           "block_purchase_id": { "type": "string" }
         },
         "additionalProperties": true
+      },
+      "BlockMppCryptoRequest": {
+        "type": "object",
+        "required": ["campaign_id"],
+        "properties": {
+          "campaign_id": { "type": "string", "pattern": "^wcamp_[a-z0-9]{18}$" },
+          "block_purchase_id": { "type": "string", "pattern": "^wblk_[a-z0-9]{18}$" }
+        },
+        "additionalProperties": false
+      },
+      "BlockMppCryptoPendingResponse": {
+        "type": "object",
+        "required": ["ok", "status", "block_purchase_id", "stripe_payment_intent_id", "stripe_status"],
+        "properties": {
+          "ok": { "type": "boolean", "const": false },
+          "status": { "type": "string", "enum": ["payment_pending"] },
+          "block_purchase_id": { "type": "string", "pattern": "^wblk_[a-z0-9]{18}$" },
+          "stripe_payment_intent_id": { "type": "string", "pattern": "^pi_" },
+          "stripe_status": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "BlockMppCryptoReceiptResponse": {
+        "type": "object",
+        "required": ["ok", "status", "block_purchase_id", "campaign_id", "stripe_payment_intent_id", "activated_blocks", "payment_receipt"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "status": { "type": "string", "enum": ["activated"] },
+          "block_purchase_id": { "type": "string", "pattern": "^wblk_[a-z0-9]{18}$" },
+          "campaign_id": { "type": "string", "pattern": "^wcamp_[a-z0-9]{18}$" },
+          "stripe_payment_intent_id": { "type": "string", "pattern": "^pi_" },
+          "activated_blocks": { "type": "integer", "minimum": 1 },
+          "payment_receipt": { "type": ["string", "null"] },
+          "idempotent": { "type": "boolean" }
+        },
+        "additionalProperties": false
       },
       "PublisherRegisterRequest": {
         "type": "object",

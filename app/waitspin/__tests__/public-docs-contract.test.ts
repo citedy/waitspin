@@ -43,6 +43,7 @@ describe("WaitSpin public docs contract", () => {
       "app/waitspin/docs/page.tsx",
       "app/waitspin/privacy/page.tsx",
       "app/waitspin/support/page.tsx",
+      "app/waitspin/support/voice/page.tsx",
       "app/waitspin/terms/page.tsx",
       "app/waitspin/trust/page.tsx",
       "app/wallet/connect/page.tsx",
@@ -67,6 +68,17 @@ describe("WaitSpin public docs contract", () => {
       expect(markdown).toContain(`\`${routePath}\``);
     }
     expect(markdown).toContain("publisher-extension");
+    expect(markdown).toContain("wts_demo_agent_quickstart");
+    expect(markdown).toContain("npx --yes waitspin market --demo --json");
+    expect(markdown).toContain(
+      "npx --yes waitspin bid checkout demo_campaign_001 --demo --json",
+    );
+    expect(markdown).toContain("npx --yes waitspin status --all --demo --json");
+    expect(markdown).toContain("`/v1/blocks/mpp-crypto`");
+    expect(markdown).toContain("402 Payment Required");
+    expect(markdown).toContain("Stripe/Tempo MPP");
+    expect(markdown).toContain("PaymentIntent.status");
+    expect(markdown).toContain("not a publisher crypto payout");
     expect(markdown).toContain("VS Code Activity Bar/status-bar extension");
     expect(markdown).toContain("Cursor Editor Mode");
     expect(markdown).toContain("Devin Desktop");
@@ -84,6 +96,12 @@ describe("WaitSpin public docs contract", () => {
     expect(markdown).not.toContain("Kilo CLI");
     expect(markdown).toContain("waitspin install --all --dry-run");
     expect(markdown).toContain("waitspin status --all");
+    expect(markdown).toContain("## Crypto MPP Block Purchases");
+    expect(markdown).toContain("`POST /v1/blocks/mpp-crypto`");
+    expect(markdown).toContain("`402 Payment Required`");
+    expect(markdown).toContain("`WWW-Authenticate: Payment ...`");
+    expect(markdown).toContain("`PaymentIntent` is `succeeded`");
+    expect(markdown).toContain("publishers continue to receive standard");
     expect(markdown).toContain(
       "waitspin claude-code install --api-key wts_live_... --compose-existing",
     );
@@ -117,15 +135,36 @@ describe("WaitSpin public docs contract", () => {
     const [
       supportPage,
       supportClient,
+      supportVoicePage,
+      supportVoiceRedirectPage,
+      supportVoiceClient,
       turnstileClient,
       supportRoute,
+      supportVoiceSessionRoute,
+      supportVoiceConfig,
       nginxConfig,
       cloudflareConfig,
       startScript,
+      vpsEnvExample,
     ] = await Promise.all([
       readFile(path.join(repoRoot, "app/waitspin/support/page.tsx"), "utf8"),
       readFile(
         path.join(repoRoot, "app/waitspin/support/WaitSpinSupportClient.tsx"),
+        "utf8",
+      ),
+      readFile(
+        path.join(repoRoot, "app/waitspin/support/voice/page.tsx"),
+        "utf8",
+      ),
+      readFile(
+        path.join(repoRoot, "app/waitspin/support/voice-demo/page.tsx"),
+        "utf8",
+      ),
+      readFile(
+        path.join(
+          repoRoot,
+          "app/waitspin/support/voice/WaitSpinSupportVoiceClient.tsx",
+        ),
         "utf8",
       ),
       readFile(path.join(repoRoot, "app/waitspin/WaitSpinTurnstile.tsx"), "utf8"),
@@ -133,6 +172,14 @@ describe("WaitSpin public docs contract", () => {
         path.join(repoRoot, "app/api/waitspin/support/route.ts"),
         "utf8",
       ),
+      readFile(
+        path.join(
+          repoRoot,
+          "app/api/waitspin/support/voice/session/route.ts",
+        ),
+        "utf8",
+      ),
+      readFile(path.join(repoRoot, "lib/waitspin/xai-voice.ts"), "utf8"),
       readFile(
         path.join(repoRoot, "infra/waitspin-vps/nginx/default.conf"),
         "utf8",
@@ -142,9 +189,19 @@ describe("WaitSpin public docs contract", () => {
         "utf8",
       ),
       readFile(path.join(repoRoot, "infra/waitspin-vps/start.mjs"), "utf8"),
+      readFile(path.join(repoRoot, "infra/waitspin-vps/.env.example"), "utf8"),
     ]);
 
-    for (const source of [supportPage, supportClient, supportRoute]) {
+    for (const source of [
+      supportPage,
+      supportClient,
+      supportVoicePage,
+      supportVoiceRedirectPage,
+      supportVoiceClient,
+      supportRoute,
+      supportVoiceSessionRoute,
+      supportVoiceConfig,
+    ]) {
       expect(source).toContain("WaitSpin");
       expect(source).not.toContain("adclaw_host");
       expect(source).not.toContain("adclaw_public_site");
@@ -152,12 +209,39 @@ describe("WaitSpin public docs contract", () => {
     expect(supportPage).toContain("waitspin-page");
     expect(supportClient).toContain("placements");
     expect(supportClient).toContain("payouts");
+    expect(supportClient).toContain("crypto MPP payments");
+    expect(supportClient).toContain("PaymentIntent");
     expect(supportClient).toContain("technical");
     expect(supportClient).toContain("abuse");
     expect(supportRoute).toContain("waitspin_public_site");
     expect(supportRoute).toContain("WAITSPIN_CITEDY_SUPPORT_SECRET");
     expect(supportRoute).toContain("WAITSPIN_SUPPORT_REQUIRE_TURNSTILE");
     expect(supportClient).toContain("useWaitSpinTurnstile");
+    expect(supportPage).toContain("/waitspin/support/voice");
+    expect(supportPage).not.toContain("voice demo");
+    expect(supportVoicePage).toContain("WaitSpinSupportVoiceClient");
+    expect(supportVoicePage).not.toContain("Demo");
+    expect(supportVoiceRedirectPage).toContain("/waitspin/support/voice");
+    expect(supportVoiceClient).toContain("xai-client-secret.");
+    expect(supportVoiceClient).not.toContain("Demo");
+    expect(supportVoiceSessionRoute).toContain("realtime/client_secrets");
+    expect(supportVoiceSessionRoute).toContain("readWaitSpinXaiVoiceEnvConfig");
+    expect(supportVoiceConfig).toContain("WAITSPIN_XAI_VOICE_MODEL");
+    expect(supportVoiceClient).toContain("input_audio_buffer.append");
+    expect(supportVoiceClient).toContain(
+      'status === "error" && ws?.readyState === WebSocket.OPEN',
+    );
+    expect(supportVoiceClient).toContain(
+      "if (!nextPrompt || !canStartVoiceTurn()) return;",
+    );
+    expect(supportVoiceClient).toContain(
+      "const canToggleMicrophone = canStartTurn || isRecording;",
+    );
+    expect(supportVoiceClient).toContain("inputStreamRef.current = stream");
+    expect(supportVoiceClient).toContain("await ensureAudioContext();");
+    expect(supportVoiceSessionRoute).toContain(
+      "isWaitSpinSupportVoiceSessionAllowed",
+    );
     expect(turnstileClient).toContain("api.js?render=explicit");
     expect(turnstileClient).toContain('execution: "execute"');
     expect(turnstileClient).toContain('appearance: "interaction-only"');
@@ -182,10 +266,24 @@ describe("WaitSpin public docs contract", () => {
     expect(globalsCss).toContain(".waitspin-support-turnstile.is-active");
     expect(globalsCss).toContain("min-height:72px");
     expect(nginxConfig).toContain("location = /api/waitspin/support");
+    expect(nginxConfig).toContain(
+      "location = /api/waitspin/support/voice/session",
+    );
     expect(nginxConfig).toContain("$http_cf_connecting_ip");
     expect(cloudflareConfig).not.toContain("real_ip_header");
     expect(startScript).toContain("WAITSPIN_CITEDY_SUPPORT_SECRET");
+    expect(startScript).toContain("XAI_API_KEY");
+    expect(vpsEnvExample).toContain("# XAI_API_KEY");
     expect(startScript).toContain("WAITSPIN_TURNSTILE_SECRET_KEY");
+    expect(startScript).toContain("WAITSPIN_MPP_CRYPTO_PURCHASES_ENABLED");
+    expect(startScript).toContain("MPP_SECRET_KEY");
+    expect(vpsEnvExample).toContain("# MPP_SECRET_KEY");
+    expect(vpsEnvExample).toContain(
+      "# WAITSPIN_MPP_CRYPTO_PURCHASES_ENABLED=true",
+    );
+    expect(vpsEnvExample).toContain(
+      "# WAITSPIN_MPP_CRYPTO_PURCHASE_RETURN_URL=https://waitspin.com/waitspin/mpp-crypto/return",
+    );
   });
 
   it("keeps account Turnstile mounted before dynamic status copy", async () => {
@@ -428,6 +526,10 @@ describe("WaitSpin public docs contract", () => {
     expect(privacy).toContain('href="/wallet/connect"');
     expect(terms).toContain("Stripe Connect onboarding");
     expect(terms).toContain('href="/wallet/connect"');
+    expect(terms).toContain("crypto MPP API rail");
+    expect(terms).toContain("PaymentIntent");
+    expect(terms).toContain("does not custody");
+    expect(terms).toContain("direct cryptocurrency publisher withdrawals");
     expect(privacy).toContain("WAITSPIN_PUBLIC_PUBLISHER_TARGETS");
     expect(publicTrustSource).toContain("Grok Code CLI");
     expect(publicTrustSource).toContain("Cursor Editor Mode");

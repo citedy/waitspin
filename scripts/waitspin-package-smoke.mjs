@@ -75,6 +75,20 @@ function parseSinglePackEntry(output, label) {
   return packEntry;
 }
 
+function parseJsonOutput(output, label) {
+  try {
+    return JSON.parse(output);
+  } catch (error) {
+    throw new Error(`${label} did not return JSON: ${error.message}`);
+  }
+}
+
+function assertDemoPayload(payload, label) {
+  if (payload?.ok !== true || payload?.mode !== "demo") {
+    throw new Error(`${label} did not return ok=true mode=demo`);
+  }
+}
+
 try {
   ensurePackageDependencies();
   run("npm", ["run", "prepack"], { cwd: packageRoot });
@@ -142,6 +156,7 @@ try {
   const smokeEnv = {
     HOME: smokeHome,
     npm_config_cache: smokeCache,
+    WAITSPIN_API_KEY: "",
   };
   const help = runInstalledBin(waitspinBin, ["--help"], {
     cwd: tempRoot,
@@ -254,6 +269,95 @@ try {
     throw new Error("clean npx status --all returned an unexpected payload");
   }
 
+  const demoMarket = parseJsonOutput(
+    runInstalledBin(waitspinBin, ["market", "--demo", "--json"], {
+      cwd: tempRoot,
+      env: smokeEnv,
+    }),
+    "clean npx market --demo",
+  );
+  assertDemoPayload(demoMarket, "clean npx market --demo");
+  if (demoMarket.campaigns?.[0]?.campaign_id !== "demo_campaign_001") {
+    throw new Error("clean npx market --demo returned unstable campaign id");
+  }
+
+  const demoCampaign = parseJsonOutput(
+    runInstalledBin(
+      waitspinBin,
+      [
+        "bid",
+        "create",
+        "--demo",
+        "--line",
+        "Your ad",
+        "--url",
+        "https://example.com",
+        "--price-per-block",
+        "500",
+        "--blocks",
+        "1",
+        "--json",
+      ],
+      { cwd: tempRoot, env: smokeEnv },
+    ),
+    "clean npx bid create --demo",
+  );
+  assertDemoPayload(demoCampaign, "clean npx bid create --demo");
+  if (
+    demoCampaign.campaign_id !== "demo_campaign_001" ||
+    demoCampaign.block_purchase_id !== "demo_block_purchase_001"
+  ) {
+    throw new Error("clean npx bid create --demo returned unstable ids");
+  }
+  const demoCampaignText = runInstalledBin(
+    waitspinBin,
+    [
+      "bid",
+      "create",
+      "--demo",
+      "--line",
+      "Your ad",
+      "--url",
+      "https://example.com",
+      "--price-per-block",
+      "500",
+      "--blocks",
+      "1",
+    ],
+    { cwd: tempRoot, env: smokeEnv },
+  );
+  if (!demoCampaignText.includes("waitspin bid checkout demo_campaign_001 --demo")) {
+    throw new Error("clean npx bid create --demo omitted the demo checkout hint");
+  }
+
+  const demoCheckout = parseJsonOutput(
+    runInstalledBin(
+      waitspinBin,
+      ["bid", "checkout", "demo_campaign_001", "--demo", "--json"],
+      { cwd: tempRoot, env: smokeEnv },
+    ),
+    "clean npx bid checkout --demo",
+  );
+  assertDemoPayload(demoCheckout, "clean npx bid checkout --demo");
+  if (demoCheckout.block_purchase_id !== "demo_block_purchase_001") {
+    throw new Error("clean npx bid checkout --demo returned unstable id");
+  }
+
+  const demoStatusAll = parseJsonOutput(
+    runInstalledBin(waitspinBin, ["status", "--all", "--demo", "--json"], {
+      cwd: tempRoot,
+      env: smokeEnv,
+    }),
+    "clean npx status --all --demo",
+  );
+  assertDemoPayload(demoStatusAll, "clean npx status --all --demo");
+  if (
+    demoStatusAll.command !== "status --all" ||
+    demoStatusAll.statuses?.[0]?.result?.install_id !== "demo_install_001"
+  ) {
+    throw new Error("clean npx status --all --demo returned unstable status");
+  }
+
   const uninstallOutput = runInstalledBin(
     waitspinBin,
     [
@@ -289,6 +393,7 @@ try {
         clean_npx_help: true,
         clean_npx_status: true,
         clean_npx_status_all: true,
+        clean_npx_demo_quickstart: true,
         clean_npx_claude_code_status: true,
         clean_npx_antigravity_status: true,
         clean_npx_copilot_status: true,

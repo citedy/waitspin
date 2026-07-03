@@ -37,7 +37,8 @@ export default function WaitSpinPrivacyPage() {
           <li>
             Advertiser campaign data, including ad line, brand name, destination
             URL, block count, price, campaign state, Checkout session IDs,
-            Stripe payment identifiers, and webhook event IDs.
+            Stripe payment identifiers, stablecoin MPP PaymentIntent and
+            receipt identifiers, and webhook event IDs.
           </li>
           <li>
             User install data, including install ID, target, status, serve
@@ -159,9 +160,10 @@ export default function WaitSpinPrivacyPage() {
         <p>
           We use WaitSpin data to verify accounts, issue and secure API keys,
           create campaigns, route Checkout, activate paid blocks, select and
-          serve ads, record billable impressions, enforce quotas, prevent fraud,
-          investigate incidents, provide support, and satisfy legal, accounting,
-          tax, and security obligations.
+          route Stripe/Tempo stablecoin MPP pay-ins, activate paid blocks,
+          select and serve ads, record billable impressions, enforce quotas,
+          prevent fraud, investigate incidents, provide support, and satisfy
+          legal, accounting, tax, and security obligations.
         </p>
       </Section>
 
@@ -171,8 +173,10 @@ export default function WaitSpinPrivacyPage() {
           a dedicated DigitalOcean VPS, Cloudflare DNS/security services, Stripe
           for payments, Resend for email, GitHub Actions for public smoke
           checks, and logging/monitoring tools needed for reliability and abuse
-          response. Stripe handles card data directly; WaitSpin stores Stripe
-          identifiers and payment state, not full card numbers.
+          response. Stripe handles card data and stablecoin payment processing
+          directly; WaitSpin stores Stripe identifiers, MPP receipt references,
+          and payment state, not full card numbers, raw wallet addresses,
+          private keys, or crypto custody balances.
         </p>
       </Section>
 
@@ -221,7 +225,9 @@ export default function WaitSpinPrivacyPage() {
           </Link>{" "}
           for the public cap tables. Account-credit redemption and self-serve
           refund workflows are not shipped; if they are added later, updated
-          public docs will describe the additional data they require.
+          public docs will describe the additional data they require. Publisher
+          payouts remain standard Stripe-managed fiat payouts; WaitSpin does not
+          offer direct EU crypto publisher payouts.
         </p>
       </Section>
     </WaitSpinLegalPage>

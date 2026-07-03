@@ -72,6 +72,12 @@ const endpoints = [
   ],
   [
     "POST",
+    "/v1/blocks/mpp-crypto",
+    "blocks:purchase or verified MPP credential",
+    "Create or reuse a Stripe/Tempo stablecoin MPP payment challenge for a pending block purchase.",
+  ],
+  [
+    "POST",
     "/v1/publishers/register",
     "publishers:write",
     "Register a user install ID for a supported earning surface.",
@@ -152,6 +158,13 @@ POST /v1/blocks/checkout
 request:  { "campaign_id": "wcamp_..." }
 response: { "checkout_url": "https://checkout.stripe.com/...", "block_purchase_id": "wbp_..." }
 
+POST /v1/blocks/mpp-crypto
+request:  { "campaign_id": "wcamp_...", "block_purchase_id": "wblk_..." }
+unpaid:   402 Payment Required with WWW-Authenticate: Payment ... method="tempo"
+pending:  { "ok": false, "status": "payment_pending", "block_purchase_id": "wblk_...", "stripe_payment_intent_id": "pi_...", "stripe_status": "processing" }
+response: { "ok": true, "status": "activated", "block_purchase_id": "wblk_...", "campaign_id": "wcamp_...", "stripe_payment_intent_id": "pi_...", "activated_blocks": 1, "payment_receipt": "..." }
+retry:    { "ok": true, "status": "activated", "block_purchase_id": "wblk_...", "campaign_id": "wcamp_...", "stripe_payment_intent_id": "pi_...", "activated_blocks": 1, "payment_receipt": null, "idempotent": true }
+
 POST /v1/publishers/register
 request:  { "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "antigravity" | "copilot" | "mimocode" | "opencode" | "grok" | "qoder" }
 response: { "publisher_id": "wpub_...", "install_id": "wins_...", "target": "status-bar-fallback" | "claude-code" | "antigravity" | "copilot" | "mimocode" | "opencode" | "grok" | "qoder" }
@@ -204,7 +217,7 @@ export default function WaitSpinDocsPage() {
       <WaitSpinWebMcpRegistry />
       <WaitSpinLegalPage
         title="WaitSpin API And Agent Docs"
-        description="This is the public contract for implemented WaitSpin routes and guarded release-candidate surfaces. It intentionally excludes launch-blocked capabilities."
+        description="This is the public contract for implemented WaitSpin routes, Stripe Checkout and crypto MPP block purchases, verified user earning surfaces, and guarded publisher money surfaces."
       >
         <Section title="Base URLs And Auth">
         <p>
@@ -228,8 +241,9 @@ export default function WaitSpinDocsPage() {
           Agent markdown is available at{" "}
           <code>https://waitspin.com/.well-known/agents.md</code> and{" "}
           <code>https://waitspin.com/waitspin/agents.md</code>. It is scoped to
-          the shipped route allowlist, including verified user surfaces,
-          and excludes deferred launch claims.
+          the shipped route allowlist, including Stripe Checkout, crypto MPP
+          block purchases, verified user surfaces, and guarded publisher money
+          surfaces.
         </p>
         <p>
           Public client source and trust-boundary docs are published at{" "}
@@ -553,9 +567,18 @@ export default function WaitSpinDocsPage() {
         </p>
       </Section>
 
-      <Section title="Agent Quick Start">
+      <Section title="Product / Agent Quick Start">
         <pre className="overflow-x-auto border bg-muted/40 p-4 text-xs leading-6">
-          {`# Verify the published package before using this as release evidence.
+          {`# Credential-free agent demo path.
+npm view waitspin version
+export WAITSPIN_API_KEY=wts_demo_agent_quickstart
+npx --yes waitspin market --demo --json
+npx --yes waitspin bid create --demo --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1 --json
+npx --yes waitspin bid checkout demo_campaign_001 --demo --json
+npx --yes waitspin status --all --demo --json
+# Done: every command returns ok=true, mode=demo, and stable demo IDs.
+
+# Authenticated advertiser/publisher path.
 npx skills add citedy/waitspin
 npm view waitspin version
 npx --yes waitspin init --email you@example.com --key-profile control
@@ -613,6 +636,16 @@ waitspin grok status
 waitspin qoder install --api-key KEY_FROM_JSON
 waitspin qoder status`}
         </pre>
+        <p>
+          The credential-free path is complete when{" "}
+          <code>waitspin market --demo --json</code> returns{" "}
+          <code>ok=true</code>, <code>mode=demo</code>, and stable demo IDs
+          without creating an account, campaign, Stripe Checkout, install, or
+          billable impression. The authenticated path is complete when the CLI
+          returns the created campaign or install ID, and the matching{" "}
+          <code>waitspin bids list</code> or <code>waitspin status --all</code>{" "}
+          command can read that state back.
+        </p>
         <p>
           Explicit target commands remain the canonical debug path.{" "}
           <code>waitspin install --all</code> is an advanced agent command that

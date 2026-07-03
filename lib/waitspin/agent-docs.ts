@@ -59,6 +59,13 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
   },
   {
     method: "POST",
+    path: "/v1/blocks/mpp-crypto",
+    auth: "blocks:purchase or verified MPP credential",
+    purpose:
+      "Create or reuse a Stripe/Tempo stablecoin MPP challenge for a pending block purchase.",
+  },
+  {
+    method: "POST",
     path: "/v1/publishers/register",
     auth: "publishers:write",
     purpose:
@@ -125,10 +132,12 @@ export function waitSpinAgentDocsMissingShippedPaths(): string[] {
 export function renderWaitSpinAgentsMarkdown(): string {
   return `# WaitSpin Agent Contract
 
-Last updated: 2026-06-15
+Last updated: 2026-07-02
 
 WaitSpin is an independent paid marketplace for developer wait-state inventory.
-Public paid launch is not marked ready until the operator launch gates pass.
+Advertisers can buy blocks through Stripe Checkout or the production
+Stripe/Tempo stablecoin MPP API rail; publisher payouts remain the standard
+Stripe-managed fiat payout path.
 
 ## Base URLs
 
@@ -150,15 +159,55 @@ an extension API key for user install registration, serve polling, and
 impression reporting. Keys from that profile can register user installs, poll
 serve inventory, report impressions,
 and read wallet/ledger status. They cannot create campaigns, start Checkout,
-manage Connect, or execute payouts.
+start MPP block purchases, manage Connect, or execute payouts.
 
 \`POST /v1/campaigns\` requires an \`Idempotency-Key\` v4 UUID.
+
+## Agent Payment Flow
+
+Stripe Checkout remains the classic card and wallet path through
+\`POST /v1/blocks/checkout\`. Agents that support HTTP 402 payments can also use
+\`POST /v1/blocks/mpp-crypto\` for stablecoin block purchases through
+Stripe/Tempo MPP:
+
+1. Create a campaign and pending block purchase through \`POST /v1/campaigns\`.
+2. Call \`POST /v1/blocks/mpp-crypto\` with a control key that has
+   \`blocks:purchase\`.
+3. WaitSpin returns \`402 Payment Required\` with
+   \`WWW-Authenticate: Payment ...\`.
+4. The agent pays the Stripe/Tempo challenge and retries with the MPP payment
+   credential.
+5. WaitSpin verifies the MPP credential and Stripe
+   \`PaymentIntent.status === "succeeded"\`, then activates blocks through the
+   canonical block purchase path and returns \`Payment-Receipt\` plus the
+   WaitSpin receipt.
+
+MPP is an advertiser pay-in rail only. It is not a publisher crypto payout,
+wallet, custody, or raw wallet-address collection flow.
 
 ## Shipped Routes
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 ${endpointTable()}
+
+## Crypto MPP Block Purchases
+
+\`POST /v1/blocks/mpp-crypto\` lets advertisers and agents buy pending block
+purchases with stablecoin through Stripe/Tempo MPP. The first request uses a
+normal WaitSpin bearer key with \`blocks:purchase\` and returns
+\`402 Payment Required\` plus \`WWW-Authenticate: Payment ...\` when payment is
+required. After the agent pays through the MPP challenge, retry the same request
+with the Payment credential. WaitSpin verifies the MPP credential, verifies the
+bound Stripe \`PaymentIntent\` is \`succeeded\`, activates blocks through the
+canonical block purchase path, and returns \`200\` with a receipt. Pending,
+failed, canceled, mismatched, or unverified MPP/Stripe payments do not activate
+blocks.
+
+This is an inbound advertiser payment rail only. WaitSpin does not implement
+crypto payouts, wallet custody, raw wallet address storage, private-key
+handling, or a treasury crypto balance; publishers continue to receive standard
+Stripe-managed fiat payouts when payout policy allows.
 
 ## Public User Earning Surfaces
 
@@ -241,11 +290,21 @@ Do not claim these as shipped public paid-launch capabilities:
 ## Agent Quick Start
 
 \`\`\`bash
+# Credential-free agent demo path.
 npm view waitspin version
+export WAITSPIN_API_KEY=wts_demo_agent_quickstart
+npx --yes waitspin market --demo --json
+npx --yes waitspin bid create --demo --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1 --json
+npx --yes waitspin bid checkout demo_campaign_001 --demo --json
+npx --yes waitspin status --all --demo --json
+
+# Authenticated advertiser/publisher path.
 npx --yes waitspin init --email you@example.com --key-profile control
 export WAITSPIN_API_KEY=wts_live_...
 waitspin bid create --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1
 waitspin bid checkout CAMPAIGN_ID
+# Agent-native stablecoin pay-in: POST /v1/blocks/mpp-crypto and follow the
+# 402 Payment challenge until WaitSpin returns Payment-Receipt.
 npx --yes waitspin init --email you@example.com --key-profile publisher-extension
 
 # Install every detected all-install target

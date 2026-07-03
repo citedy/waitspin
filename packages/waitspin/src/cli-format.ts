@@ -114,6 +114,11 @@ export function formatCampaignCreateResult(payload: unknown): string {
   const blocks = numberValue(data.blocks) ?? 0;
   const pricePerBlockCents = numberValue(data.price_per_block_cents) ?? 0;
   const impressions = blocks * 1_000;
+  const nextCommand =
+    stringValue(data.next_command) ??
+    (data.campaign_id
+      ? `waitspin bid checkout ${String(data.campaign_id)}`
+      : undefined);
   return formatLines([
     "WaitSpin campaign draft created",
     `Campaign: ${stringValue(data.campaign_id) ?? "unknown"}`,
@@ -123,11 +128,7 @@ export function formatCampaignCreateResult(payload: unknown): string {
       impressions,
     )}-impression block purchase`,
     `CPM bid: ${formatMoney(pricePerBlockCents)} per 1,000 impressions`,
-    commandLine(
-      data.campaign_id
-        ? `waitspin bid checkout ${String(data.campaign_id)}`
-        : undefined,
-    ),
+    commandLine(nextCommand),
     "",
     rawHint(),
   ]);
@@ -163,6 +164,17 @@ export function formatBidsListResult(payload: unknown): string {
 
 export function formatBidCheckoutResult(payload: unknown): string {
   const data = record(payload);
+  if (stringValue(data.mode) === "demo") {
+    return formatLines([
+      "WaitSpin advertiser demo checkout",
+      `Campaign: ${stringValue(data.campaign_id) ?? "unknown"}`,
+      `Block purchase: ${stringValue(data.block_purchase_id) ?? "unknown"}`,
+      "No Stripe Checkout, account, campaign, publisher event, payout, or billable impression was created.",
+      stringValue(record(data.checkout_disclosure).refund_policy),
+      "",
+      rawHint(),
+    ]);
+  }
   return formatLines([
     "WaitSpin advertiser checkout",
     `Block purchase: ${stringValue(data.block_purchase_id) ?? "unknown"}`,
