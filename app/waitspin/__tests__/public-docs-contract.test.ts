@@ -9,6 +9,7 @@ import {
 } from "@/lib/waitspin/control-api-hosts";
 import {
   renderWaitSpinAgentsMarkdown,
+  renderWaitSpinQuickstartMarkdown,
   waitSpinAgentDocsMissingShippedPaths,
 } from "@/lib/waitspin/agent-docs";
 import {
@@ -59,6 +60,7 @@ describe("WaitSpin public docs contract", () => {
 
   it("publishes agents.md from the shipped route allowlist", async () => {
     const markdown = renderWaitSpinAgentsMarkdown();
+    const quickstart = renderWaitSpinQuickstartMarkdown();
 
     expect(waitSpinAgentDocsMissingShippedPaths()).toEqual([]);
     for (const routePath of [
@@ -69,7 +71,10 @@ describe("WaitSpin public docs contract", () => {
     }
     expect(markdown).toContain("publisher-extension");
     expect(markdown).toContain("wts_demo_agent_quickstart");
+    expect(markdown).toContain("https://waitspin.com/quickstart.md");
     expect(markdown).toContain("npx --yes waitspin market --demo --json");
+    expect(markdown).toContain("campaigns[0].campaign_id");
+    expect(markdown).toContain('"campaign_id": "demo_campaign_001"');
     expect(markdown).toContain(
       "npx --yes waitspin bid checkout demo_campaign_001 --demo --json",
     );
@@ -112,6 +117,9 @@ describe("WaitSpin public docs contract", () => {
     expect(markdown).toContain("`POST /v1/events/click`");
     expect(markdown).not.toContain("| POST | `/v1/events/click` |");
     expect(markdown).toContain("## WebMCP Browser Tools");
+    expect(quickstart).toContain("# WaitSpin Quickstart");
+    expect(quickstart).toContain("campaigns[0].campaign_id");
+    expect(quickstart).toContain("jq -e");
     for (const tool of WAITSPIN_WEBMCP_TOOLS) {
       expect(markdown).toContain(`\`${tool.toolName}\``);
     }
@@ -129,6 +137,28 @@ describe("WaitSpin public docs contract", () => {
         "# WaitSpin Agent Contract",
       );
     }
+  });
+
+  it("publishes a clean agent-readable quickstart markdown route", async () => {
+    const [{ GET: quickstartMd }, { GET: llmsTxt }] = await Promise.all([
+      import("@/app/quickstart.md/route"),
+      import("@/app/llms.txt/route"),
+    ]);
+
+    const quickstartResponse = quickstartMd();
+    const quickstart = await quickstartResponse.text();
+    expect(quickstartResponse.status).toBe(200);
+    expect(quickstartResponse.headers.get("Content-Type")).toContain(
+      "text/markdown",
+    );
+    expect(quickstart).toContain("# WaitSpin Quickstart");
+    expect(quickstart).toContain("npx --yes waitspin market --demo --json");
+    expect(quickstart).toContain("campaigns[0].campaign_id");
+    expect(quickstart).toContain('"campaign_id": "demo_campaign_001"');
+    expect(quickstart).toContain("does not create an account");
+
+    const llms = await llmsTxt().text();
+    expect(llms).toContain("https://waitspin.com/quickstart.md");
   });
 
   it("publishes a WaitSpin-native support page contract", async () => {
@@ -849,6 +879,7 @@ describe("WaitSpin public docs contract", () => {
       { default: robots },
       { default: sitemap },
       { GET: llmsTxt },
+      { GET: quickstartMd },
       { GET: favicon },
       { GET: icon180 },
       { GET: iconSvg },
@@ -861,6 +892,7 @@ describe("WaitSpin public docs contract", () => {
       import("@/app/robots"),
       import("@/app/sitemap"),
       import("@/app/llms.txt/route"),
+      import("@/app/quickstart.md/route"),
       import("@/app/favicon.ico/route"),
       import("@/app/icon-180.png/route"),
       import("@/app/icon.svg/route"),
@@ -882,6 +914,7 @@ describe("WaitSpin public docs contract", () => {
       expect.arrayContaining([
         "https://waitspin.com/",
         "https://waitspin.com/docs",
+        "https://waitspin.com/quickstart.md",
         "https://waitspin.com/wallet/connect",
         "https://waitspin.com/waitspin",
         "https://waitspin.com/waitspin/docs",
@@ -896,6 +929,7 @@ describe("WaitSpin public docs contract", () => {
     const llmsResponse = llmsTxt();
     const llmsBody = await llmsResponse.text();
     expect(llmsBody).toContain("WaitSpin is an agent-first ad marketplace");
+    expect(llmsBody).toContain("https://waitspin.com/quickstart.md");
     expect(llmsBody).toContain("## WebMCP Browser Tools");
     expect(llmsBody).toContain(
       "Verified user earning surfaces: VS Code Activity Bar/status-bar extension, VS Code-compatible Cursor editor, VS Code-compatible Devin Desktop editor, Claude Code statusline command, Antigravity CLI statusline command, GitHub Copilot CLI statusline command, MiMo Code shell hook, OpenCode TUI plugin slot, Grok Code CLI footer",
@@ -920,6 +954,13 @@ describe("WaitSpin public docs contract", () => {
     expect(llmsBody).not.toContain("Verified publisher surfaces");
     expect(llmsBody).not.toContain("VS Code status-bar fallback");
     expect(llmsResponse.headers.get("Content-Type")).toContain("text/plain");
+    const quickstartResponse = quickstartMd();
+    await expect(quickstartResponse.text()).resolves.toContain(
+      "campaigns[0].campaign_id",
+    );
+    expect(quickstartResponse.headers.get("Content-Type")).toContain(
+      "text/markdown",
+    );
     expect(waitspinBrandIcons).toMatchObject({
       apple: [
         {

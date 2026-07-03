@@ -129,6 +129,76 @@ export function waitSpinAgentDocsMissingShippedPaths(): string[] {
   );
 }
 
+export const WAITSPIN_AGENT_QUICKSTART_MARKDOWN = `Use this credential-free path when an agent needs one clean WaitSpin onboarding
+run. It uses static CLI fixtures only.
+
+Canonical agent-readable quickstart: https://waitspin.com/quickstart.md
+
+## Credential-Free Demo Path
+
+\`\`\`bash
+npm view waitspin version
+export WAITSPIN_API_KEY=wts_demo_agent_quickstart
+npx --yes waitspin market --demo --json
+npx --yes waitspin bid create --demo --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1 --json
+npx --yes waitspin bid checkout demo_campaign_001 --demo --json
+npx --yes waitspin status --all --demo --json
+\`\`\`
+
+\`waitspin market --demo --json\` returns at least this shape:
+
+\`\`\`json
+{
+  "ok": true,
+  "mode": "demo",
+  "campaigns": [
+    {
+      "campaign_id": "demo_campaign_001"
+    }
+  ]
+}
+\`\`\`
+
+For a machine assertion, check \`campaigns[0].campaign_id\`:
+
+\`\`\`bash
+npx --yes waitspin market --demo --json \\
+  | jq -e '.ok == true and .mode == "demo" and .campaigns[0].campaign_id == "demo_campaign_001"'
+\`\`\`
+
+Done means every demo command returns \`ok: true\`, \`"mode": "demo"\`, and
+stable demo IDs such as \`demo_campaign_001\` and
+\`demo_block_purchase_001\`. This path does not create an account, campaign,
+Stripe Checkout, install, publisher event, payout, or billable impression.
+
+## Authenticated Advertiser/Publisher Path
+
+\`\`\`bash
+npm view waitspin version
+npx --yes waitspin init --email you@example.com --key-profile control
+export WAITSPIN_API_KEY=wts_live_...
+waitspin bid create --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1
+waitspin bid checkout CAMPAIGN_ID
+# Agent-native stablecoin pay-in: POST /v1/blocks/mpp-crypto and follow the
+# 402 Payment challenge until WaitSpin returns Payment-Receipt.
+npx --yes waitspin init --email you@example.com --key-profile publisher-extension
+
+# Install every detected all-install target.
+waitspin install --all --dry-run --api-key wts_live_... --compose-existing
+waitspin install --all --api-key wts_live_... --compose-existing
+waitspin status --all
+\`\`\`
+
+WaitSpin is CLI-first. Python, Go, and shell agents should call the CLI and parse
+JSON unless a future native SDK is explicitly documented.
+`;
+
+export function renderWaitSpinQuickstartMarkdown(): string {
+  return `# WaitSpin Quickstart
+
+${WAITSPIN_AGENT_QUICKSTART_MARKDOWN}`;
+}
+
 export function renderWaitSpinAgentsMarkdown(): string {
   return `# WaitSpin Agent Contract
 
@@ -289,29 +359,11 @@ Do not claim these as shipped public paid-launch capabilities:
 
 ## Agent Quick Start
 
+${WAITSPIN_AGENT_QUICKSTART_MARKDOWN}
+
+Supported user-surface install commands:
+
 \`\`\`bash
-# Credential-free agent demo path.
-npm view waitspin version
-export WAITSPIN_API_KEY=wts_demo_agent_quickstart
-npx --yes waitspin market --demo --json
-npx --yes waitspin bid create --demo --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1 --json
-npx --yes waitspin bid checkout demo_campaign_001 --demo --json
-npx --yes waitspin status --all --demo --json
-
-# Authenticated advertiser/publisher path.
-npx --yes waitspin init --email you@example.com --key-profile control
-export WAITSPIN_API_KEY=wts_live_...
-waitspin bid create --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1
-waitspin bid checkout CAMPAIGN_ID
-# Agent-native stablecoin pay-in: POST /v1/blocks/mpp-crypto and follow the
-# 402 Payment challenge until WaitSpin returns Payment-Receipt.
-npx --yes waitspin init --email you@example.com --key-profile publisher-extension
-
-# Install every detected all-install target
-waitspin install --all --dry-run --api-key wts_live_... --compose-existing
-waitspin install --all --api-key wts_live_... --compose-existing
-waitspin status --all
-
 # VS Code Activity Bar/status-bar extension
 # Marketplace: https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
 code --install-extension waitspin.waitspin-vscode
@@ -358,6 +410,16 @@ waitspin qoder install --api-key wts_live_...
 waitspin qoder status
 \`\`\`
 `;
+}
+
+export function waitSpinQuickstartMarkdownResponse(): Response {
+  return new Response(renderWaitSpinQuickstartMarkdown(), {
+    status: 200,
+    headers: {
+      "Content-Type": "text/markdown; charset=utf-8",
+      "Cache-Control": "public, max-age=300, s-maxage=300",
+    },
+  });
 }
 
 export function waitSpinAgentsMarkdownResponse(): Response {

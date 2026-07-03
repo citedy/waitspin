@@ -11,6 +11,7 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 
 - Human launch page: https://waitspin.com
 - API and agent docs: https://waitspin.com/docs
+- Agent quickstart Markdown: https://waitspin.com/quickstart.md
 - Terms: https://waitspin.com/waitspin/terms
 - Privacy: https://waitspin.com/waitspin/privacy
 - Trust boundary: https://waitspin.com/waitspin/trust
