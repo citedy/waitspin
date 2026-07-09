@@ -49,9 +49,17 @@ npx --yes waitspin init --email you@example.com --key-profile publisher-extensio
 
 # First-class VS Code-compatible user paths
 code --install-extension waitspin.waitspin-vscode
-cursor --install-extension waitspin.waitspin-vscode
-devin-desktop --install-extension waitspin.waitspin-vscode
+cursor --install-extension waitspin.waitspin-vscode --force
+devin-desktop --install-extension waitspin.waitspin-vscode --force
 # Then run "WaitSpin: Connect and earn" inside the matching editor.
+
+# Equivalent WaitSpin-managed local editor lifecycle
+waitspin extension install --target cursor
+waitspin extension status --target cursor
+waitspin extension uninstall --target cursor
+waitspin extension install --target devin
+waitspin extension status --target devin
+waitspin extension uninstall --target devin
 
 # Advanced agent install for every detected all-install target
 waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
@@ -106,14 +114,21 @@ Done means the CLI returns the created campaign or install ID, and the matching
 - `waitspin wallet ledger` — user delivery ledger
 - `waitspin wallet payout --dry-run` — payout eligibility preview
 - `code --install-extension waitspin.waitspin-vscode` — install the public VS Code Marketplace extension
-- `cursor --install-extension waitspin.waitspin-vscode` — install the same VS Code-compatible extension into Cursor Editor Mode
-- `devin-desktop --install-extension waitspin.waitspin-vscode` — install the same extension into Devin Desktop from Open VSX when the desktop CLI is on PATH
+- `cursor --install-extension waitspin.waitspin-vscode --force` — install or update the same VS Code-compatible extension in Cursor Editor Mode
+- `devin-desktop --install-extension waitspin.waitspin-vscode --force` — install or update the same extension in Devin Desktop from Open VSX when the desktop CLI is on PATH
 - `WaitSpin: Connect and earn` — connect the VS Code-compatible extension from inside the matching editor
 - `waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY` — advanced CLI fallback for VS Code extension setup
 - `waitspin extension status --target vscode` — inspect managed VS Code extension lifecycle state
 - `waitspin extension uninstall --target vscode` — remove the managed VS Code extension runtime and local state
+- `waitspin extension install --target cursor` — install or update the extension through the Cursor editor CLI
+- `waitspin extension status --target cursor` — query Cursor for the exact WaitSpin extension ID
+- `waitspin extension uninstall --target cursor` — remove only the WaitSpin extension from Cursor
+- `waitspin extension install --target devin` — install or update the Open VSX extension through Devin Desktop
+- `waitspin extension status --target devin` — query Devin Desktop for the exact WaitSpin extension ID
+- `waitspin extension uninstall --target devin` — remove only the WaitSpin extension from Devin Desktop
+- On Windows, the WaitSpin lifecycle commands resolve Cursor command shims safely and auto-detect `%LOCALAPPDATA%\devin\bin\devin.exe` for Devin Desktop.
 - `waitspin install --all --dry-run` — preview detected user surfaces without file changes
-- `waitspin install --all` — install every detected all-install surface: VS Code plus CLI-managed targets
+- `waitspin install --all` — install every detected all-install surface, including VS Code, Cursor, Devin Desktop, and CLI-managed targets
 - `waitspin status --all` — aggregate lifecycle status for every user surface
 - `waitspin claude-code install --compose-existing` — install the Claude Code statusline command
 - `waitspin claude-code status` — inspect managed Claude Code runtime state
@@ -156,9 +171,9 @@ visibility callback; it does not patch native binaries or npm
 package files.
 
 `waitspin install --all` is an advanced agent command for installing every
-detected all-install target: VS Code plus CLI-managed targets. Cursor Editor
-Mode and Devin Desktop stay on the explicit editor-extension install paths
-above. Install-all keeps explicit target commands as the canonical debug path,
+detected all-install target, including VS Code, Cursor Editor Mode, Devin
+Desktop, and CLI-managed targets. Install-all keeps explicit target commands as
+the canonical debug path,
 supports `--dry-run`, skips unsupported local tools in `skipped_not_detected`,
 reports recoverable config conflicts in `skipped_conflict`, and reports
 unexpected installer failures in `failed_rollback`.
@@ -179,13 +194,19 @@ user install polling/events:
 ```bash
 npx waitspin init --email you@example.com --key-profile publisher-extension
 code --install-extension waitspin.waitspin-vscode
-cursor --install-extension waitspin.waitspin-vscode
-devin-desktop --install-extension waitspin.waitspin-vscode
+cursor --install-extension waitspin.waitspin-vscode --force
+devin-desktop --install-extension waitspin.waitspin-vscode --force
 # Then run "WaitSpin: Connect and earn" inside the matching editor.
 npx waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
 npx waitspin install --all --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
 npx waitspin status --all
 npx waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
+npx waitspin extension install --target cursor
+npx waitspin extension status --target cursor
+npx waitspin extension uninstall --target cursor
+npx waitspin extension install --target devin
+npx waitspin extension status --target devin
+npx waitspin extension uninstall --target devin
 npx waitspin claude-code install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
 npx waitspin antigravity install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
 npx waitspin copilot install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing

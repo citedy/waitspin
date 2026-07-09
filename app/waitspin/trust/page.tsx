@@ -73,6 +73,18 @@ export default function WaitSpinTrustPage() {
           clients. Serve, impression, wallet, and accounting events are
           operational telemetry needed to run the marketplace.
         </p>
+        <p>
+          The public website may use Google Analytics 4 with a GDPR cookie
+          preference notice for EU/EEA visitors and no banner outside the
+          EU/EEA. EU/EEA visitors can grant or deny analytics and advertising
+          measurement separately. Website measurement is limited to page views
+          and coarse conversion events such as install link clicks, command-copy success,
+          list signup success, advertiser-path clicks, checkout-return status,
+          and public surface selection. It does not include email addresses,
+          company names, API keys, wallet addresses, command contents,
+          clipboard contents, source code, editor data, terminal output, or
+          repository files.
+        </p>
       </Section>
 
       <Section title="VS Code Extension Provenance">

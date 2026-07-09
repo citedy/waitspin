@@ -149,6 +149,18 @@ export default function WaitSpinPrivacyPage() {
           clients. Serve, impression, wallet, and accounting events are
           operational telemetry needed to run the marketplace.
         </p>
+        <p>
+          On the public website, Google Analytics 4 page and conversion
+          measurement is gated by a GDPR cookie preference notice for EU/EEA
+          visitors and runs without that notice outside the EU/EEA. EU/EEA
+          visitors can accept all cookies, keep necessary cookies only, or
+          choose analytics and advertising measurement separately. Website
+          events are limited to page views, install-link clicks, command-copy
+          success, list signup success, advertiser-path clicks, checkout-return status, and public
+          surface selection. They do not include email addresses, company names,
+          API keys, wallet addresses, command contents, clipboard contents,
+          source code, editor data, terminal output, or repository files.
+        </p>
         <ul className="list-disc space-y-2 pl-5">
           {WAITSPIN_SENT_PAYLOADS.map((item) => (
             <li key={item}>{item}</li>

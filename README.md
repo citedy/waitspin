@@ -31,5 +31,5 @@ npx skills add citedy/waitspin
 ```
 
 Skill registry releases are versioned independently from npm package releases:
-GitHub Skills/ClawHub currently expose `v0.1.17`; the npm CLI package is
-`waitspin@0.1.13`.
+GitHub Skills/ClawHub currently expose `v0.1.18`; the npm CLI package is
+`waitspin@0.1.14`.

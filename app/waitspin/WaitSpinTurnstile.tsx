@@ -6,6 +6,8 @@ const turnstileSiteKey =
   process.env.NEXT_PUBLIC_WAITSPIN_TURNSTILE_SITE_KEY?.trim() || "";
 const WAITSPIN_TURNSTILE_SILENT_TIMEOUT_MS = 180_000;
 const TURNSTILE_SCRIPT_WAIT_TIMEOUT_MS = 15_000;
+const TURNSTILE_SCRIPT_SRC =
+  "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
 declare global {
   interface Window {
@@ -40,7 +42,9 @@ export function useWaitSpinTurnstile() {
   } | null>(null);
   const [token, setToken] = useState("");
   const [active, setActive] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   function settleChallenge(error?: Error, nextToken = "") {
     const pending = challengeRef.current;
@@ -65,6 +69,15 @@ export function useWaitSpinTurnstile() {
     }
 
     let cancelled = false;
+
+    function failTurnstile(error: Error) {
+      if (cancelled) return;
+      setReady(false);
+      setActive(false);
+      setToken("");
+      setFailed(true);
+      settleChallenge(error);
+    }
 
     function cleanupTurnstile() {
       const widgetId = widgetIdRef.current;
@@ -107,13 +120,12 @@ export function useWaitSpinTurnstile() {
         appearance: "interaction-only",
         execution: "execute",
       });
+      setFailed(false);
       setReady(true);
     }
 
-    const scriptSrc =
-      "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
     const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${scriptSrc}"]`,
+      `script[src="${TURNSTILE_SCRIPT_SRC}"]`,
     );
     if (existing) {
       const startedAt = Date.now();
@@ -125,7 +137,10 @@ export function useWaitSpinTurnstile() {
         }
         if (Date.now() - startedAt > TURNSTILE_SCRIPT_WAIT_TIMEOUT_MS) {
           window.clearInterval(interval);
-          setReady(false);
+          if (!window.turnstile) {
+            existing.remove();
+            failTurnstile(new Error("Security check failed to load."));
+          }
         }
       }, 50);
       return () => {
@@ -136,22 +151,33 @@ export function useWaitSpinTurnstile() {
     }
 
     const script = document.createElement("script");
-    script.src = scriptSrc;
+    script.src = TURNSTILE_SCRIPT_SRC;
     script.async = true;
     script.defer = true;
     script.onload = renderTurnstile;
-    script.onerror = () => setReady(false);
+    script.onerror = () => {
+      script.remove();
+      failTurnstile(new Error("Security check failed to load."));
+    };
     document.head.appendChild(script);
 
     return () => {
       cancelled = true;
       cleanupTurnstile();
     };
-  }, []);
+  }, [retryNonce]);
 
   function reset() {
     setToken("");
     window.turnstile?.reset(widgetIdRef.current);
+  }
+
+  function retry() {
+    if (!turnstileSiteKey) return;
+    setFailed(false);
+    setReady(false);
+    setToken("");
+    setRetryNonce((current) => current + 1);
   }
 
   function execute() {
@@ -188,10 +214,12 @@ export function useWaitSpinTurnstile() {
   return {
     active,
     execute,
+    failed,
     node,
     ready,
     required: Boolean(turnstileSiteKey),
     reset,
+    retry,
     token,
   };
 }

@@ -163,7 +163,9 @@ try {
     env: smokeEnv,
   });
   if (
-    !help.includes("waitspin extension install [--target vscode]") ||
+    !help.includes(
+      "waitspin extension install [--target vscode|cursor|devin]",
+    ) ||
     !help.includes("waitspin install --all") ||
     !help.includes("waitspin status --all") ||
     !help.includes("waitspin claude-code install") ||
@@ -191,6 +193,25 @@ try {
     throw new Error(
       "clean npx extension status returned an unexpected payload",
     );
+  }
+
+  for (const target of ["cursor", "devin"]) {
+    const editorStatusOutput = runInstalledBin(
+      waitspinBin,
+      ["extension", "status", "--target", target, "--json"],
+      { cwd: tempRoot, env: smokeEnv },
+    );
+    const editorStatus = JSON.parse(editorStatusOutput);
+    if (
+      editorStatus.target !== target ||
+      editorStatus.publisher_target !== "status-bar-fallback" ||
+      typeof editorStatus.detected !== "boolean" ||
+      typeof editorStatus.installed !== "boolean"
+    ) {
+      throw new Error(
+        `clean npx ${target} extension status returned an unexpected payload`,
+      );
+    }
   }
 
   const claudeStatusOutput = runInstalledBin(
@@ -253,9 +274,11 @@ try {
   if (
     allStatus.command !== "status --all" ||
     !Array.isArray(allStatus.statuses) ||
-    allStatus.statuses.length !== 8 ||
+    allStatus.statuses.length !== 10 ||
     ![
       "vscode",
+      "cursor",
+      "devin",
       "claude-code",
       "mimocode",
       "opencode",

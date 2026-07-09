@@ -13,14 +13,14 @@ export const WAITSPIN_PUBLIC_PUBLISHER_TARGETS = [
     target: "status-bar-fallback",
     href: "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
     localBehavior:
-      "Uses the same VS Code-compatible WaitSpin extension in Cursor, installed with cursor --install-extension waitspin.waitspin-vscode or through Cursor's Extensions panel. It stores keys through the VS Code-compatible SecretStorage API and uses the same Activity Bar/status-bar privacy boundary as the VS Code surface.",
+      "Uses the same VS Code-compatible WaitSpin extension in Cursor, installed or updated with cursor --install-extension waitspin.waitspin-vscode --force, waitspin extension install --target cursor, or Cursor's Extensions panel. Detected Cursor installs are included in waitspin install --all. It stores keys through the VS Code-compatible SecretStorage API and uses the same Activity Bar/status-bar privacy boundary as the VS Code surface.",
   },
   {
     label: "Devin Desktop",
     target: "status-bar-fallback",
     href: "https://open-vsx.org/extension/waitspin/waitspin-vscode",
     localBehavior:
-      "Uses the Open VSX-published WaitSpin VS Code-compatible extension in Devin Desktop, installed from the Devin Desktop Extensions panel/Open VSX or with devin-desktop --install-extension waitspin.waitspin-vscode when that desktop CLI is on PATH. It stores keys through the VS Code-compatible SecretStorage API and uses the same Activity Bar/status-bar privacy boundary as the VS Code surface.",
+      "Uses the Open VSX-published WaitSpin VS Code-compatible extension in Devin Desktop, installed from the Extensions panel/Open VSX, with devin-desktop --install-extension waitspin.waitspin-vscode --force, or with waitspin extension install --target devin. Windows lifecycle detection includes %LOCALAPPDATA%\\devin\\bin\\devin.exe. Detected Devin installs are included in waitspin install --all. It stores keys through the VS Code-compatible SecretStorage API and uses the same Activity Bar/status-bar privacy boundary as the VS Code surface.",
   },
   {
     label: "Claude Code",

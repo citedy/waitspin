@@ -171,6 +171,44 @@ stable demo IDs such as \`demo_campaign_001\` and
 \`demo_block_purchase_001\`. This path does not create an account, campaign,
 Stripe Checkout, install, publisher event, payout, or billable impression.
 
+## Non-JS Agents
+
+WaitSpin is CLI-first. No native Python, Go, or language-specific SDK is required.
+Non-JS agents should shell out to \`npx --yes waitspin ... --json\` and parse stdout.
+
+\`\`\`python
+import json
+import subprocess
+
+result = subprocess.run(
+    ["npx", "--yes", "waitspin", "market", "--demo", "--json"],
+    capture_output=True,
+    text=True,
+    check=True,
+)
+market = json.loads(result.stdout)
+\`\`\`
+
+\`\`\`go
+package main
+
+import (
+	"encoding/json"
+	"os/exec"
+)
+
+func main() {
+	output, err := exec.Command("npx", "--yes", "waitspin", "market", "--demo", "--json").Output()
+	if err != nil {
+		panic(err)
+	}
+	var market map[string]any
+	if err := json.Unmarshal(output, &market); err != nil {
+		panic(err)
+	}
+}
+\`\`\`
+
 ## Authenticated Advertiser/Publisher Path
 
 \`\`\`bash
@@ -290,10 +328,14 @@ The verified public user earning surfaces are:
 VS Code Activity Bar/status-bar extension, installed from
 https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
 with \`code --install-extension waitspin.waitspin-vscode\` for VS Code or
-\`cursor --install-extension waitspin.waitspin-vscode\` for Cursor Editor Mode,
+\`cursor --install-extension waitspin.waitspin-vscode --force\` for Cursor Editor Mode,
 or from Open VSX for Devin Desktop with
-\`devin-desktop --install-extension waitspin.waitspin-vscode\` when the desktop
-CLI is on PATH,
+\`devin-desktop --install-extension waitspin.waitspin-vscode --force\` when the desktop
+CLI is on PATH. The equivalent WaitSpin local lifecycle commands are
+\`waitspin extension install --target cursor\` and
+\`waitspin extension install --target devin\`, with matching \`status\` and
+\`uninstall\` subcommands. On Windows, they resolve Cursor command shims and
+auto-detect \`%LOCALAPPDATA%\\devin\\bin\\devin.exe\`,
 then connected by running \`WaitSpin: Connect and earn\` inside the matching
 editor. The VS Code CLI fallback is \`waitspin extension install --target vscode
 --api-key PASTE_PUBLISHER_EXTENSION_KEY\`. Claude Code statusline command,
@@ -327,8 +369,9 @@ metadata for rate limits and fraud controls.
 
 Advanced agent install may use \`waitspin install --all --dry-run
 --compose-existing\`, then \`waitspin install --all --compose-existing\`, and
-\`waitspin status --all\`. Install-all only installs detected supported targets
-and reports structured \`installed\`, \`would_install\`,
+\`waitspin status --all\`. Install-all only installs detected supported targets,
+including Cursor and Devin Desktop local editor aliases, and reports structured
+\`installed\`, \`would_install\`,
 \`skipped_not_detected\`, \`skipped_conflict\`, and \`failed_rollback\` arrays.
 Explicit target commands remain the canonical debug path.
 
@@ -374,12 +417,18 @@ Supported user-surface install commands:
 code --install-extension waitspin.waitspin-vscode
 
 # Cursor Editor Mode user extension
-cursor --install-extension waitspin.waitspin-vscode
+cursor --install-extension waitspin.waitspin-vscode --force
+waitspin extension install --target cursor
+waitspin extension status --target cursor
+waitspin extension uninstall --target cursor
 # Then run "WaitSpin: Connect and earn" in the matching editor.
 
 # Devin Desktop user extension
 # Open VSX: https://open-vsx.org/extension/waitspin/waitspin-vscode
-devin-desktop --install-extension waitspin.waitspin-vscode
+devin-desktop --install-extension waitspin.waitspin-vscode --force
+waitspin extension install --target devin
+waitspin extension status --target devin
+waitspin extension uninstall --target devin
 # Then run "WaitSpin: Connect and earn" in Devin Desktop.
 
 # VS Code CLI fallback:

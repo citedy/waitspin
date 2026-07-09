@@ -1,6 +1,6 @@
 {
   "name": "waitspin",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "CLI for WaitSpin sponsored wait-state ads: auth, campaigns, checkout, and user installs for VS Code, Cursor, Devin Desktop, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, Grok Code CLI, and Qoder CLI.",
   "type": "module",
   "homepage": "https://waitspin.com",

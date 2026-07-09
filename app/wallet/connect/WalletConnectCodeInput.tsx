@@ -9,6 +9,10 @@ import {
 } from "react";
 
 const WTS_PAYOUT_CODE_LENGTH = 6;
+const WTS_PAYOUT_CODE_SLOT_NAMES = Array.from(
+  { length: WTS_PAYOUT_CODE_LENGTH },
+  (_, index) => `code_digit_${index + 1}`,
+);
 
 export function WalletConnectCodeInput() {
   const helpId = useId();
@@ -58,7 +62,7 @@ export function WalletConnectCodeInput() {
       <span id={helpId}>Use the latest WaitSpin payout setup code.</span>
       <input type="hidden" name="code" value={code} />
       <span className="waitspin-otp-control">
-        {digits.map((digit, index) => (
+        {WTS_PAYOUT_CODE_SLOT_NAMES.map((slotName, index) => (
           <input
             ref={(node) => {
               inputRefs.current[index] = node;
@@ -68,15 +72,15 @@ export function WalletConnectCodeInput() {
             aria-required="true"
             autoComplete={index === 0 ? "one-time-code" : "off"}
             className="waitspin-otp-cell"
-            data-filled={digit ? "true" : "false"}
+            data-filled={digits[index] ? "true" : "false"}
             enterKeyHint="done"
-            key={index}
+            key={slotName}
             inputMode="numeric"
             maxLength={index === 0 ? WTS_PAYOUT_CODE_LENGTH : 1}
-            name={`code_digit_${index + 1}`}
+            name={slotName}
             pattern="[0-9]*"
             type="text"
-            value={digit}
+            value={digits[index] ?? ""}
             onChange={(event) => updateDigit(index, event.currentTarget.value)}
             onKeyDown={(event) => handleKeyDown(index, event)}
             onPaste={handlePaste}

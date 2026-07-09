@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import Link from "next/link";
 
 import { WaitSpinFooter, WaitSpinTextNav } from "@/app/waitspin/public-chrome";
 import { WalletConnectCodeInput } from "@/app/wallet/connect/WalletConnectCodeInput";
@@ -93,7 +94,7 @@ function StatusMessages({ state }: { state: WalletConnectPageState }) {
         </div>
         <div className="waitspin-checkout-return-actions">
           <a href="/docs#publisher-wallet-and-payouts">Wallet docs</a>
-          <a href="/wallet/connect">New setup link</a>
+          <Link href="/wallet/connect">New setup link</Link>
         </div>
       </section>
     );
@@ -226,7 +227,9 @@ function StripeVerificationForm({
           <div className="waitspin-support-actions">
             <button type="submit">Continue to Stripe Express</button>
             {locked ? (
-              <a href={changeEmailCountryHref(state)}>Change email/country</a>
+              <Link href={changeEmailCountryHref(state)}>
+                Change email/country
+              </Link>
             ) : null}
           </div>
         </form>

@@ -138,11 +138,70 @@ const QODER_HOOK_EVENTS = ["UserPromptSubmit", "Stop"] as const;
 const QODER_ACCEPTANCE_HINT =
   "Run a real Qoder TUI prompt and keep the sponsored system message visible for at least 5 seconds. WaitSpin schedules a delayed visibility check after display; Stop or next-prompt hooks refresh the same managed state.";
 
+const WAITSPIN_EDITOR_EXTENSION_ID = "waitspin.waitspin-vscode";
+const EDITOR_PUBLISHER_TARGET = "status-bar-fallback";
+
 const extensionTargets = {
-  vscode: "vscode",
+  vscode: {
+    label: "VS Code",
+    mode: "bundled" as const,
+    publisherTarget: EDITOR_PUBLISHER_TARGET,
+  },
+  cursor: {
+    label: "Cursor",
+    mode: "editor-cli" as const,
+    publisherTarget: EDITOR_PUBLISHER_TARGET,
+    registryLabel: "VS Code Marketplace",
+    registryUrl:
+      "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
+    binaryEnv: "WAITSPIN_CURSOR_EDITOR_BIN",
+    defaultBinary: "cursor",
+    windowsDefaultBinaries: ["cursor"],
+    windowsRelativeBinaries: [["Programs", "cursor", "Cursor.exe"]],
+    productMarker: "cursor",
+    executableBasenames: ["cursor", "cursor-editor"],
+    macosAppBinary: "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+    macosUserAppBinary: path.join(
+      os.homedir(),
+      "Applications",
+      "Cursor.app",
+      "Contents",
+      "Resources",
+      "app",
+      "bin",
+      "cursor",
+    ),
+  },
+  devin: {
+    label: "Devin Desktop",
+    mode: "editor-cli" as const,
+    publisherTarget: EDITOR_PUBLISHER_TARGET,
+    registryLabel: "Open VSX",
+    registryUrl:
+      "https://open-vsx.org/extension/waitspin/waitspin-vscode",
+    binaryEnv: "WAITSPIN_DEVIN_DESKTOP_BIN",
+    defaultBinary: "devin-desktop",
+    windowsDefaultBinaries: ["devin", "devin-desktop"],
+    windowsRelativeBinaries: [["devin", "bin", "devin.exe"]],
+    productMarker: "devin",
+    executableBasenames: ["devin", "devin-desktop"],
+    macosAppBinary:
+      "/Applications/Devin.app/Contents/Resources/app/bin/devin-desktop",
+    macosUserAppBinary: path.join(
+      os.homedir(),
+      "Applications",
+      "Devin.app",
+      "Contents",
+      "Resources",
+      "app",
+      "bin",
+      "devin-desktop",
+    ),
+  },
 } as const;
 
 type ExtensionTarget = keyof typeof extensionTargets;
+type EditorCliExtensionTarget = Exclude<ExtensionTarget, "vscode">;
 
 export function usageText(): string {
   return (
@@ -158,9 +217,9 @@ export function usageText(): string {
       "  waitspin wallet ledger [--limit N] [--json] [--base-url URL] [--api-key KEY]",
       "  waitspin wallet payout --dry-run [--json] [--base-url URL] [--api-key KEY]",
       "  waitspin wallet payout --confirm-test-transfer [--json] [--base-url URL] [--api-key KEY]",
-      "  waitspin extension install [--target vscode] [--json] [--base-url URL] [--api-key KEY] [--dry-run]",
-      "  waitspin extension status [--target vscode] [--json]",
-      "  waitspin extension uninstall [--target vscode] [--json] [--dry-run]",
+      "  waitspin extension install [--target vscode|cursor|devin] [--json] [--base-url URL] [--api-key KEY] [--dry-run]",
+      "  waitspin extension status [--target vscode|cursor|devin] [--json]",
+      "  waitspin extension uninstall [--target vscode|cursor|devin] [--json] [--dry-run]",
       "  waitspin install --all [--json] [--api-key KEY] [--compose-existing] [--dry-run]",
       "  waitspin status --all [--json] [--demo]",
       "  waitspin claude-code install [--json] [--api-key KEY] [--compose-existing] [--dry-run]",
@@ -956,7 +1015,495 @@ export function generateInstallId(): string {
 }
 
 export function publisherTargetForExtension(target: ExtensionTarget): string {
-  return target === "vscode" ? "status-bar-fallback" : target;
+  return extensionTargets[target].publisherTarget;
+}
+
+function isEditorCliExtensionTarget(
+  target: ExtensionTarget,
+): target is EditorCliExtensionTarget {
+  return extensionTargets[target].mode === "editor-cli";
+}
+
+type ResolvedEditorCli = {
+  binary: string;
+  executable: string;
+  argumentPrefix: string[];
+  version: string;
+};
+
+type EditorExtensionStatus = {
+  installed: boolean;
+  version: string | null;
+};
+
+const EDITOR_PROCESS_ENV_KEYS = [
+  "APPDATA",
+  "COLORTERM",
+  "COMSPEC",
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LOCALAPPDATA",
+  "LOGNAME",
+  "NODE_EXTRA_CA_CERTS",
+  "NO_PROXY",
+  "PATH",
+  "PATHEXT",
+  "SHELL",
+  "SSL_CERT_DIR",
+  "SSL_CERT_FILE",
+  "SystemRoot",
+  "TEMP",
+  "TERM",
+  "TMP",
+  "TMPDIR",
+  "USER",
+  "USERPROFILE",
+  "XDG_CACHE_HOME",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+] as const;
+
+function editorProxyEnvValue(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      return undefined;
+    }
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
+function editorProcessEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { NODE_ENV: process.env.NODE_ENV };
+  for (const key of EDITOR_PROCESS_ENV_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  for (const key of ["HTTP_PROXY", "HTTPS_PROXY"] as const) {
+    const value = editorProxyEnvValue(process.env[key]);
+    if (value !== undefined) env[key] = value;
+  }
+  return env;
+}
+
+function editorExecOptions(timeout: number) {
+  return { encoding: "utf8" as const, timeout, env: editorProcessEnv() };
+}
+
+function uniqueNonEmpty(values: Array<string | undefined>): string[] {
+  return Array.from(
+    new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]),
+  );
+}
+
+function editorCliCandidates(target: EditorCliExtensionTarget): string[] {
+  const descriptor = extensionTargets[target];
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  const windowsCandidates =
+    process.platform === "win32"
+      ? [
+          ...descriptor.windowsDefaultBinaries,
+          ...(localAppData
+            ? descriptor.windowsRelativeBinaries.map((segments) =>
+                path.win32.join(localAppData, ...segments),
+              )
+            : []),
+        ]
+      : [];
+  return uniqueNonEmpty([
+    process.env[descriptor.binaryEnv],
+    ...(process.platform === "win32"
+      ? windowsCandidates
+      : [descriptor.defaultBinary]),
+    ...(process.platform === "darwin"
+      ? [descriptor.macosAppBinary, descriptor.macosUserAppBinary]
+      : []),
+  ]);
+}
+
+type EditorCommand = Pick<
+  ResolvedEditorCli,
+  "binary" | "executable" | "argumentPrefix"
+>;
+
+function isWindowsEditorCommandScript(binary: string): boolean {
+  return process.platform === "win32" && /\.(?:cmd|bat)$/i.test(binary);
+}
+
+function assertSafeWindowsEditorCommandScript(binary: string): void {
+  if (/["\r\n\u0000%&|<>^!]/.test(binary)) {
+    throw new Error("Refusing unsafe Windows editor command shim path.");
+  }
+}
+
+async function resolveWindowsEditorCommand(binary: string): Promise<string> {
+  if (process.platform !== "win32") return binary;
+  if (
+    path.win32.isAbsolute(binary) ||
+    binary.includes("\\") ||
+    binary.includes("/") ||
+    path.win32.extname(binary)
+  ) {
+    return binary;
+  }
+
+  const result = await execFileText(
+    "where.exe",
+    [binary],
+    editorExecOptions(5_000),
+  ).catch(() => null);
+  if (!result) return binary;
+
+  return (
+    result.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(
+        (line) =>
+          path.win32.isAbsolute(line) &&
+          /\.(?:exe|com|cmd|bat)$/i.test(path.win32.extname(line)),
+      ) || binary
+  );
+}
+
+async function editorCommandForBinary(binary: string): Promise<EditorCommand> {
+  const resolvedBinary = await resolveWindowsEditorCommand(binary);
+  if (!isWindowsEditorCommandScript(resolvedBinary)) {
+    return {
+      binary: resolvedBinary,
+      executable: resolvedBinary,
+      argumentPrefix: [],
+    };
+  }
+
+  assertSafeWindowsEditorCommandScript(resolvedBinary);
+  return {
+    binary: resolvedBinary,
+    executable: process.env.ComSpec || "cmd.exe",
+    argumentPrefix: [
+      "/d",
+      "/v:off",
+      "/s",
+      "/c",
+      "call",
+      resolvedBinary,
+    ],
+  };
+}
+
+function execEditorCommand(
+  editor: EditorCommand,
+  args: string[],
+  timeout: number,
+): Promise<{ stdout: string; stderr: string }> {
+  return execFileText(
+    editor.executable,
+    [...editor.argumentPrefix, ...args],
+    editorExecOptions(timeout),
+  );
+}
+
+function editorCliMatchesProduct(
+  target: EditorCliExtensionTarget,
+  binary: string,
+  version: string,
+  help: string,
+): boolean {
+  const descriptor = extensionTargets[target];
+  const identityText = `${version}\n${help}`.toLowerCase();
+  if (identityText.includes(descriptor.productMarker)) return true;
+
+  const knownOtherProduct = ["cursor", "devin", "visual studio code"].some(
+    (marker) =>
+      marker !== descriptor.productMarker && identityText.includes(marker),
+  );
+  if (knownOtherProduct) return false;
+
+  const basename = path.basename(binary).toLowerCase().replace(/\.(exe|cmd|bat)$/, "");
+  return (descriptor.executableBasenames as readonly string[]).includes(basename);
+}
+
+async function resolveEditorCli(
+  target: EditorCliExtensionTarget,
+): Promise<ResolvedEditorCli> {
+  const descriptor = extensionTargets[target];
+  let lastError: unknown;
+  for (const binary of editorCliCandidates(target)) {
+    try {
+      const editor = await editorCommandForBinary(binary);
+      const result = await execEditorCommand(editor, ["--version"], 5_000);
+      const helpResult = await execEditorCommand(editor, ["--help"], 5_000);
+      const help = `${helpResult.stdout}\n${helpResult.stderr}`;
+      if (
+        ![
+          "--install-extension",
+          "--list-extensions",
+          "--uninstall-extension",
+        ].every((option) => help.includes(option))
+      ) {
+        lastError = new Error(
+          `${binary} does not expose editor extension management.`,
+        );
+        continue;
+      }
+      const version = `${result.stdout || result.stderr || descriptor.label}`.trim();
+      if (!editorCliMatchesProduct(target, editor.binary, version, help)) {
+        lastError = new Error(
+          `${editor.binary} does not identify as ${descriptor.label}.`,
+        );
+        continue;
+      }
+      return {
+        ...editor,
+        version,
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(
+    `${descriptor.label} was not detected. Install ${descriptor.label}, add ${process.platform === "win32" ? descriptor.windowsDefaultBinaries[0] : descriptor.defaultBinary} to PATH, or set ${descriptor.binaryEnv} to the editor executable path.`,
+    { cause: lastError },
+  );
+}
+
+function parseEditorExtensionStatus(output: string): EditorExtensionStatus {
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const match = /^waitspin\.waitspin-vscode(?:@([^\s]+))?$/i.exec(line);
+    if (match) {
+      return { installed: true, version: match[1] || null };
+    }
+  }
+  return { installed: false, version: null };
+}
+
+async function readEditorExtensionStatus(
+  editor: ResolvedEditorCli,
+): Promise<EditorExtensionStatus> {
+  const result = await execEditorCommand(
+    editor,
+    ["--list-extensions", "--show-versions"],
+    10_000,
+  );
+  return parseEditorExtensionStatus(`${result.stdout}\n${result.stderr}`);
+}
+
+function editorActivationCommand(target: EditorCliExtensionTarget): string {
+  return `WaitSpin: Connect and earn inside ${extensionTargets[target].label}`;
+}
+
+async function runEditorExtensionInstall(
+  target: EditorCliExtensionTarget,
+  flags: Map<string, string[]>,
+) {
+  const descriptor = extensionTargets[target];
+  const editor = await resolveEditorCli(target);
+  const before = await readEditorExtensionStatus(editor);
+  const summary = {
+    ok: true,
+    target,
+    mode: EDITOR_PUBLISHER_TARGET,
+    detected: true,
+    editor: descriptor.label,
+    editor_version: editor.version,
+    editor_binary: editor.binary,
+    extension: WAITSPIN_EDITOR_EXTENSION_ID,
+    version: before.version,
+    installed: before.installed,
+    registry: descriptor.registryLabel,
+    registry_url: descriptor.registryUrl,
+    publisher_target: descriptor.publisherTarget,
+    publisher_registration_managed_by: "editor-extension",
+    activation_required: true,
+    next: { command: editorActivationCommand(target) },
+    next_command: editorActivationCommand(target),
+  };
+
+  if (booleanFlag(flags, "dry-run")) {
+    const dryRunPayload = {
+      ...summary,
+      dry_run: true,
+      planned_argv: [
+        editor.binary,
+        "--install-extension",
+        WAITSPIN_EDITOR_EXTENSION_ID,
+        "--force",
+      ],
+    };
+    printCliOutput(
+      flags,
+      dryRunPayload,
+      formatTargetInstallResult(dryRunPayload),
+    );
+    return;
+  }
+
+  await execEditorCommand(
+    editor,
+    ["--install-extension", WAITSPIN_EDITOR_EXTENSION_ID, "--force"],
+    30_000,
+  );
+  const after = await readEditorExtensionStatus(editor);
+  if (!after.installed) {
+    throw new Error(
+      `${descriptor.label} did not report ${WAITSPIN_EDITOR_EXTENSION_ID} after installation.`,
+    );
+  }
+  const output = {
+    ...summary,
+    installed: true,
+    version: after.version,
+  };
+  printCliOutput(flags, output, formatTargetInstallResult(output));
+}
+
+async function runEditorExtensionStatus(
+  target: EditorCliExtensionTarget,
+  flags: Map<string, string[]>,
+) {
+  const descriptor = extensionTargets[target];
+  let editor: ResolvedEditorCli;
+  try {
+    editor = await resolveEditorCli(target);
+  } catch (error) {
+    const output = {
+      ok: true,
+      target,
+      mode: EDITOR_PUBLISHER_TARGET,
+      detected: false,
+      installed: false,
+      version: null,
+      publisher_target: descriptor.publisherTarget,
+      publisher_registration_managed_by: "editor-extension",
+      activation_required: false,
+      detection_error: redactCliSecretText(
+        error instanceof Error ? error.message : String(error),
+      ),
+      next: {
+        command: `waitspin extension install --target ${target}`,
+      },
+      next_command: `waitspin extension install --target ${target}`,
+    };
+    printCliOutput(flags, output, formatTargetStatusResult(output));
+    return;
+  }
+
+  const status = await readEditorExtensionStatus(editor);
+  const output = {
+    ok: true,
+    target,
+    mode: EDITOR_PUBLISHER_TARGET,
+    detected: true,
+    editor: descriptor.label,
+    editor_version: editor.version,
+    editor_binary: editor.binary,
+    extension: WAITSPIN_EDITOR_EXTENSION_ID,
+    version: status.version,
+    installed: status.installed,
+    publisher_target: descriptor.publisherTarget,
+    publisher_registration_managed_by: "editor-extension",
+    activation_required: status.installed,
+    next: status.installed
+      ? { command: editorActivationCommand(target) }
+      : {
+          command: `waitspin extension install --target ${target}`,
+        },
+    next_command: status.installed
+      ? editorActivationCommand(target)
+      : `waitspin extension install --target ${target}`,
+  };
+  printCliOutput(flags, output, formatTargetStatusResult(output));
+}
+
+async function runEditorExtensionUninstall(
+  target: EditorCliExtensionTarget,
+  flags: Map<string, string[]>,
+) {
+  const descriptor = extensionTargets[target];
+  let editor: ResolvedEditorCli;
+  try {
+    editor = await resolveEditorCli(target);
+  } catch (error) {
+    const output = {
+      ok: true,
+      target,
+      detected: false,
+      installed: false,
+      uninstalled: false,
+      dry_run: booleanFlag(flags, "dry-run"),
+      publisher_target: descriptor.publisherTarget,
+      detection_error: redactCliSecretText(
+        error instanceof Error ? error.message : String(error),
+      ),
+    };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
+    return;
+  }
+
+  const before = await readEditorExtensionStatus(editor);
+  const summary = {
+    ok: true,
+    target,
+    detected: true,
+    installed: before.installed,
+    version: before.version,
+    extension: WAITSPIN_EDITOR_EXTENSION_ID,
+    publisher_target: descriptor.publisherTarget,
+  };
+  if (booleanFlag(flags, "dry-run")) {
+    const output = {
+      ...summary,
+      dry_run: true,
+      planned_argv: before.installed
+        ? [
+            editor.binary,
+            "--uninstall-extension",
+            WAITSPIN_EDITOR_EXTENSION_ID,
+          ]
+        : null,
+      would_remove_extension: before.installed
+        ? WAITSPIN_EDITOR_EXTENSION_ID
+        : null,
+    };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
+    return;
+  }
+  if (!before.installed) {
+    const output = { ...summary, uninstalled: false };
+    printCliOutput(flags, output, formatTargetUninstallResult(output));
+    return;
+  }
+
+  await execEditorCommand(
+    editor,
+    ["--uninstall-extension", WAITSPIN_EDITOR_EXTENSION_ID],
+    30_000,
+  );
+  const after = await readEditorExtensionStatus(editor);
+  if (after.installed) {
+    throw new Error(
+      `${descriptor.label} still reports ${WAITSPIN_EDITOR_EXTENSION_ID} after uninstall.`,
+    );
+  }
+  const output = {
+    ...summary,
+    installed: false,
+    uninstalled: true,
+    removed_extension: WAITSPIN_EDITOR_EXTENSION_ID,
+  };
+  printCliOutput(flags, output, formatTargetUninstallResult(output));
 }
 
 function extensionInstallDir(_target: ExtensionTarget): string {
@@ -990,9 +1537,9 @@ function extensionMarkerPath(target: ExtensionTarget): string {
 
 function resolveExtensionTarget(flags: Map<string, string[]>): ExtensionTarget {
   const target = optionalFlag(flags, "target") || "vscode";
-  if (!(target in extensionTargets)) {
+  if (!Object.prototype.hasOwnProperty.call(extensionTargets, target)) {
     throw new Error(
-      `Unsupported extension target: ${target}. Public WaitSpin installs currently support --target vscode only.`,
+      `Unsupported extension target: ${target}. Public WaitSpin installs support --target vscode, cursor, or devin.`,
     );
   }
   return target as ExtensionTarget;
@@ -1311,6 +1858,10 @@ async function validateVscodeExtensionRuntimeSource(sourceDir: string) {
 
 export async function runExtensionInstall(flags: Map<string, string[]>) {
   const target = resolveExtensionTarget(flags);
+  if (isEditorCliExtensionTarget(target)) {
+    await runEditorExtensionInstall(target, flags);
+    return;
+  }
 
   const baseUrl = resolveCredentialedBaseUrl(flags);
   const publisherTarget = publisherTargetForExtension(target);
@@ -1449,6 +2000,10 @@ function managedInstalledPathStatus(marker: InstallMarker | null): {
 
 export async function runExtensionStatus(flags: Map<string, string[]>) {
   const target = resolveExtensionTarget(flags);
+  if (isEditorCliExtensionTarget(target)) {
+    await runEditorExtensionStatus(target, flags);
+    return;
+  }
   const statePath = installStatePath(target);
   const markerPath = extensionMarkerPath(target);
   const [state, marker] = await Promise.all([
@@ -1485,6 +2040,10 @@ export async function runExtensionStatus(flags: Map<string, string[]>) {
 
 export async function runExtensionUninstall(flags: Map<string, string[]>) {
   const target = resolveExtensionTarget(flags);
+  if (isEditorCliExtensionTarget(target)) {
+    await runEditorExtensionUninstall(target, flags);
+    return;
+  }
   const statePath = installStatePath(target);
   const markerPath = extensionMarkerPath(target);
   const marker = await loadInstallMarker(markerPath);
@@ -1606,7 +2165,7 @@ function claudeCodeBinary(): string {
 function execFileText(
   file: string,
   args: string[],
-  options: { encoding: "utf8"; timeout: number },
+  options: { encoding: "utf8"; timeout: number; env?: NodeJS.ProcessEnv },
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     execFile(file, args, options, (error, stdout, stderr) => {
@@ -7267,6 +7826,8 @@ export async function runQoderUninstall(flags: Map<string, string[]>) {
 type PublicAllInstallTarget = {
   target:
     | "vscode"
+    | "cursor"
+    | "devin"
     | "claude-code"
     | "mimocode"
     | "opencode"
@@ -7302,9 +7863,12 @@ function jsonFlags(flags: Map<string, string[]>): Map<string, string[]> {
   return next;
 }
 
-function extensionAllFlags(flags: Map<string, string[]>): Map<string, string[]> {
+function extensionAllFlags(
+  flags: Map<string, string[]>,
+  target: ExtensionTarget,
+): Map<string, string[]> {
   const next = cloneFlags(flags);
-  next.set("target", ["vscode"]);
+  next.set("target", [target]);
   return next;
 }
 
@@ -7334,6 +7898,13 @@ async function executableVersion(
 
 async function preflightVscode(flags: Map<string, string[]>): Promise<string> {
   return resolveExtensionDir(flags);
+}
+
+async function preflightEditorExtension(
+  target: EditorCliExtensionTarget,
+): Promise<string> {
+  const editor = await resolveEditorCli(target);
+  return `${extensionTargets[target].label} ${editor.version} (${editor.binary})`;
 }
 
 async function preflightClaudeCode(): Promise<string> {
@@ -7385,8 +7956,27 @@ function allInstallTargets(flags: Map<string, string[]>): AllInstallTarget[] {
       command: "waitspin extension install --target vscode",
       statusCommand: "waitspin extension status --target vscode",
       preflight: preflightVscode,
-      install: (flags) => runExtensionInstall(extensionAllFlags(flags)),
-      status: (flags) => runExtensionStatus(extensionAllFlags(flags)),
+      install: (flags) =>
+        runExtensionInstall(extensionAllFlags(flags, "vscode")),
+      status: (flags) => runExtensionStatus(extensionAllFlags(flags, "vscode")),
+    },
+    {
+      target: "cursor",
+      command: "waitspin extension install --target cursor",
+      statusCommand: "waitspin extension status --target cursor",
+      preflight: () => preflightEditorExtension("cursor"),
+      install: (flags) =>
+        runExtensionInstall(extensionAllFlags(flags, "cursor")),
+      status: (flags) => runExtensionStatus(extensionAllFlags(flags, "cursor")),
+    },
+    {
+      target: "devin",
+      command: "waitspin extension install --target devin",
+      statusCommand: "waitspin extension status --target devin",
+      preflight: () => preflightEditorExtension("devin"),
+      install: (flags) =>
+        runExtensionInstall(extensionAllFlags(flags, "devin")),
+      status: (flags) => runExtensionStatus(extensionAllFlags(flags, "devin")),
     },
     {
       target: CLAUDE_CODE_PUBLISHER_TARGET,

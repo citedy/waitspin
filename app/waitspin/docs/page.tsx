@@ -447,13 +447,15 @@ export default function WaitSpinDocsPage() {
           in VS Code with{" "}
           <code>code --install-extension waitspin.waitspin-vscode</code> or in
           Cursor Editor Mode with{" "}
-          <code>cursor --install-extension waitspin.waitspin-vscode</code>,
+          <code>cursor --install-extension waitspin.waitspin-vscode --force</code>,
           or from{" "}
           <Link className="underline" href={openVsxMarketplaceUrl}>
             Open VSX
           </Link>{" "}
           in Devin Desktop with{" "}
-          <code>devin-desktop --install-extension waitspin.waitspin-vscode</code>,
+          <code>devin-desktop --install-extension waitspin.waitspin-vscode --force</code>,
+          while the WaitSpin lifecycle command auto-detects{" "}
+          <code>%LOCALAPPDATA%\devin\bin\devin.exe</code> on Windows,
           then connected inside that editor with{" "}
           <code>WaitSpin: Connect and earn</code>,{" "}
           <code>claude-code</code>, installed by{" "}
@@ -481,6 +483,17 @@ export default function WaitSpinDocsPage() {
           remains outside the public install contract. Other native spinner
           patch targets remain deferred until official statusline/plugin support
           exists.
+        </p>
+        <p>
+          Cursor and Devin Desktop are also first-class local CLI lifecycle
+          targets: <code>waitspin extension install --target cursor</code>,{" "}
+          <code>waitspin extension status --target cursor</code>,{" "}
+          <code>waitspin extension uninstall --target cursor</code>,{" "}
+          <code>waitspin extension install --target devin</code>,{" "}
+          <code>waitspin extension status --target devin</code>, and{" "}
+          <code>waitspin extension uninstall --target devin</code>. These local
+          labels still map to <code>status-bar-fallback</code>; they are not API
+          targets.
         </p>
         </Section>
 
@@ -511,13 +524,13 @@ export default function WaitSpinDocsPage() {
           . Install it in VS Code with{" "}
           <code>code --install-extension waitspin.waitspin-vscode</code> or in
           Cursor with{" "}
-          <code>cursor --install-extension waitspin.waitspin-vscode</code>,
+          <code>cursor --install-extension waitspin.waitspin-vscode --force</code>,
           or install the same extension ID from{" "}
           <Link className="underline" href={openVsxMarketplaceUrl}>
             Open VSX
           </Link>{" "}
           in Devin Desktop with{" "}
-          <code>devin-desktop --install-extension waitspin.waitspin-vscode</code>,
+          <code>devin-desktop --install-extension waitspin.waitspin-vscode --force</code>,
           then run <code>WaitSpin: Connect and earn</code> inside the matching
           editor.
         </p>
@@ -558,16 +571,24 @@ export default function WaitSpinDocsPage() {
           Cursor or Devin API target or WaitSpin package.
         </p>
         <p>
-          CLI setup remains the advanced fallback:{" "}
+          CLI setup remains an advanced local lifecycle path:{" "}
           <code>
             waitspin extension install --target vscode --api-key
             KEY_FROM_JSON
           </code>
-          .
+          , <code>waitspin extension install --target cursor</code>, or{" "}
+          <code>waitspin extension install --target devin</code>. Cursor and
+          Devin installation does not put an API key in editor argv or settings;
+          finish activation with <code>WaitSpin: Connect and earn</code>.
         </p>
       </Section>
 
       <Section title="Product / Agent Quick Start">
+        <p>
+          Python/Go agents should call{" "}
+          <code>npx --yes waitspin ... --json</code> and parse stdout; no native
+          SDK is required.
+        </p>
         <pre className="overflow-x-auto border bg-muted/40 p-4 text-xs leading-6">
           {`# Credential-free agent demo path.
 npm view waitspin version
@@ -597,11 +618,17 @@ waitspin status --all
 code --install-extension waitspin.waitspin-vscode
 
 # Cursor Editor Mode user extension
-cursor --install-extension waitspin.waitspin-vscode
+cursor --install-extension waitspin.waitspin-vscode --force
+waitspin extension install --target cursor
+waitspin extension status --target cursor
+waitspin extension uninstall --target cursor
 
 # Devin Desktop user extension
 # Open VSX: ${openVsxMarketplaceUrl}
-devin-desktop --install-extension waitspin.waitspin-vscode
+devin-desktop --install-extension waitspin.waitspin-vscode --force
+waitspin extension install --target devin
+waitspin extension status --target devin
+waitspin extension uninstall --target devin
 # Then run "WaitSpin: Connect and earn" in the matching editor.
 
 # VS Code CLI fallback:

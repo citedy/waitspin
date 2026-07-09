@@ -67,6 +67,13 @@ describe("waitspin extension install", () => {
     "WAITSPIN_COPILOT_BIN",
     "WAITSPIN_ANTIGRAVITY_BIN",
     "WAITSPIN_QODER_BIN",
+    "WAITSPIN_CURSOR_EDITOR_BIN",
+    "WAITSPIN_DEVIN_DESKTOP_BIN",
+    "WAITSPIN_API_KEY",
+    "NPM_TOKEN",
+    "OPENAI_API_KEY",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
     "COPILOT_HOME",
   ] as const;
   const originalExperimentalEnv = Object.fromEntries(
@@ -290,6 +297,14 @@ describe("waitspin extension install", () => {
       throw enoent();
     });
     execFile.mockImplementation((file, _args, _options, callback) => {
+      if (_args[0] === "--help") {
+        callback(
+          null,
+          "--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
       callback(
         null,
         file === "qodercli" ? "1.0.31\n" : "2.1.152 (Claude Code)\n",
@@ -399,9 +414,15 @@ describe("waitspin extension install", () => {
     const text = usageText();
     expect(text).toContain("waitspin install --all");
     expect(text).toContain("waitspin status --all");
-    expect(text).toContain("waitspin extension install [--target vscode]");
-    expect(text).toContain("waitspin extension status [--target vscode]");
-    expect(text).toContain("waitspin extension uninstall [--target vscode]");
+    expect(text).toContain(
+      "waitspin extension install [--target vscode|cursor|devin]",
+    );
+    expect(text).toContain(
+      "waitspin extension status [--target vscode|cursor|devin]",
+    );
+    expect(text).toContain(
+      "waitspin extension uninstall [--target vscode|cursor|devin]",
+    );
     expect(text).toContain("waitspin claude-code install");
     expect(text).toContain("waitspin claude-code status");
     expect(text).toContain("waitspin claude-code uninstall");
@@ -544,9 +565,824 @@ describe("waitspin extension install", () => {
     expect(JSON.stringify(output.next_commands)).not.toContain("<");
   });
 
-  it("maps the public extension target to the publisher fallback surface", async () => {
+  it("maps every local editor target to the publisher fallback surface", async () => {
     const { publisherTargetForExtension } = await import("../cli");
-    expect(publisherTargetForExtension("vscode")).toBe("status-bar-fallback");
+    const publisherTarget = publisherTargetForExtension as (
+      target: string,
+    ) => string;
+
+    expect(publisherTarget("vscode")).toBe("status-bar-fallback");
+    expect(publisherTarget("cursor")).toBe("status-bar-fallback");
+    expect(publisherTarget("devin")).toBe("status-bar-fallback");
+  });
+
+  it.each([
+    ["cursor", "Cursor"],
+    ["devin", "Devin Desktop"],
+  ])(
+    "dry-runs the %s editor lifecycle without registration side effects",
+    async (target, editorLabel) => {
+      const { runExtensionInstall } = await import("../cli");
+      const stdout: string[] = [];
+      jest
+        .spyOn(process.stdout, "write")
+        .mockImplementation((chunk: string | Uint8Array) => {
+          stdout.push(String(chunk));
+          return true;
+        });
+
+      await runExtensionInstall(
+        withJsonFlag(
+          new Map<string, string[]>([
+            ["target", [target]],
+            ["dry-run", ["true"]],
+          ]),
+        ),
+      );
+
+      const output = JSON.parse(stdout.join("")) as {
+        target: string;
+        publisher_target: string;
+        detected: boolean;
+        dry_run: boolean;
+        activation_required: boolean;
+        next: { command: string };
+        planned_argv: string[];
+      };
+      expect(output).toMatchObject({
+        target,
+        publisher_target: "status-bar-fallback",
+        detected: true,
+        dry_run: true,
+        activation_required: true,
+        next: {
+          command: `WaitSpin: Connect and earn inside ${editorLabel}`,
+        },
+        planned_argv: [
+          target === "cursor" ? "cursor" : "devin-desktop",
+          "--install-extension",
+          "waitspin.waitspin-vscode",
+          "--force",
+        ],
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(writeFile).not.toHaveBeenCalled();
+      expect(cp).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [
+      "cursor",
+      "Cursor",
+      "WAITSPIN_CURSOR_EDITOR_BIN",
+      "/opt/waitspin-test/cursor-editor",
+    ],
+    [
+      "devin",
+      "Devin Desktop",
+      "WAITSPIN_DEVIN_DESKTOP_BIN",
+      "/opt/waitspin-test/devin-desktop",
+    ],
+  ])(
+    "installs and verifies the %s extension with structured editor CLI argv",
+    async (target, _editorLabel, envName, binary) => {
+      process.env[envName] = binary;
+      process.env.WAITSPIN_API_KEY = "wts_live_inherited_secret";
+      process.env.NPM_TOKEN = "npm_inherited_secret";
+      process.env.OPENAI_API_KEY = "sk-inherited-secret";
+      process.env.HTTP_PROXY = "http://proxy.example:8080";
+      process.env.HTTPS_PROXY =
+        "https://proxy-user:proxy-secret@proxy.example:8443";
+      let installed = false;
+      execFile.mockImplementation((file, args, options, callback) => {
+        expect(file).toBe(binary);
+        expect(options.env).toEqual(
+          expect.objectContaining({ PATH: process.env.PATH }),
+        );
+        expect(options.env).not.toHaveProperty("WAITSPIN_API_KEY");
+        expect(options.env).not.toHaveProperty("NPM_TOKEN");
+        expect(options.env).not.toHaveProperty("OPENAI_API_KEY");
+        expect(options.env.HTTP_PROXY).toBe("http://proxy.example:8080");
+        expect(options.env).not.toHaveProperty("HTTPS_PROXY");
+        if (args[0] === "--version") {
+          callback(null, "1.2.3\n", "");
+          return;
+        }
+        if (args[0] === "--help") {
+          callback(
+            null,
+            "--install-extension --list-extensions --uninstall-extension\n",
+            "",
+          );
+          return;
+        }
+        if (args[0] === "--list-extensions") {
+          callback(
+            null,
+            installed ? "waitspin.waitspin-vscode@0.1.12\n" : "other.extension@1.0.0\n",
+            "",
+          );
+          return;
+        }
+        if (args[0] === "--install-extension") {
+          expect(args).toEqual([
+            "--install-extension",
+            "waitspin.waitspin-vscode",
+            "--force",
+          ]);
+          installed = true;
+          callback(null, "installed\n", "");
+          return;
+        }
+        callback(new Error(`unexpected editor argv: ${args.join(" ")}`), "", "");
+      });
+
+      const { runExtensionInstall } = await import("../cli");
+      const stdout: string[] = [];
+      jest
+        .spyOn(process.stdout, "write")
+        .mockImplementation((chunk: string | Uint8Array) => {
+          stdout.push(String(chunk));
+          return true;
+        });
+
+      await runExtensionInstall(
+        withJsonFlag(
+          new Map<string, string[]>([
+            ["target", [target]],
+            ["api-key", ["wts_live_must_not_reach_editor_process"]],
+          ]),
+        ),
+      );
+
+      const output = JSON.parse(stdout.join("")) as Record<string, unknown>;
+      expect(output).toMatchObject({
+        target,
+        publisher_target: "status-bar-fallback",
+        detected: true,
+        installed: true,
+        version: "0.1.12",
+        publisher_registration_managed_by: "editor-extension",
+        activation_required: true,
+      });
+      expect(output).not.toHaveProperty("publisher_registered");
+      expect(JSON.stringify(execFile.mock.calls)).not.toContain(
+        "wts_live_must_not_reach_editor_process",
+      );
+      expect(stdout.join("")).not.toContain(
+        "wts_live_must_not_reach_editor_process",
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(writeFile).not.toHaveBeenCalled();
+      expect(cp).not.toHaveBeenCalled();
+    },
+  );
+
+  it("falls through a failing Cursor PATH shim to the verified macOS editor CLI", async () => {
+    delete process.env.WAITSPIN_CURSOR_EDITOR_BIN;
+    const macosBinary =
+      "/Applications/Cursor.app/Contents/Resources/app/bin/cursor";
+    execFile.mockImplementation((file, args, _options, callback) => {
+      if (file === "cursor") {
+        callback(Object.assign(new Error("No Cursor IDE installation found"), { code: "ENOENT" }), "", "");
+        return;
+      }
+      expect(file).toBe(macosBinary);
+      if (args[0] === "--version") {
+        callback(null, "3.9.19\n", "");
+        return;
+      }
+      if (args[0] === "--help") {
+        callback(
+          null,
+          "--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      if (args[0] === "--list-extensions") {
+        callback(null, "waitspin.waitspin-vscode@0.1.12\n", "");
+        return;
+      }
+      callback(new Error(`unexpected editor argv: ${args.join(" ")}`), "", "");
+    });
+
+    const { runExtensionStatus } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await runExtensionStatus(
+      withJsonFlag(new Map<string, string[]>([["target", ["cursor"]]])),
+    );
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "cursor",
+      detected: true,
+      installed: true,
+      version: "0.1.12",
+      publisher_target: "status-bar-fallback",
+    });
+    expect(execFile).toHaveBeenCalledWith(
+      "cursor",
+      ["--version"],
+      expect.objectContaining({ timeout: 5_000 }),
+      expect.any(Function),
+    );
+    expect(execFile).toHaveBeenCalledWith(
+      macosBinary,
+      ["--version"],
+      expect.objectContaining({ timeout: 5_000 }),
+      expect.any(Function),
+    );
+  });
+
+  it("skips a Cursor agent binary that lacks editor extension management", async () => {
+    delete process.env.WAITSPIN_CURSOR_EDITOR_BIN;
+    const macosBinary =
+      "/Applications/Cursor.app/Contents/Resources/app/bin/cursor";
+    execFile.mockImplementation((file, args, _options, callback) => {
+      if (file === "cursor" && args[0] === "--version") {
+        callback(null, "2026.07.09-agent\n", "");
+        return;
+      }
+      if (file === "cursor" && args[0] === "--help") {
+        callback(null, "Cursor Agent: agent --print --resume\n", "");
+        return;
+      }
+      expect(file).toBe(macosBinary);
+      if (args[0] === "--version") {
+        callback(null, "3.9.19\n", "");
+        return;
+      }
+      if (args[0] === "--help") {
+        callback(
+          null,
+          "--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      if (args[0] === "--list-extensions") {
+        callback(null, "waitspin.waitspin-vscode@0.1.12\n", "");
+        return;
+      }
+      callback(new Error(`unexpected editor argv: ${args.join(" ")}`), "", "");
+    });
+
+    const { runExtensionStatus } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await runExtensionStatus(
+      withJsonFlag(new Map<string, string[]>([["target", ["cursor"]]])),
+    );
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "cursor",
+      editor_binary: macosBinary,
+      detected: true,
+      installed: true,
+    });
+  });
+
+  it("skips a wrong-product editor CLI even when it manages extensions", async () => {
+    process.env.WAITSPIN_CURSOR_EDITOR_BIN = "/opt/waitspin-test/code";
+    execFile.mockImplementation((file, args, _options, callback) => {
+      if (file === "/opt/waitspin-test/code" && args[0] === "--version") {
+        callback(null, "1.110.1\n", "");
+        return;
+      }
+      if (file === "/opt/waitspin-test/code" && args[0] === "--help") {
+        callback(
+          null,
+          "Visual Studio Code\n--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      expect(file).toBe("cursor");
+      if (args[0] === "--version") {
+        callback(null, "3.9.19\n", "");
+        return;
+      }
+      if (args[0] === "--help") {
+        callback(
+          null,
+          "Cursor 3.9.19\n--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      if (args[0] === "--list-extensions") {
+        callback(null, "waitspin.waitspin-vscode@0.1.12\n", "");
+        return;
+      }
+      callback(new Error(`unexpected editor argv: ${args.join(" ")}`), "", "");
+    });
+
+    const { runExtensionStatus } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await runExtensionStatus(
+      withJsonFlag(new Map<string, string[]>([["target", ["cursor"]]])),
+    );
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "cursor",
+      editor_binary: "cursor",
+      detected: true,
+      installed: true,
+    });
+    expect(
+      execFile.mock.calls.some(
+        ([file, args]) =>
+          file === "/opt/waitspin-test/code" && args[0] === "--list-extensions",
+      ),
+    ).toBe(false);
+  });
+
+  it("runs the Windows Cursor lifecycle through cmd.exe with structured argv", async () => {
+    const originalPlatform = process.platform;
+    const originalComSpec = process.env.ComSpec;
+    const cursorShim =
+      "C:\\Users\\qa\\AppData\\Local\\Programs\\cursor\\bin\\cursor.cmd";
+    const commandPrompt = "C:\\Windows\\System32\\cmd.exe";
+    delete process.env.WAITSPIN_CURSOR_EDITOR_BIN;
+    process.env.ComSpec = commandPrompt;
+    process.env.WAITSPIN_API_KEY = "wts_live_windows_inherited_secret";
+    process.env.NPM_TOKEN = "npm_windows_inherited_secret";
+    process.env.OPENAI_API_KEY = "sk-windows-inherited-secret";
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      value: "win32",
+    });
+    let installed = false;
+    execFile.mockImplementation((file, args, options, callback) => {
+      expect(options.env).not.toHaveProperty("WAITSPIN_API_KEY");
+      expect(options.env).not.toHaveProperty("NPM_TOKEN");
+      expect(options.env).not.toHaveProperty("OPENAI_API_KEY");
+      if (file === "where.exe") {
+        expect(args).toEqual(["cursor"]);
+        callback(null, `${cursorShim}\r\n`, "");
+        return;
+      }
+      expect(file).toBe(commandPrompt);
+      expect(options).not.toHaveProperty("shell", true);
+      expect(args.slice(0, 6)).toEqual([
+        "/d",
+        "/v:off",
+        "/s",
+        "/c",
+        "call",
+        cursorShim,
+      ]);
+      if (args.at(-1) === "--version") {
+        callback(null, "3.9.19\n", "");
+        return;
+      }
+      if (args.at(-1) === "--help") {
+        callback(
+          null,
+          "Cursor 3.9.19\n--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      if (args.includes("--list-extensions")) {
+        callback(
+          null,
+          installed ? "waitspin.waitspin-vscode@0.1.12\n" : "",
+          "",
+        );
+        return;
+      }
+      if (args.includes("--install-extension")) {
+        installed = true;
+        callback(null, "installed\n", "");
+        return;
+      }
+      if (args.includes("--uninstall-extension")) {
+        installed = false;
+        callback(null, "uninstalled\n", "");
+        return;
+      }
+      callback(new Error(`unexpected editor argv: ${args.join(" ")}`), "", "");
+    });
+
+    const { runExtensionInstall, runExtensionUninstall } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    try {
+      await runExtensionInstall(
+        withJsonFlag(new Map<string, string[]>([["target", ["cursor"]]])),
+      );
+      expect(JSON.parse(stdout.join(""))).toMatchObject({
+        target: "cursor",
+        editor_binary: cursorShim,
+        detected: true,
+        installed: true,
+        version: "0.1.12",
+      });
+      stdout.length = 0;
+      await runExtensionUninstall(
+        withJsonFlag(new Map<string, string[]>([["target", ["cursor"]]])),
+      );
+    } finally {
+      Object.defineProperty(process, "platform", {
+        configurable: true,
+        value: originalPlatform,
+      });
+      if (originalComSpec === undefined) delete process.env.ComSpec;
+      else process.env.ComSpec = originalComSpec;
+    }
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "cursor",
+      detected: true,
+      installed: false,
+      uninstalled: true,
+      removed_extension: "waitspin.waitspin-vscode",
+    });
+  });
+
+  it("discovers Devin's documented Windows LOCALAPPDATA executable", async () => {
+    const originalPlatform = process.platform;
+    const originalLocalAppData = process.env.LOCALAPPDATA;
+    const localAppData = "C:\\Users\\qa\\AppData\\Local";
+    const devinExecutable = `${localAppData}\\devin\\bin\\devin.exe`;
+    delete process.env.WAITSPIN_DEVIN_DESKTOP_BIN;
+    process.env.LOCALAPPDATA = localAppData;
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      value: "win32",
+    });
+    execFile.mockImplementation((file, args, _options, callback) => {
+      if (file === "where.exe") {
+        callback(Object.assign(new Error("ENOENT"), { code: "ENOENT" }), "", "");
+        return;
+      }
+      expect(file).toBe(devinExecutable);
+      if (args[0] === "--version") {
+        callback(null, "1.110.1\n", "");
+        return;
+      }
+      if (args[0] === "--help") {
+        callback(
+          null,
+          "Devin Desktop\n--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      if (args[0] === "--list-extensions") {
+        callback(null, "waitspin.waitspin-vscode@0.1.12\n", "");
+        return;
+      }
+      callback(new Error(`unexpected editor argv: ${args.join(" ")}`), "", "");
+    });
+
+    const { runExtensionStatus } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    try {
+      await runExtensionStatus(
+        withJsonFlag(new Map<string, string[]>([["target", ["devin"]]])),
+      );
+    } finally {
+      Object.defineProperty(process, "platform", {
+        configurable: true,
+        value: originalPlatform,
+      });
+      if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+      else process.env.LOCALAPPDATA = originalLocalAppData;
+    }
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "devin",
+      editor_binary: devinExecutable,
+      detected: true,
+      installed: true,
+      version: "0.1.12",
+    });
+  });
+
+  it("rejects unsafe Windows editor shim paths before cmd.exe execution", async () => {
+    const originalPlatform = process.platform;
+    process.env.WAITSPIN_CURSOR_EDITOR_BIN =
+      "C:\\Tools\\Cursor & untrusted.cmd";
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      value: "win32",
+    });
+    execFile.mockImplementation((file, _args, _options, callback) => {
+      expect(file).not.toMatch(/cmd\.exe$/i);
+      callback(Object.assign(new Error("ENOENT"), { code: "ENOENT" }), "", "");
+    });
+
+    const { runExtensionStatus } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    try {
+      await runExtensionStatus(
+        withJsonFlag(new Map<string, string[]>([["target", ["cursor"]]])),
+      );
+    } finally {
+      Object.defineProperty(process, "platform", {
+        configurable: true,
+        value: originalPlatform,
+      });
+    }
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "cursor",
+      detected: false,
+      installed: false,
+    });
+  });
+
+  it("matches only the exact editor extension ID in status output", async () => {
+    process.env.WAITSPIN_CURSOR_EDITOR_BIN = "/opt/waitspin-test/cursor";
+    execFile.mockImplementation((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        callback(null, "3.9.19\n", "");
+        return;
+      }
+      if (args[0] === "--help") {
+        callback(
+          null,
+          "--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      callback(
+        null,
+        [
+          "other.waitspin-vscode@9.9.9",
+          "waitspin.waitspin-vscode-tools@9.9.9",
+        ].join("\n"),
+        "",
+      );
+    });
+
+    const { runExtensionStatus } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await runExtensionStatus(
+      withJsonFlag(new Map<string, string[]>([["target", ["cursor"]]])),
+    );
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "cursor",
+      detected: true,
+      installed: false,
+      version: null,
+      publisher_target: "status-bar-fallback",
+    });
+  });
+
+  it("reports a missing editor as a non-failing status", async () => {
+    process.env.WAITSPIN_DEVIN_DESKTOP_BIN =
+      "/opt/waitspin-test/missing-devin-desktop";
+    execFile.mockImplementation((_file, _args, _options, callback) => {
+      callback(Object.assign(new Error("ENOENT"), { code: "ENOENT" }), "", "");
+    });
+
+    const { runExtensionStatus } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await runExtensionStatus(
+      withJsonFlag(new Map<string, string[]>([["target", ["devin"]]])),
+    );
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      ok: true,
+      target: "devin",
+      detected: false,
+      installed: false,
+      version: null,
+      publisher_target: "status-bar-fallback",
+    });
+  });
+
+  it("does not disguise extension-list failures as a missing editor", async () => {
+    process.env.WAITSPIN_CURSOR_EDITOR_BIN = "/opt/waitspin-test/cursor";
+    execFile.mockImplementation((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        callback(null, "3.9.19\n", "");
+        return;
+      }
+      if (args[0] === "--help") {
+        callback(
+          null,
+          "--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      callback(new Error("extension registry unavailable"), "", "");
+    });
+
+    const { runExtensionStatus } = await import("../cli");
+    await expect(
+      runExtensionStatus(
+        withJsonFlag(new Map<string, string[]>([["target", ["cursor"]]])),
+      ),
+    ).rejects.toThrow("extension registry unavailable");
+  });
+
+  it("uninstalls only the exact WaitSpin extension through Devin Desktop", async () => {
+    const binary = "/opt/waitspin-test/devin-desktop";
+    process.env.WAITSPIN_DEVIN_DESKTOP_BIN = binary;
+    let installed = true;
+    execFile.mockImplementation((file, args, _options, callback) => {
+      expect(file).toBe(binary);
+      if (args[0] === "--version") {
+        callback(null, "1.110.1\n", "");
+        return;
+      }
+      if (args[0] === "--help") {
+        callback(
+          null,
+          "--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      if (args[0] === "--list-extensions") {
+        callback(
+          null,
+          installed ? "waitspin.waitspin-vscode@0.1.12\nother.extension@1.0.0\n" : "other.extension@1.0.0\n",
+          "",
+        );
+        return;
+      }
+      if (args[0] === "--uninstall-extension") {
+        expect(args).toEqual([
+          "--uninstall-extension",
+          "waitspin.waitspin-vscode",
+        ]);
+        installed = false;
+        callback(null, "uninstalled\n", "");
+        return;
+      }
+      callback(new Error(`unexpected editor argv: ${args.join(" ")}`), "", "");
+    });
+
+    const { runExtensionUninstall } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await runExtensionUninstall(
+      withJsonFlag(new Map<string, string[]>([["target", ["devin"]]])),
+    );
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "devin",
+      detected: true,
+      uninstalled: true,
+      removed_extension: "waitspin.waitspin-vscode",
+      publisher_target: "status-bar-fallback",
+    });
+    expect(rm).not.toHaveBeenCalled();
+  });
+
+  it("dry-runs editor uninstall with explicit argv and no mutation", async () => {
+    const binary = "/opt/waitspin-test/cursor";
+    process.env.WAITSPIN_CURSOR_EDITOR_BIN = binary;
+    execFile.mockImplementation((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        callback(null, "3.9.19\n", "");
+        return;
+      }
+      if (args[0] === "--help") {
+        callback(
+          null,
+          "--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      if (args[0] === "--list-extensions") {
+        callback(null, "waitspin.waitspin-vscode@0.1.12\n", "");
+        return;
+      }
+      callback(new Error(`unexpected editor argv: ${args.join(" ")}`), "", "");
+    });
+    const { runExtensionUninstall } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await runExtensionUninstall(
+      withJsonFlag(
+        new Map<string, string[]>([
+          ["target", ["cursor"]],
+          ["dry-run", ["true"]],
+        ]),
+      ),
+    );
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "cursor",
+      dry_run: true,
+      planned_argv: [
+        binary,
+        "--uninstall-extension",
+        "waitspin.waitspin-vscode",
+      ],
+      would_remove_extension: "waitspin.waitspin-vscode",
+    });
+    expect(execFile.mock.calls.some(([, args]) => args[0] === "--uninstall-extension")).toBe(false);
+  });
+
+  it("preserves dry-run semantics when the editor is missing on uninstall", async () => {
+    process.env.WAITSPIN_DEVIN_DESKTOP_BIN =
+      "/opt/waitspin-test/missing-devin";
+    execFile.mockImplementation((_file, _args, _options, callback) => {
+      callback(Object.assign(new Error("ENOENT"), { code: "ENOENT" }), "", "");
+    });
+    const { runExtensionUninstall } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await runExtensionUninstall(
+      withJsonFlag(
+        new Map<string, string[]>([
+          ["target", ["devin"]],
+          ["dry-run", ["true"]],
+        ]),
+      ),
+    );
+
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      target: "devin",
+      detected: false,
+      installed: false,
+      dry_run: true,
+      uninstalled: false,
+    });
   });
 
   it("dry-runs install-all as a structured advanced agent command", async () => {
@@ -585,6 +1421,8 @@ describe("waitspin extension install", () => {
     });
     expect(output.would_install.map((item) => item.target)).toEqual([
       "vscode",
+      "cursor",
+      "devin",
       "claude-code",
       "mimocode",
       "opencode",
@@ -622,6 +1460,8 @@ describe("waitspin extension install", () => {
     expect(output.failed_rollback).toEqual([]);
     expect(output.would_install.map((item) => item.target)).toEqual([
       "vscode",
+      "cursor",
+      "devin",
       "claude-code",
       "mimocode",
       "opencode",
@@ -673,6 +1513,8 @@ describe("waitspin extension install", () => {
     ]);
     expect(output.skipped_not_detected).toEqual([]);
     expect(output.would_install.map((item) => item.target)).toEqual([
+      "cursor",
+      "devin",
       "claude-code",
       "mimocode",
       "opencode",
@@ -682,6 +1524,154 @@ describe("waitspin extension install", () => {
       "qoder",
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("continues install-all after a detected editor install failure", async () => {
+    const cursorBinary = "/opt/waitspin-test/cursor";
+    const devinBinary = "/opt/waitspin-test/devin-desktop";
+    process.env.WAITSPIN_CURSOR_EDITOR_BIN = cursorBinary;
+    process.env.WAITSPIN_DEVIN_DESKTOP_BIN = devinBinary;
+    let devinInstalled = false;
+    execFile.mockImplementation((file, args, _options, callback) => {
+      if (file !== cursorBinary && file !== devinBinary) {
+        callback(Object.assign(new Error("ENOENT"), { code: "ENOENT" }), "", "");
+        return;
+      }
+      if (args[0] === "--version") {
+        callback(null, file === cursorBinary ? "3.9.19\n" : "1.110.1\n", "");
+        return;
+      }
+      if (args[0] === "--help") {
+        callback(
+          null,
+          "--install-extension --list-extensions --uninstall-extension\n",
+          "",
+        );
+        return;
+      }
+      if (args[0] === "--list-extensions") {
+        callback(
+          null,
+          file === devinBinary && devinInstalled
+            ? "waitspin.waitspin-vscode@0.1.12\n"
+            : "",
+          "",
+        );
+        return;
+      }
+      if (args[0] === "--install-extension" && file === cursorBinary) {
+        callback(new Error("cursor marketplace install failed"), "", "");
+        return;
+      }
+      if (args[0] === "--install-extension" && file === devinBinary) {
+        devinInstalled = true;
+        callback(null, "installed\n", "");
+        return;
+      }
+      callback(new Error(`unexpected editor argv: ${args.join(" ")}`), "", "");
+    });
+    const { main: rawMain } = await import("../cli");
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await rawMain([
+      "install",
+      "--all",
+      "--api-key",
+      "wts_live_install_all_test_key",
+      "--compose-existing",
+      "--json",
+    ]);
+
+    const output = JSON.parse(stdout.join("")) as {
+      ok: boolean;
+      installed: Array<{ target: string }>;
+      failed_rollback: Array<{ target: string; reason: string }>;
+    };
+    expect(output.ok).toBe(false);
+    expect(output.failed_rollback).toEqual([
+      expect.objectContaining({
+        target: "cursor",
+        reason: "cursor marketplace install failed",
+      }),
+    ]);
+    expect(output.installed.map((item) => item.target)).toEqual([
+      "vscode",
+      "devin",
+    ]);
+  });
+
+  it("skips missing Cursor and Devin editor binaries during install-all", async () => {
+    enableGrokPatchEnv();
+    process.env.WAITSPIN_CURSOR_EDITOR_BIN =
+      "/opt/waitspin-test/missing-cursor";
+    process.env.WAITSPIN_DEVIN_DESKTOP_BIN =
+      "/opt/waitspin-test/missing-devin";
+    execFile.mockImplementation((file, _args, _options, callback) => {
+      if (
+        file === process.env.WAITSPIN_CURSOR_EDITOR_BIN ||
+        file === process.env.WAITSPIN_DEVIN_DESKTOP_BIN ||
+        file === "cursor" ||
+        file === "devin-desktop" ||
+        String(file).includes("/Cursor.app/") ||
+        String(file).includes("/Devin.app/")
+      ) {
+        callback(Object.assign(new Error("ENOENT"), { code: "ENOENT" }), "", "");
+        return;
+      }
+      callback(
+        null,
+        file === "qodercli" ? "1.0.31\n" : "2.1.152 (Claude Code)\n",
+        "",
+      );
+    });
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await main(["install", "--all", "--dry-run", "--compose-existing"]);
+
+    const output = JSON.parse(stdout.join("")) as {
+      ok: boolean;
+      would_install: Array<{ target: string }>;
+      skipped_not_detected: Array<{ target: string; reason: string }>;
+      failed_rollback: unknown[];
+    };
+    expect(output.ok).toBe(true);
+    expect(output.failed_rollback).toEqual([]);
+    expect(output.would_install.map((item) => item.target)).toEqual([
+      "vscode",
+      "claude-code",
+      "mimocode",
+      "opencode",
+      "grok",
+      "antigravity",
+      "copilot",
+      "qoder",
+    ]);
+    expect(output.skipped_not_detected).toEqual([
+      expect.objectContaining({
+        target: "cursor",
+        reason: expect.stringContaining("Cursor was not detected"),
+      }),
+      expect.objectContaining({
+        target: "devin",
+        reason: expect.stringContaining("Devin Desktop was not detected"),
+      }),
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writeFile).not.toHaveBeenCalled();
   });
 
   it("redacts real WaitSpin API key and npm token formats", async () => {
@@ -727,6 +1717,8 @@ describe("waitspin extension install", () => {
     });
     expect(output.statuses.map((item) => item.target)).toEqual([
       "vscode",
+      "cursor",
+      "devin",
       "claude-code",
       "mimocode",
       "opencode",
@@ -739,6 +1731,72 @@ describe("waitspin extension install", () => {
       true,
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reports missing local editors as non-failing status-all rows", async () => {
+    process.env.WAITSPIN_CURSOR_EDITOR_BIN =
+      "/opt/waitspin-test/missing-cursor";
+    process.env.WAITSPIN_DEVIN_DESKTOP_BIN =
+      "/opt/waitspin-test/missing-devin";
+    execFile.mockImplementation((file, _args, _options, callback) => {
+      if (
+        file === process.env.WAITSPIN_CURSOR_EDITOR_BIN ||
+        file === process.env.WAITSPIN_DEVIN_DESKTOP_BIN ||
+        file === "cursor" ||
+        file === "devin-desktop" ||
+        String(file).includes("/Cursor.app/") ||
+        String(file).includes("/Devin.app/")
+      ) {
+        callback(Object.assign(new Error("ENOENT"), { code: "ENOENT" }), "", "");
+        return;
+      }
+      callback(
+        null,
+        file === "qodercli" ? "1.0.31\n" : "2.1.152 (Claude Code)\n",
+        "",
+      );
+    });
+    const { main: rawMain } = await import("../cli");
+    const main = (args: string[]) => rawMain([...args, "--json"]);
+    const stdout: string[] = [];
+    jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+
+    await main(["status", "--all"]);
+
+    const output = JSON.parse(stdout.join("")) as {
+      ok: boolean;
+      statuses: Array<{
+        target: string;
+        result: { detected?: boolean; installed: boolean };
+      }>;
+      failed_status: unknown[];
+    };
+    const editorStatuses = output.statuses.filter((item) =>
+      ["cursor", "devin"].includes(item.target),
+    );
+    expect(output.ok).toBe(true);
+    expect(output.failed_status).toEqual([]);
+    expect(editorStatuses).toEqual([
+      expect.objectContaining({
+        target: "cursor",
+        result: expect.objectContaining({
+          detected: false,
+          installed: false,
+        }),
+      }),
+      expect.objectContaining({
+        target: "devin",
+        result: expect.objectContaining({
+          detected: false,
+          installed: false,
+        }),
+      }),
+    ]);
   });
 
   it("includes hidden experimental targets only when install-all opts in", async () => {
@@ -780,6 +1838,8 @@ describe("waitspin extension install", () => {
     );
     expect(output.would_install.map((item) => item.target)).toEqual([
       "vscode",
+      "cursor",
+      "devin",
       "claude-code",
       "mimocode",
       "opencode",
@@ -1882,10 +2942,30 @@ describe("waitspin extension install", () => {
           ["api-key", ["wts_live_test_key_value_1234567890"]],
         ]),
       ),
-    ).rejects.toThrow(/support --target vscode only/);
+    ).rejects.toThrow(/support --target vscode, cursor, or devin/);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(cp).not.toHaveBeenCalled();
   });
+
+  it.each(["constructor", "toString", "__proto__"])(
+    "rejects inherited prototype key %s as an extension target",
+    async (target) => {
+      const { runExtensionInstall: rawRunExtensionInstall } = await import("../cli");
+      const runExtensionInstall = (flags: Map<string, string[]> = new Map()) =>
+        rawRunExtensionInstall(withJsonFlag(flags));
+
+      await expect(
+        runExtensionInstall(
+          new Map<string, string[]>([
+            ["target", [target]],
+            ["api-key", ["wts_live_test_key_value_1234567890"]],
+          ]),
+        ),
+      ).rejects.toThrow(/support --target vscode, cursor, or devin/);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(cp).not.toHaveBeenCalled();
+    },
+  );
 
   it("fails closed before sending credentials to non-production API origins", async () => {
     const { main: rawMain } = await import("../cli");

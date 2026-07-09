@@ -1,6 +1,7 @@
 type JsonRecord = Record<string, unknown>;
 
 const IMPRESSION_MICRO_UNITS = 1_000;
+const INTEGER_FORMATTER = new Intl.NumberFormat("en-US");
 
 function record(value: unknown): JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -27,7 +28,7 @@ function arrayValue(value: unknown): unknown[] {
 
 function formatInteger(value: unknown): string {
   const number = numberValue(value) ?? 0;
-  return new Intl.NumberFormat("en-US").format(Math.trunc(number));
+  return INTEGER_FORMATTER.format(Math.trunc(number));
 }
 
 function formatMoney(cents: unknown, currencyValue: unknown = "eur"): string {
@@ -45,6 +46,12 @@ function formatCpm(bidCpmMicros: unknown): string {
 
 function formatBool(value: unknown): string {
   return booleanValue(value) === true ? "yes" : "no";
+}
+
+function publisherRegistrationLine(data: JsonRecord): string {
+  return data.publisher_registration_managed_by === "editor-extension"
+    ? "Publisher registration: managed in editor (not inspected)"
+    : `Publisher registered: ${formatBool(data.publisher_registered)}`;
 }
 
 function formatLines(lines: Array<string | undefined | null | false>): string {
@@ -229,19 +236,41 @@ export function formatTargetInstallResult(payload: unknown): string {
   const data = record(payload);
   const dryRun = booleanValue(data.dry_run) === true;
   const target = targetLabel(data.target);
+  const editorManaged = Boolean(stringValue(data.editor_binary));
+  const plannedArgv = arrayValue(data.planned_argv).filter(
+    (value): value is string => typeof value === "string",
+  );
   const title = dryRun
     ? `WaitSpin ${target} install dry run`
     : `WaitSpin ${target} install`;
   return formatLines([
     title,
     `Mode: ${stringValue(data.mode) ?? "managed"}`,
-    `Install ID: ${stringValue(data.install_id) ?? "not created"}`,
-    `Publisher registered: ${formatBool(data.publisher_registered)}`,
-    `State: ${stringValue(data.state_path) ?? "not written"}`,
+    editorManaged
+      ? undefined
+      : `Install ID: ${stringValue(data.install_id) ?? "not created"}`,
+    publisherRegistrationLine(data),
+    editorManaged
+      ? undefined
+      : `State: ${stringValue(data.state_path) ?? "not written"}`,
     stringValue(data.runtime_path)
       ? `Runtime: ${stringValue(data.runtime_path)}`
       : undefined,
     stringValue(data.patch_file) ? `Patch file: ${stringValue(data.patch_file)}` : undefined,
+    stringValue(data.editor_binary)
+      ? `Editor binary: ${stringValue(data.editor_binary)}`
+      : undefined,
+    stringValue(data.registry) ? `Registry: ${stringValue(data.registry)}` : undefined,
+    stringValue(data.extension)
+      ? `Extension: ${stringValue(data.extension)}`
+      : undefined,
+    stringValue(data.publisher_target)
+      ? `Server target: ${stringValue(data.publisher_target)}`
+      : undefined,
+    stringValue(data.version)
+      ? `Current version: ${stringValue(data.version)}`
+      : undefined,
+    plannedArgv.length ? `Planned argv: ${plannedArgv.join(" ")}` : undefined,
     stringValue(data.note),
     stringValue(data.human_message),
     commandLine(data.next_command),
@@ -257,7 +286,7 @@ export function formatTargetStatusResult(payload: unknown): string {
     `WaitSpin ${target} status`,
     `Status: ${statusWord(data.installed)}`,
     `Mode: ${stringValue(data.mode) ?? "managed"}`,
-    `Publisher registered: ${formatBool(data.publisher_registered)}`,
+    publisherRegistrationLine(data),
     `Install ID: ${stringValue(data.install_id) ?? "none"}`,
     stringValue(data.human_message),
     stringValue(data.status_invalid_reason)
@@ -278,14 +307,32 @@ export function formatTargetUninstallResult(payload: unknown): string {
   const dryRun = booleanValue(data.dry_run) === true;
   const removed = arrayValue(data.removed).length;
   const wouldRemove = arrayValue(data.would_remove).length;
+  const wouldRemoveExtension = stringValue(data.would_remove_extension);
+  const detectionError = stringValue(data.detection_error);
+  const extension = stringValue(data.extension);
+  const editorExtensionAbsent =
+    dryRun &&
+    booleanValue(data.detected) === true &&
+    booleanValue(data.installed) === false &&
+    Boolean(extension);
+  const plannedArgv = arrayValue(data.planned_argv).filter(
+    (value): value is string => typeof value === "string",
+  );
   return formatLines([
     dryRun
       ? `WaitSpin ${target} uninstall dry run`
       : `WaitSpin ${target} uninstall`,
-    dryRun
-      ? `Would remove: ${formatInteger(wouldRemove)} path(s)`
+    detectionError
+      ? `Editor not detected: ${detectionError}`
+      : editorExtensionAbsent
+        ? `Extension not installed: ${extension}`
+      : dryRun && wouldRemoveExtension
+      ? `Would remove extension: ${wouldRemoveExtension}`
+      : dryRun
+        ? `Would remove: ${formatInteger(wouldRemove)} path(s)`
       : `Removed: ${formatInteger(removed)} path(s)`,
-    `Uninstalled: ${formatBool(data.uninstalled)}`,
+    plannedArgv.length ? `Planned argv: ${plannedArgv.join(" ")}` : undefined,
+    dryRun ? undefined : `Uninstalled: ${formatBool(data.uninstalled)}`,
     stringValue(data.human_message),
     stringValue(data.restore_refusal_reason)
       ? `Restore problem: ${stringValue(data.restore_refusal_reason)}`
@@ -329,6 +376,10 @@ export function formatInstallAllResult(payload: unknown): string {
     ...wouldInstall.map(formatAllTargetSummary),
     installed.length ? "Installed targets:" : undefined,
     ...installed.map(formatAllTargetSummary),
+    skippedNotDetected.length
+      ? "Skipped, not detected targets:"
+      : undefined,
+    ...skippedNotDetected.map(formatAllTargetSummary),
     skippedConflict.length ? "Skipped conflicts:" : undefined,
     ...skippedConflict.map(formatAllTargetSummary),
     failedRollback.length ? "Failures:" : undefined,
@@ -355,9 +406,16 @@ export function formatStatusAllResult(payload: unknown): string {
       const result = record(item.result);
       const installed =
         booleanValue(item.installed) ?? booleanValue(result.installed);
-      return `- ${targetLabel(item.target)}: ${statusWord(installed)}, publisher registered: ${formatBool(
-        item.publisher_registered ?? result.publisher_registered,
-      )}`;
+      const registrationManagedBy =
+        item.publisher_registration_managed_by ??
+        result.publisher_registration_managed_by;
+      const publisherRegistration =
+        registrationManagedBy === "editor-extension"
+          ? "publisher registration: managed in editor (not inspected)"
+          : `publisher registered: ${formatBool(
+              item.publisher_registered ?? result.publisher_registered,
+            )}`;
+      return `- ${targetLabel(item.target)}: ${statusWord(installed)}, ${publisherRegistration}`;
     }),
     failedStatus.length ? "Status failures:" : undefined,
     ...failedStatus.map(formatAllTargetSummary),
