@@ -29,6 +29,8 @@ const extensionPackageJson = JSON.parse(
 );
 const vsixFilename = `${extensionPackageJson.name}-${extensionPackageJson.version}.vsix`;
 const vsixPath = path.join(outputDir, vsixFilename);
+const expectedNodeVersion = "22.14.0";
+const expectedNpmVersion = "10.9.2";
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -43,6 +45,7 @@ function run(command, args, options = {}) {
   }
 }
 
+assertReleaseToolchain();
 await mkdir(outputDir, { recursive: true });
 await rm(vsixPath, { force: true });
 const tmpDir = await mkdtemp(path.join(os.tmpdir(), "waitspin-vscode-"));
@@ -68,6 +71,24 @@ await copyFile(normalizedVsixPath, vsixPath);
 await rm(tmpDir, { force: true, recursive: true });
 
 console.log(`Packaged ${path.relative(repoRoot, vsixPath)}`);
+
+function assertReleaseToolchain() {
+  if (process.versions.node !== expectedNodeVersion) {
+    throw new Error(
+      `WaitSpin VSIX packaging requires Node ${expectedNodeVersion}; received ${process.versions.node}.`,
+    );
+  }
+  const npmVersion = spawnSync("npm", ["--version"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (npmVersion.status !== 0 || npmVersion.stdout.trim() !== expectedNpmVersion) {
+    throw new Error(
+      `WaitSpin VSIX packaging requires npm ${expectedNpmVersion}; received ${npmVersion.stdout.trim() || "unavailable"}.`,
+    );
+  }
+}
 
 async function normalizePackageMtimes() {
   const epoch = new Date("2000-01-01T00:00:00.000Z");

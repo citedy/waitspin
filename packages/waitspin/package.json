@@ -31,9 +31,8 @@
     "node": ">=20.16.0"
   },
   "scripts": {
-    "build": "npm run sync:extension-assets && node scripts/build.mjs",
+    "build": "node scripts/build.mjs",
     "test:build": "node --test scripts/build.test.mjs",
-    "sync:extension-assets": "node scripts/sync-vscode-extension-assets.mjs",
     "prepack": "npm run build"
   },
   "keywords": [

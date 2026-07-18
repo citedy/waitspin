@@ -6,6 +6,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertRegistryArtifactPolicy } from "./waitspin-vscode-artifact-policy.mjs";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const extensionDir = path.join(repoRoot, "extensions", "waitspin-vscode");
@@ -73,6 +75,12 @@ const openVsxVsixSha256 =
   process.env.WAITSPIN_OPEN_VSX_VSIX_SHA256 ||
   existingRegistryArtifacts?.open_vsx?.vsix_sha256 ||
   vsixSha256;
+const registryArtifacts = assertRegistryArtifactPolicy({
+  version: extensionPackageJson.version,
+  canonicalSha256: vsixSha256,
+  marketplaceSha256: marketplaceVsixSha256,
+  openVsxSha256: openVsxVsixSha256,
+});
 
 const manifest = {
   schema_version: 1,
@@ -85,16 +93,7 @@ const manifest = {
   generated_at: generatedAt,
   vsix_filename: vsixFilename,
   vsix_sha256: vsixSha256,
-  registry_artifacts: {
-    marketplace: {
-      vsix_sha256: marketplaceVsixSha256,
-      matches_canonical: marketplaceVsixSha256 === vsixSha256,
-    },
-    open_vsx: {
-      vsix_sha256: openVsxVsixSha256,
-      matches_canonical: openVsxVsixSha256 === vsixSha256,
-    },
-  },
+  registry_artifacts: registryArtifacts,
   npm_package_version: npmPackageJson.version,
   npm_package_url: `https://www.npmjs.com/package/${npmPackageJson.name}/v/${npmPackageJson.version}`,
 };
