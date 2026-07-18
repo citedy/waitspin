@@ -29,10 +29,18 @@ import {
   runExperimentalCliTargetInstall,
   runExperimentalCliTargetStatus,
   runExperimentalCliTargetUninstall,
-  type ExperimentalAllInstallTarget,
   type ExperimentalCliDeps,
   type ExperimentalCliTargetName,
 } from "./targets/experimental-cli.js";
+import {
+  createCanonicalInstallTargets as createManagedInstallTargets,
+  EDITOR_PUBLISHER_TARGET,
+  runManagedInstallAll,
+  runManagedRepairAll,
+  runManagedStatusAll,
+  runManagedUninstallAll,
+  type ManagedAllInstallTarget,
+} from "./managed-install-orchestration.js";
 import {
   formatBidCheckoutResult,
   formatBidsListResult,
@@ -62,7 +70,7 @@ type JsonValue =
 
 const DEFAULT_BASE_URL =
   process.env.WAITSPIN_BASE_URL?.trim() || "https://api.waitspin.com";
-const PRODUCTION_API_ORIGIN = "https://api.waitspin.com";
+export const PRODUCTION_API_ORIGIN = "https://api.waitspin.com";
 const REQUEST_TIMEOUT_MS = 30_000;
 const DEV_API_BASE_OPT_IN_ENV = "WAITSPIN_ALLOW_DEV_API_BASE";
 const DEV_EXTENSION_ASSETS_OPT_IN_ENV =
@@ -139,8 +147,7 @@ const QODER_ACCEPTANCE_HINT =
   "Run a real Qoder TUI prompt and keep the sponsored system message visible for at least 5 seconds. WaitSpin schedules a delayed visibility check after display; Stop or next-prompt hooks refresh the same managed state.";
 
 const WAITSPIN_EDITOR_EXTENSION_ID = "waitspin.waitspin-vscode";
-const EDITOR_PUBLISHER_TARGET = "status-bar-fallback";
-
+const WAITSPIN_EDITOR_PROFILE = "Default";
 const extensionTargets = {
   vscode: {
     label: "VS Code",
@@ -1014,6 +1021,31 @@ export function generateInstallId(): string {
   return `wins_${randomUUID().replace(/-/g, "")}`;
 }
 
+function resolveManagedInstallId(
+  flags: Map<string, string[]>,
+  existingInstallId?: string,
+): string {
+  const requestedInstallId = optionalFlag(flags, "install-id");
+  const managedBootstrapReplacement = booleanFlag(flags, "publisher-bootstrap-only");
+  if (
+    requestedInstallId &&
+    !/^wins_[A-Za-z0-9._-]{3,123}$/.test(requestedInstallId)
+  ) {
+    throw new Error("Invalid internal --install-id value.");
+  }
+  if (
+    requestedInstallId &&
+    existingInstallId &&
+    requestedInstallId !== existingInstallId &&
+    !managedBootstrapReplacement
+  ) {
+    throw new Error(
+      `Existing WaitSpin install is bound to ${existingInstallId}; refusing to replace it with another install ID. Uninstall or repair the existing installation first.`,
+    );
+  }
+  return requestedInstallId || existingInstallId || generateInstallId();
+}
+
 export function publisherTargetForExtension(target: ExtensionTarget): string {
   return extensionTargets[target].publisherTarget;
 }
@@ -1294,7 +1326,12 @@ async function readEditorExtensionStatus(
 ): Promise<EditorExtensionStatus> {
   const result = await execEditorCommand(
     editor,
-    ["--list-extensions", "--show-versions"],
+    [
+      "--list-extensions",
+      "--show-versions",
+      "--profile",
+      WAITSPIN_EDITOR_PROFILE,
+    ],
     10_000,
   );
   return parseEditorExtensionStatus(`${result.stdout}\n${result.stderr}`);
@@ -1310,6 +1347,15 @@ async function runEditorExtensionInstall(
 ) {
   const descriptor = extensionTargets[target];
   const editor = await resolveEditorCli(target);
+  const exactExtension = await resolveExactEditorExtension(flags);
+  const publisherBootstrapOnly = booleanFlag(flags, "publisher-bootstrap-only");
+  const statePath = installStatePath(target);
+  const existingState = publisherBootstrapOnly
+    ? await loadInstallState(statePath)
+    : null;
+  const installId = publisherBootstrapOnly
+    ? resolveManagedInstallId(flags, existingState?.install_id)
+    : null;
   const before = await readEditorExtensionStatus(editor);
   const summary = {
     ok: true,
@@ -1319,14 +1365,23 @@ async function runEditorExtensionInstall(
     editor: descriptor.label,
     editor_version: editor.version,
     editor_binary: editor.binary,
+    editor_profile: WAITSPIN_EDITOR_PROFILE,
     extension: WAITSPIN_EDITOR_EXTENSION_ID,
     version: before.version,
+    required_version: exactExtension.manifest.version,
     installed: before.installed,
     registry: descriptor.registryLabel,
     registry_url: descriptor.registryUrl,
     publisher_target: descriptor.publisherTarget,
     publisher_registration_managed_by: "editor-extension",
     activation_required: true,
+    ...(installId
+      ? {
+          install_id: installId,
+          publisher_registered: false,
+          state: "installed_credential_pending_activation",
+        }
+      : {}),
     next: { command: editorActivationCommand(target) },
     next_command: editorActivationCommand(target),
   };
@@ -1338,8 +1393,10 @@ async function runEditorExtensionInstall(
       planned_argv: [
         editor.binary,
         "--install-extension",
-        WAITSPIN_EDITOR_EXTENSION_ID,
+        exactExtension.vsixPath,
         "--force",
+        "--profile",
+        WAITSPIN_EDITOR_PROFILE,
       ],
     };
     printCliOutput(
@@ -1352,7 +1409,13 @@ async function runEditorExtensionInstall(
 
   await execEditorCommand(
     editor,
-    ["--install-extension", WAITSPIN_EDITOR_EXTENSION_ID, "--force"],
+    [
+      "--install-extension",
+      exactExtension.vsixPath,
+      "--force",
+      "--profile",
+      WAITSPIN_EDITOR_PROFILE,
+    ],
     30_000,
   );
   const after = await readEditorExtensionStatus(editor);
@@ -1360,6 +1423,23 @@ async function runEditorExtensionInstall(
     throw new Error(
       `${descriptor.label} did not report ${WAITSPIN_EDITOR_EXTENSION_ID} after installation.`,
     );
+  }
+  if (after.version !== exactExtension.manifest.version) {
+    throw new Error(
+      `${descriptor.label} still reports ${WAITSPIN_EDITOR_EXTENSION_ID}@${after.version ?? "unknown"} after installing required version ${exactExtension.manifest.version}.`,
+    );
+  }
+  if (installId) {
+    const installState: InstallState = {
+      install_id: installId,
+      publisher_target: descriptor.publisherTarget,
+      publisher_registered: false,
+    };
+    await mkdir(path.dirname(statePath), { recursive: true, mode: 0o700 });
+    await writeFile(statePath, `${JSON.stringify(installState, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
   }
   const output = {
     ...summary,
@@ -1401,6 +1481,9 @@ async function runEditorExtensionStatus(
   }
 
   const status = await readEditorExtensionStatus(editor);
+  const state = await loadInstallState(installStatePath(target));
+  const publisherRegistered =
+    state?.publisher_registered ?? Boolean(state?.publisher_id);
   const output = {
     ok: true,
     target,
@@ -1409,12 +1492,16 @@ async function runEditorExtensionStatus(
     editor: descriptor.label,
     editor_version: editor.version,
     editor_binary: editor.binary,
+    editor_profile: WAITSPIN_EDITOR_PROFILE,
     extension: WAITSPIN_EDITOR_EXTENSION_ID,
     version: status.version,
     installed: status.installed,
-    publisher_target: descriptor.publisherTarget,
+    publisher_registered: publisherRegistered,
+    install_id: state?.install_id ?? null,
+    publisher_id: state?.publisher_id ?? null,
+    publisher_target: state?.publisher_target ?? descriptor.publisherTarget,
     publisher_registration_managed_by: "editor-extension",
-    activation_required: status.installed,
+    activation_required: status.installed && !publisherRegistered,
     next: status.installed
       ? { command: editorActivationCommand(target) }
       : {
@@ -1471,6 +1558,8 @@ async function runEditorExtensionUninstall(
             editor.binary,
             "--uninstall-extension",
             WAITSPIN_EDITOR_EXTENSION_ID,
+            "--profile",
+            WAITSPIN_EDITOR_PROFILE,
           ]
         : null,
       would_remove_extension: before.installed
@@ -1488,7 +1577,12 @@ async function runEditorExtensionUninstall(
 
   await execEditorCommand(
     editor,
-    ["--uninstall-extension", WAITSPIN_EDITOR_EXTENSION_ID],
+    [
+      "--uninstall-extension",
+      WAITSPIN_EDITOR_EXTENSION_ID,
+      "--profile",
+      WAITSPIN_EDITOR_PROFILE,
+    ],
     30_000,
   );
   const after = await readEditorExtensionStatus(editor);
@@ -1548,6 +1642,7 @@ function resolveExtensionTarget(flags: Map<string, string[]>): ExtensionTarget {
 type InstallState = {
   install_id: string;
   publisher_id?: string;
+  publisher_registered?: boolean;
   publisher_target: string;
   registered_at?: string;
 };
@@ -1801,6 +1896,32 @@ function parseVscodeExtensionManifest(value: unknown): {
   return { name, publisher, version };
 }
 
+async function resolveExactEditorExtension(
+  flags: Map<string, string[]>,
+): Promise<{
+  manifest: { name: string; publisher: string; version: string };
+  vsixPath: string;
+}> {
+  const extensionDir = await resolveExtensionDir(flags);
+  const manifestPath = path.join(extensionDir, "package.json");
+  let manifestJson: unknown;
+  try {
+    manifestJson = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch {
+    throw new Error(`Extension package not found at ${extensionDir}.`);
+  }
+  const manifest = parseVscodeExtensionManifest(manifestJson);
+  const vsixPath = path.join(extensionDir, "waitspin-vscode.vsix");
+  try {
+    await access(vsixPath, fsConstants.F_OK);
+  } catch {
+    throw new Error(
+      `Exact WaitSpin editor extension ${manifest.version} is missing from the packaged runtime.`,
+    );
+  }
+  return { manifest, vsixPath };
+}
+
 function resolveCliPackageRoot(): string {
   if (!process.argv[1]) return process.cwd();
   let entrypoint = process.argv[1];
@@ -1880,7 +2001,7 @@ export async function runExtensionInstall(flags: Map<string, string[]>) {
   const installDir = extensionInstallDir(target);
   const statePath = installStatePath(target);
   const existingState = await loadInstallState(statePath);
-  const installId = existingState?.install_id || generateInstallId();
+  const installId = resolveManagedInstallId(flags, existingState?.install_id);
 
   const summary = {
     ok: true,
@@ -1902,7 +2023,7 @@ export async function runExtensionInstall(flags: Map<string, string[]>) {
         "waitspin.installId": installId,
       },
       credential_storage:
-        "The VS Code extension migrates a one-time waitspin.apiKey user setting into SecretStorage; runtime polling reads SecretStorage only.",
+        "The VS Code extension redeems a short-lived managed bootstrap token directly into SecretStorage; runtime polling reads SecretStorage only.",
       optional_bootstrap_env: {
         WAITSPIN_INSTALL_ID: installId,
       },
@@ -1911,6 +2032,50 @@ export async function runExtensionInstall(flags: Map<string, string[]>) {
 
   if (booleanFlag(flags, "dry-run")) {
     const output = { ...summary, dry_run: true, publisher_registered: false };
+    printCliOutput(flags, output, formatTargetInstallResult(output));
+    return;
+  }
+
+  if (booleanFlag(flags, "publisher-bootstrap-only")) {
+    const installState: InstallState = {
+      install_id: installId,
+      publisher_target: publisherTarget,
+    };
+    await mkdir(path.dirname(statePath), { recursive: true, mode: 0o700 });
+    await writeFile(statePath, `${JSON.stringify(installState, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await mkdir(installDir, { recursive: true });
+    const markerPath = extensionMarkerPath(target);
+    const installedExtensionPath = await installVscodeExtensionRuntime({
+      sourceDir: extensionDir,
+      manifest,
+    });
+    await writeFile(
+      markerPath,
+      `${JSON.stringify(
+        {
+          ...summary,
+          ...installState,
+          extension_installed: Boolean(installedExtensionPath),
+          installed_extension_path: installedExtensionPath,
+          publisher_registered: false,
+          state: "installed_credential_pending_activation",
+        },
+        null,
+        2,
+      )}\n`,
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const output = {
+      ...summary,
+      ...installState,
+      extension_installed: Boolean(installedExtensionPath),
+      installed_extension_path: installedExtensionPath,
+      publisher_registered: false,
+      state: "installed_credential_pending_activation",
+    };
     printCliOutput(flags, output, formatTargetInstallResult(output));
     return;
   }
@@ -2016,12 +2181,16 @@ export async function runExtensionStatus(flags: Map<string, string[]>) {
     ? await pathExists(path.join(installedExtensionPath, "package.json"))
     : false;
 
+  const publisherRegistered =
+    state?.publisher_registered ??
+    marker?.publisher_registered ??
+    Boolean(state?.publisher_id || marker?.publisher_id);
   const output = {
     ok: true,
     target,
     mode: "status-bar-fallback",
     installed: extensionInstalled,
-    publisher_registered: Boolean(state?.publisher_id || marker?.publisher_id),
+    publisher_registered: publisherRegistered,
     install_id: state?.install_id || marker?.install_id || null,
     publisher_id: state?.publisher_id || marker?.publisher_id || null,
     publisher_target:
@@ -3508,7 +3677,7 @@ export async function runClaudeCodeInstall(flags: Map<string, string[]>) {
   const cachePath = claudeCodeCachePath();
   const settingsPath = claudeCodeSettingsPath();
   const existingState = await loadClaudeCodeInstallState();
-  const installId = existingState?.install_id || generateInstallId();
+  const installId = resolveManagedInstallId(flags, existingState?.install_id);
   const managedStatusLine = managedClaudeCodeStatusLine({
     runtimePath,
     statePath,
@@ -4120,7 +4289,7 @@ export async function runAntigravityInstall(flags: Map<string, string[]>) {
   const apiKeyPath = antigravityApiKeyPath();
   const settingsPath = antigravitySettingsPath();
   const existingState = await loadAntigravityInstallState();
-  const installId = existingState?.install_id || generateInstallId();
+  const installId = resolveManagedInstallId(flags, existingState?.install_id);
   const managedStatusLine = managedAntigravityStatusLine({
     commandPath,
   });
@@ -4804,7 +4973,7 @@ export async function runCopilotInstall(flags: Map<string, string[]>) {
     );
   }
   const settingsPath = existingState?.settings_path ?? currentSettingsPath;
-  const installId = existingState?.install_id || generateInstallId();
+  const installId = resolveManagedInstallId(flags, existingState?.install_id);
   const managedStatusLine = managedCopilotStatusLine({
     commandPath,
   });
@@ -5698,7 +5867,7 @@ export async function runMiMoCodeInstall(flags: Map<string, string[]>) {
   const cachePath = miMoCodeCachePath();
   const bashrcPath = miMoCodeBashrcPath();
   const existingState = await loadMiMoCodeInstallState();
-  const installId = existingState?.install_id || generateInstallId();
+  const installId = resolveManagedInstallId(flags, existingState?.install_id);
 
   const summary = {
     ok: true,
@@ -6264,7 +6433,7 @@ export async function runOpencodeInstall(flags: Map<string, string[]>) {
   const pluginDest = opencodePluginDestPath();
   const tuiConfigPath = opencodeTuiConfigPath();
   const existingState = await loadOpencodeInstallState();
-  const installId = existingState?.install_id || generateInstallId();
+  const installId = resolveManagedInstallId(flags, existingState?.install_id);
 
   const summary = {
     ok: true,
@@ -7524,7 +7693,7 @@ export async function runQoderInstall(flags: Map<string, string[]>) {
   const apiKeyPath = qoderApiKeyPath();
   const settingsPath = qoderSettingsPath();
   const existingState = await loadQoderInstallState();
-  const installId = existingState?.install_id || generateInstallId();
+  const installId = resolveManagedInstallId(flags, existingState?.install_id);
   const managedHook = managedQoderHook({ runtimePath, statePath });
   const loadedSettings = await loadQoderSettings();
   let settingsUpdate: ReturnType<typeof resolveQoderSettingsInstall> | null =
@@ -7823,44 +7992,12 @@ export async function runQoderUninstall(flags: Map<string, string[]>) {
   printCliOutput(flags, output, formatTargetUninstallResult(output));
 }
 
-type PublicAllInstallTarget = {
-  target:
-    | "vscode"
-    | "cursor"
-    | "devin"
-    | "claude-code"
-    | "mimocode"
-    | "opencode"
-    | "copilot"
-    | "antigravity"
-    | "qoder";
-  command: string;
-  statusCommand: string;
-  preflight: (flags: Map<string, string[]>) => Promise<string | null>;
-  install: (flags: Map<string, string[]>) => Promise<void>;
-  status: (flags: Map<string, string[]>) => Promise<void>;
-};
-
-type AllInstallTarget = PublicAllInstallTarget | ExperimentalAllInstallTarget;
-
-type AllTargetSummary = {
-  target: AllInstallTarget["target"];
-  command: string;
-  reason?: string;
-  detail?: string | null;
-  result?: unknown;
-};
+type AllInstallTarget = ManagedAllInstallTarget;
 
 function cloneFlags(flags: Map<string, string[]>): Map<string, string[]> {
   return new Map(
     Array.from(flags.entries()).map(([key, values]) => [key, [...values]]),
   );
-}
-
-function jsonFlags(flags: Map<string, string[]>): Map<string, string[]> {
-  const next = cloneFlags(flags);
-  next.set("json", ["true"]);
-  return next;
 }
 
 function extensionAllFlags(
@@ -7897,7 +8034,47 @@ async function executableVersion(
 }
 
 async function preflightVscode(flags: Map<string, string[]>): Promise<string> {
-  return resolveExtensionDir(flags);
+  await resolveExtensionDir(flags);
+  const candidates = [
+    process.env.WAITSPIN_VSCODE_EDITOR_BIN?.trim(),
+    "code",
+    "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+    path.join(
+      os.homedir(),
+      "Applications",
+      "Visual Studio Code.app",
+      "Contents",
+      "Resources",
+      "app",
+      "bin",
+      "code",
+    ),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const editor = await editorCommandForBinary(candidate);
+      const versionResult = await execEditorCommand(editor, ["--version"], 5_000);
+      const helpResult = await execEditorCommand(editor, ["--help"], 5_000);
+      const identity = `${candidate}\n${versionResult.stdout}\n${versionResult.stderr}`;
+      const help = `${helpResult.stdout}\n${helpResult.stderr}`;
+      if (
+        /cursor|devin/i.test(identity) ||
+        !["--install-extension", "--list-extensions", "--uninstall-extension"].every(
+          (option) => help.includes(option),
+        )
+      ) {
+        throw new Error(`${candidate} is not the VS Code editor CLI.`);
+      }
+      return `${versionResult.stdout || versionResult.stderr || "VS Code"}`.trim();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(
+    "VS Code was not detected. Install Visual Studio Code or set WAITSPIN_VSCODE_EDITOR_BIN to its editor CLI path.",
+    { cause: lastError },
+  );
 }
 
 async function preflightEditorExtension(
@@ -8038,6 +8215,82 @@ function allInstallTargets(flags: Map<string, string[]>): AllInstallTarget[] {
   return targets;
 }
 
+async function runCanonicalTargetUninstall(
+  target: string,
+  flags: Map<string, string[]>,
+): Promise<void> {
+  if (target === "vscode" || target === "cursor" || target === "devin") {
+    await runExtensionUninstall(
+      extensionAllFlags(flags, target as ExtensionTarget),
+    );
+    return;
+  }
+  if (target === CLAUDE_CODE_PUBLISHER_TARGET) {
+    await runClaudeCodeUninstall(flags);
+    return;
+  }
+  if (target === MIMOCODE_PUBLISHER_TARGET) {
+    await runMiMoCodeUninstall(flags);
+    return;
+  }
+  if (target === OPENCODE_PUBLISHER_TARGET) {
+    await runOpencodeUninstall(flags);
+    return;
+  }
+  if (target === ANTIGRAVITY_PUBLISHER_TARGET) {
+    await runAntigravityUninstall(flags);
+    return;
+  }
+  if (target === COPILOT_PUBLISHER_TARGET) {
+    await runCopilotUninstall(flags);
+    return;
+  }
+  if (target === QODER_PUBLISHER_TARGET) {
+    await runQoderUninstall(flags);
+    return;
+  }
+  if (isExperimentalCliTargetName(target)) {
+    await runExperimentalCliTargetUninstall(
+      target as ExperimentalCliTargetName,
+      flags,
+      experimentalCliDeps(),
+    );
+    return;
+  }
+  throw new Error(`Unsupported canonical WaitSpin target: ${target}`);
+}
+
+export function createCanonicalInstallTargets(
+  flags: Map<string, string[]>,
+  options: {
+    installFlags?: (
+      target: string,
+      flags: Map<string, string[]>,
+    ) => Promise<Map<string, string[]>>;
+  } = {},
+) {
+  return createManagedInstallTargets(flags, orchestrationDependencies(), options);
+}
+
+function orchestrationDependencies() {
+  return {
+    allTargets: allInstallTargets,
+    booleanFlag,
+    capturePrintedJson,
+    formatInstallAllResult: (result: Record<string, unknown>) =>
+      formatInstallAllResult(
+        result as Parameters<typeof formatInstallAllResult>[0],
+      ),
+    formatStatusAllResult: (result: Record<string, unknown>) =>
+      formatStatusAllResult(
+        result as Parameters<typeof formatStatusAllResult>[0],
+      ),
+    printCliOutput,
+    redactError: safeErrorMessage,
+    uninstallTarget: runCanonicalTargetUninstall,
+  };
+}
+
 function safeErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return redactCliSecretText(message);
@@ -8098,111 +8351,7 @@ function dryRunFailureReason(result: unknown): string | null {
 }
 
 export async function runInstallAll(flags: Map<string, string[]>) {
-  const dryRun = booleanFlag(flags, "dry-run");
-  const includeExperimental = booleanFlag(flags, "include-experimental");
-  if (includeExperimental && !dryRun) {
-    throw new Error(
-      "--include-experimental is only available with install --all --dry-run. Use explicit waitspin <target> install commands for hidden experimental targets.",
-    );
-  }
-  const internalJsonFlags = jsonFlags(flags);
-  const installed: AllTargetSummary[] = [];
-  const wouldInstall: AllTargetSummary[] = [];
-  const skippedNotDetected: AllTargetSummary[] = [];
-  const skippedConflict: AllTargetSummary[] = [];
-  const failedRollback: AllTargetSummary[] = [];
-
-  for (const target of allInstallTargets(flags)) {
-    let detail: string | null = null;
-    try {
-      detail = await target.preflight(flags);
-    } catch (error) {
-      const reason = safeErrorMessage(error);
-      const bucket = isNotDetectedError(reason)
-        ? skippedNotDetected
-        : failedRollback;
-      bucket.push({
-        target: target.target,
-        command: target.command,
-        reason,
-      });
-      continue;
-    }
-
-    try {
-      const result = await capturePrintedJson<unknown>(() =>
-        target.install(internalJsonFlags),
-      );
-      const conflictReason = dryRunConflictReason(result);
-      if (conflictReason) {
-        skippedConflict.push({
-          target: target.target,
-          command: target.command,
-          reason: conflictReason,
-          detail,
-          result,
-        });
-        continue;
-      }
-      const failureReason = dryRunFailureReason(result);
-      if (failureReason) {
-        failedRollback.push({
-          target: target.target,
-          command: target.command,
-          reason: failureReason,
-          detail,
-          result,
-        });
-        continue;
-      }
-      const summary = {
-        target: target.target,
-        command: target.command,
-        detail,
-        result,
-      };
-      if (dryRun) {
-        wouldInstall.push(summary);
-      } else {
-        installed.push(summary);
-      }
-    } catch (error) {
-      const reason = safeErrorMessage(error);
-      const bucket = isConflictError(reason)
-        ? skippedConflict
-        : isUnsupportedTargetLayoutReason(reason)
-          ? skippedConflict
-        : isNotDetectedError(reason)
-          ? skippedNotDetected
-          : failedRollback;
-      bucket.push({
-        target: target.target,
-        command: target.command,
-        reason,
-        detail,
-      });
-    }
-  }
-
-  const output = {
-    ok: failedRollback.length === 0,
-    command: "install --all",
-    dry_run: dryRun,
-    mode: "detected-targets",
-    include_experimental: includeExperimental,
-    installed,
-    would_install: wouldInstall,
-    skipped_not_detected: skippedNotDetected,
-    skipped_conflict: skippedConflict,
-    failed_rollback: failedRollback,
-    next: "check_all_status",
-    next_command: includeExperimental
-      ? "waitspin status --all --include-experimental"
-      : "waitspin status --all",
-    human_message:
-      "Install-all is an advanced agent command. Explicit target commands remain the canonical debug path.",
-  };
-  printCliOutput(flags, output, formatInstallAllResult(output));
+  await runManagedInstallAll(flags, orchestrationDependencies());
 }
 
 export async function runStatusAll(flags: Map<string, string[]>) {
@@ -8212,43 +8361,15 @@ export async function runStatusAll(flags: Map<string, string[]>) {
     return;
   }
 
-  const internalJsonFlags = jsonFlags(flags);
-  const statuses: AllTargetSummary[] = [];
-  const installed: AllTargetSummary[] = [];
-  const failedStatus: AllTargetSummary[] = [];
+  await runManagedStatusAll(flags, orchestrationDependencies());
+}
 
-  for (const target of allInstallTargets(flags)) {
-    try {
-      const result = await capturePrintedJson<unknown>(() =>
-        target.status(internalJsonFlags),
-      );
-      const summary = {
-        target: target.target,
-        command: target.statusCommand,
-        result,
-      };
-      statuses.push(summary);
-      if (objectRecord(result).installed === true) {
-        installed.push(summary);
-      }
-    } catch (error) {
-      failedStatus.push({
-        target: target.target,
-        command: target.statusCommand,
-        reason: safeErrorMessage(error),
-      });
-    }
-  }
+export async function runUninstallAll(flags: Map<string, string[]>) {
+  await runManagedUninstallAll(flags, orchestrationDependencies());
+}
 
-  const output = {
-    ok: failedStatus.length === 0,
-    command: "status --all",
-    include_experimental: booleanFlag(flags, "include-experimental"),
-    installed,
-    statuses,
-    failed_status: failedStatus,
-  };
-  printCliOutput(flags, output, formatStatusAllResult(output));
+export async function runRepairAll(flags: Map<string, string[]>) {
+  await runManagedRepairAll(flags, orchestrationDependencies());
 }
 
 export async function main(argv: string[] = process.argv.slice(2)) {
@@ -8321,6 +8442,16 @@ export async function main(argv: string[] = process.argv.slice(2)) {
 
   if (command === "status" && booleanFlag(flags, "all")) {
     await runStatusAll(flags);
+    return;
+  }
+
+  if (command === "repair" && booleanFlag(flags, "all")) {
+    await runRepairAll(flags);
+    return;
+  }
+
+  if (command === "uninstall" && booleanFlag(flags, "all")) {
+    await runUninstallAll(flags);
     return;
   }
 

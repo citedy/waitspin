@@ -79,4 +79,33 @@ describe("WaitSpin VS Code surfaces", () => {
     expect(mockStatusBarItem.command).toBe("waitspin.openAd");
     expect(surfaces.hasVisibleSponsorSurface()).toBe(true);
   });
+
+  it("renders the current wallet balance in the status bar", () => {
+    const surfaces = new PublisherSurfaces();
+
+    surfaces.updateState({
+      hasApiKey: true,
+      installId: "wins_test",
+      authStopped: false,
+      inventoryStatus: "empty",
+      ledgerEntries: [],
+      walletStatus: {
+        balance: {
+          availableMicroUnits: 4_750_000,
+          maturingMicroUnits: 670_000,
+          heldMicroUnits: 0,
+          reversalDebtMicroUnits: 0,
+          pendingPayoutMicroUnits: 0,
+          lifetimeEarnedMicroUnits: 5_420_000,
+        },
+        payoutEligible: false,
+        payoutBlockedReasons: [],
+        connectConnected: false,
+        payoutsEnabled: false,
+      },
+    });
+
+    expect(mockStatusBarItem.text).toBe("$(pulse) WaitSpin EUR 4.75");
+    expect(mockStatusBarItem.command).toBe("waitspin.refreshWallet");
+  });
 });

@@ -104,6 +104,10 @@ class PublisherOnboardingController {
         if (!mode) {
             return;
         }
+        const installId = await this.pickPublisherInstallId();
+        if (!installId) {
+            return;
+        }
         try {
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
@@ -118,11 +122,7 @@ class PublisherOnboardingController {
                 if (!apiKey) {
                     return;
                 }
-                if (mode === "email") {
-                    await this.host.storeApiKey(apiKey);
-                    this.host.logWaitSpin("Stored newly issued extension key before registration retry points.");
-                }
-                await this.registerAndStorePublisher(apiBase, apiKey, mode);
+                await this.registerAndActivatePublisher(apiBase, apiKey, mode, installId);
             });
         }
         catch (error) {
@@ -244,35 +244,16 @@ class PublisherOnboardingController {
         });
         return selected?.installId;
     }
-    async registerAndStorePublisher(apiBase, apiKey, mode) {
-        const installId = await this.pickPublisherInstallId();
-        if (!installId) {
-            return;
-        }
-        const walletReadable = await this.checkWalletRead(apiBase, apiKey, mode === "existing-key" || mode === "stored-key");
-        const registrationResponse = await this.host.fetchWithTimeout(`${apiBase}/v1/publishers/register`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                install_id: installId,
-                target: extension_core_1.VSCODE_PUBLISHER_TARGET,
-            }),
+    async registerAndActivatePublisher(apiBase, apiKey, mode, installId) {
+        const { walletReadable } = await this.host.activateManualCredential({
+            apiBase,
+            apiKey,
+            installId,
+            allowLegacyWalletFailure: mode === "existing-key" || mode === "stored-key",
         });
-        if (!registrationResponse.ok) {
-            throw httpError("Install registration failed", registrationResponse);
-        }
-        const registration = (0, extension_core_1.parsePublisherRegistrationPayload)(await readJsonBody(registrationResponse, this.host.logWaitSpin, "Install registration"));
-        if (!registration) {
-            throw new Error("Install registration response failed validation.");
-        }
-        await this.host.storeInstallId(registration.installId);
-        await this.host.storeApiKey(apiKey);
         this.host.updatePublisherState({
             apiBase,
-            installId: registration.installId,
+            installId,
             hasApiKey: true,
             authStopped: false,
             inventoryStatus: "polling",
@@ -281,34 +262,17 @@ class PublisherOnboardingController {
                 : "WaitSpin connected. Wallet and ledger need a key with wallet:read.",
             lastUpdatedAt: new Date().toISOString(),
         });
-        this.host.logWaitSpin(`WaitSpin connected for ${registration.installId}.`);
+        this.host.logWaitSpin(`WaitSpin connected for ${installId}.`);
         this.host.startPolling();
-        await vscode.window.showInformationMessage(walletReadable
+        await vscode.window
+            .showInformationMessage(walletReadable
             ? "WaitSpin connected. Wallet and sponsor polling are starting."
-            : "WaitSpin connected. Sponsor polling is starting; rotate the key to enable wallet reads.", "Open WaitSpin").then((choice) => {
+            : "WaitSpin connected. Sponsor polling is starting; rotate the key to enable wallet reads.", "Open WaitSpin")
+            .then((choice) => {
             if (choice === "Open WaitSpin") {
                 void vscode.commands.executeCommand("workbench.view.extension.waitspin");
             }
         });
-    }
-    async checkWalletRead(apiBase, apiKey, allowLegacyPublisherKey) {
-        const response = await this.host.fetchWithTimeout(`${apiBase}/v1/wallet/status`, {
-            method: "GET",
-            headers: { Authorization: `Bearer ${apiKey}` },
-        });
-        if (response.status === 401 || response.status === 403) {
-            if (allowLegacyPublisherKey) {
-                return false;
-            }
-            throw new Error("Extension key cannot read wallet status. Create or rotate an extension key with wallet:read.");
-        }
-        if (!response.ok) {
-            throw httpError("Wallet validation failed", response);
-        }
-        if (!(0, extension_core_1.parseWalletStatusPayload)(await readJsonBody(response, this.host.logWaitSpin, "Wallet validation"))) {
-            throw new Error("Wallet validation response failed validation.");
-        }
-        return true;
     }
 }
 exports.PublisherOnboardingController = PublisherOnboardingController;

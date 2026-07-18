@@ -1,6 +1,6 @@
 {
   "name": "waitspin",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "CLI for WaitSpin sponsored wait-state ads: auth, campaigns, checkout, and user installs for VS Code, Cursor, Devin Desktop, Claude Code, Antigravity CLI, GitHub Copilot CLI, MiMo Code, OpenCode, Grok Code CLI, and Qoder CLI.",
   "type": "module",
   "homepage": "https://waitspin.com",
@@ -13,11 +13,13 @@
     "url": "https://github.com/citedy/waitspin/issues"
   },
   "bin": {
-    "waitspin": "dist/cli.js"
+    "waitspin": "dist/cli.js",
+    "waitspin-helper": "dist/helper.js"
   },
   "files": [
     "dist",
     "assets/waitspin-vscode/package.json",
+    "assets/waitspin-vscode/waitspin-vscode.vsix",
     "assets/waitspin-vscode/media",
     "assets/waitspin-vscode/out",
     "assets/waitspin-mimocode",
@@ -29,9 +31,9 @@
     "node": ">=20.16.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "sync:extension-assets": "node scripts/sync-vscode-extension-assets.mjs",
-    "prepack": "npm run sync:extension-assets && npm run build"
+    "build": "node scripts/build.mjs",
+    "test:build": "node --test scripts/build.test.mjs",
+    "prepack": "npm run build"
   },
   "keywords": [
     "waitspin",

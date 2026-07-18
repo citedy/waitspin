@@ -103,6 +103,221 @@
         }
       }
     },
+    "/v1/account/activation": {
+      "get": {
+        "tags": ["Keys"],
+        "operationId": "getWaitSpinAccountActivation",
+        "summary": "Read native account activation and destination state.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "responses": {
+          "200": {
+            "description": "Server-derived activation state.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountActivationResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/v1/keys/advertiser-capability": {
+      "post": {
+        "tags": ["Keys"],
+        "operationId": "createWaitSpinAdvertiserCapability",
+        "summary": "Issue a short-lived native advertiser capability.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "responses": {
+          "201": {
+            "description": "Ephemeral advertiser capability issued.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdvertiserCapabilityResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/v1/keys/current": {
+      "delete": {
+        "tags": ["Keys"],
+        "operationId": "revokeCurrentWaitSpinCredential",
+        "summary": "Revoke the current credential and its dependent credentials.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "responses": {
+          "200": {
+            "description": "Credential revoked.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CredentialRevocationResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/analytics/events": {
+      "post": {
+        "tags": ["Events"],
+        "operationId": "ingestWaitSpinAnalyticsEvents",
+        "summary": "Accept a bounded privacy-safe analytics batch.",
+        "security": [{}, { "WaitSpinApiKey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalyticsEventsRequest" } } }
+        },
+        "responses": {
+          "202": {
+            "description": "Batch accepted idempotently.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalyticsEventsResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/v1/analytics/consent": {
+      "get": {
+        "tags": ["Events"],
+        "operationId": "getWaitSpinAnalyticsConsent",
+        "summary": "Read the authenticated account analytics decision without consuming monthly quota.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "responses": {
+          "200": {
+            "description": "Current consent state, including the initial unknown revision.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalyticsConsentResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      },
+      "put": {
+        "tags": ["Events"],
+        "operationId": "updateWaitSpinAnalyticsConsent",
+        "summary": "Compare-and-set the authenticated account analytics decision.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalyticsConsentRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Current consent state.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalyticsConsentResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/publishers/earning-policy": {
+      "get": {
+        "tags": ["Publishers"],
+        "operationId": "getWaitSpinEarningPolicy",
+        "summary": "Read the canonical publisher earning, payout, and maturity policy.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "responses": {
+          "200": {
+            "description": "Server-owned earning policy and user-facing copy.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EarningPolicyResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/v1/publisher-installations": {
+      "get": {
+        "tags": ["User Installs"],
+        "operationId": "listWaitSpinPublisherInstallations",
+        "summary": "List current device installation generations for rotation recovery.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "responses": {
+          "200": {
+            "description": "Current account- and device-bound installation state.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherInstallationListResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/v1/publisher-installations/bootstrap": {
+      "post": {
+        "tags": ["User Installs"],
+        "operationId": "createWaitSpinPublisherBootstrap",
+        "summary": "Create one pending target-bound child credential generation.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherBootstrapRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Direct child credential or editor bootstrap token issued once.",
+            "content": { "application/json": { "schema": { "oneOf": [{ "$ref": "#/components/schemas/PublisherDirectBootstrapResponse" }, { "$ref": "#/components/schemas/PublisherEditorBootstrapResponse" }] } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/publisher-installations/bootstrap/redeem": {
+      "post": {
+        "tags": ["User Installs"],
+        "operationId": "redeemWaitSpinPublisherBootstrap",
+        "summary": "Redeem or idempotently resume an editor bootstrap token.",
+        "description": "Protocol 2 binds a client-generated key and permits same-key replay to recover a lost response without returning the key. Requests without redeem_protocol remain temporary protocol 1 compatibility for released 0.1.14 clients and return a server-generated key once.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherBootstrapRedeemRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Protocol 2 returns stable credential metadata for first redeem and same-key replay without api_key; temporary protocol 1 returns the generated key once.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherBootstrapRedeemResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/publisher-installations/{install_id}": {
+      "delete": {
+        "tags": ["User Installs"],
+        "operationId": "removeWaitSpinPublisherInstallation",
+        "summary": "Deactivate one account- and device-bound installation.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/InstallId" }],
+        "responses": {
+          "200": {
+            "description": "Installation removed and child credentials revoked.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherInstallationRemovedResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/v1/publisher-installations/{install_id}/ready": {
+      "post": {
+        "tags": ["User Installs"],
+        "operationId": "confirmWaitSpinPublisherInstallationReady",
+        "summary": "Confirm the current child generation is registered and ready.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/InstallId" }],
+        "responses": {
+          "200": {
+            "description": "Installation generation is ready.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherInstallationReadyResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/v1/list/subscribe": {
       "post": {
         "tags": ["List"],
@@ -150,6 +365,24 @@
         }
       }
     },
+    "/v1/campaigns/purchase-options": {
+      "get": {
+        "tags": ["Campaigns"],
+        "operationId": "getWaitSpinPurchaseOptions",
+        "summary": "Read the public server-owned purchase-option contract.",
+        "responses": {
+          "200": {
+            "description": "Versioned purchase options and custom bounds.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PurchaseOptionsResponse" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/v1/campaigns": {
       "get": {
         "tags": ["Campaigns"],
@@ -186,6 +419,38 @@
         "responses": {
           "201": {
             "description": "Campaign created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreateCampaignResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/v1/campaigns/{campaign_id}/repeat": {
+      "post": {
+        "tags": ["Campaigns"],
+        "operationId": "repeatWaitSpinCampaign",
+        "summary": "Create a distinct campaign from an eligible account-owned source.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^wcamp_[a-z0-9]{18}$" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Repeat campaign and pending purchase created.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/CreateCampaignResponse" }
@@ -337,7 +602,8 @@
           "204": { "description": "No inventory available." },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
-          "429": { "$ref": "#/components/responses/RateLimited" }
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
         }
       }
     },
@@ -368,6 +634,93 @@
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/v1/events/view": {
+      "post": {
+        "tags": ["Events"],
+        "operationId": "recordWaitSpinCreativeView",
+        "summary": "Record an idempotent creative view for click analytics.",
+        "security": [{ "WaitSpinApiKey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ViewEventRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "View accepted or previously recorded.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ViewEventResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/v1/click/{token}": {
+      "get": {
+        "tags": ["Events"],
+        "operationId": "redirectWaitSpinTrackedClick",
+        "summary": "Record the first valid click and redirect to its stored destination.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the destination captured at serve time.",
+            "headers": {
+              "Location": {
+                "required": true,
+                "schema": { "type": "string", "format": "uri" }
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": { "type": "string", "const": "no-store" }
+              },
+              "Referrer-Policy": {
+                "required": true,
+                "schema": { "type": "string", "const": "no-referrer" }
+              }
+            }
+          },
+          "429": {
+            "description": "Redirect lookup throttled before database access.",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": { "type": "string", "const": "no-store" }
+              },
+              "Retry-After": {
+                "required": true,
+                "schema": { "type": "string", "const": "60" }
+              },
+              "Referrer-Policy": {
+                "required": true,
+                "schema": { "type": "string", "const": "no-referrer" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },
@@ -549,6 +902,17 @@
           "type": "string",
           "format": "uuid"
         }
+      },
+      "InstallId": {
+        "name": "install_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^wins_[A-Za-z0-9._-]{3,123}$"
+        }
       }
     },
     "responses": {
@@ -612,6 +976,19 @@
             "schema": { "$ref": "#/components/schemas/ErrorResponse" }
           }
         }
+      },
+      "ServiceUnavailable": {
+        "description": "Service capacity is temporarily unavailable.",
+        "headers": {
+          "Retry-After": {
+            "schema": { "type": "string" }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
       }
     },
     "schemas": {
@@ -643,7 +1020,8 @@
         "required": ["email"],
         "properties": {
           "email": { "type": "string", "format": "email", "maxLength": 320 },
-          "intended_use": { "$ref": "#/components/schemas/KeyIntendedUse" }
+          "intended_use": { "$ref": "#/components/schemas/KeyIntendedUse" },
+          "flow_id": { "type": "string", "format": "uuid" }
         },
         "additionalProperties": false
       },
@@ -653,7 +1031,12 @@
         "properties": {
           "email": { "type": "string", "format": "email", "maxLength": 320 },
           "code": { "type": "string", "pattern": "^[0-9]{6}$" },
-          "intended_use": { "$ref": "#/components/schemas/KeyIntendedUse" }
+          "intended_use": { "$ref": "#/components/schemas/KeyIntendedUse" },
+          "challenge_id": { "type": "string", "minLength": 8, "maxLength": 128 },
+          "flow_id": { "type": "string", "format": "uuid" },
+          "analytics_client_id": { "type": "string", "format": "uuid" },
+          "device_registration": { "$ref": "#/components/schemas/DeviceRegistration" },
+          "analytics_consent": { "$ref": "#/components/schemas/InitialAnalyticsConsent" }
         },
         "additionalProperties": false
       },
@@ -663,9 +1046,10 @@
       },
       "KeyRequestResponse": {
         "type": "object",
-        "required": ["ok", "expires_in_seconds", "delivery"],
+        "required": ["ok", "challenge_id", "expires_in_seconds", "delivery"],
         "properties": {
           "ok": { "type": "boolean", "const": true },
+          "challenge_id": { "type": "string" },
           "expires_in_seconds": { "type": "integer" },
           "delivery": { "type": "string" }
         },
@@ -673,7 +1057,7 @@
       },
       "KeyVerifyResponse": {
         "type": "object",
-        "required": ["account_id", "api_key", "scopes", "trust_level"],
+        "required": ["account_id", "api_key", "scopes", "trust_level", "key_profile", "credential_id", "protocol_version", "account_state"],
         "properties": {
           "account_id": { "type": "string" },
           "api_key": { "type": "string", "pattern": "^wts_live_" },
@@ -682,9 +1066,359 @@
             "items": { "$ref": "#/components/schemas/Scope" }
           },
           "trust_level": { "type": "string" },
-          "key_profile": { "type": "string", "enum": ["control", "publisher_extension"] }
+          "key_profile": { "type": "string", "enum": ["control", "publisher_extension"] },
+          "credential_id": { "type": "string" },
+          "device_id": { "type": "string" },
+          "app_instance_id": { "type": "string", "format": "uuid" },
+          "protocol_version": { "type": "integer", "const": 1 },
+          "account_state": { "type": "string", "enum": ["new", "existing"] },
+          "analytics_consent": { "$ref": "#/components/schemas/AnalyticsConsentState" }
         },
         "additionalProperties": true
+      },
+      "DeviceRegistration": {
+        "type": "object",
+        "required": ["app_instance_id", "platform", "app_version"],
+        "properties": {
+          "app_instance_id": { "type": "string", "format": "uuid" },
+          "platform": { "type": "string", "const": "macos" },
+          "app_version": { "type": "string", "minLength": 1, "maxLength": 64 }
+        },
+        "additionalProperties": false
+      },
+      "InitialAnalyticsConsent": {
+        "type": "object",
+        "required": ["state", "policy_version", "decided_at", "decision_id"],
+        "properties": {
+          "state": { "type": "string", "enum": ["unknown", "granted", "denied"] },
+          "policy_version": { "type": "integer", "minimum": 1 },
+          "decided_at": { "type": "string", "format": "date-time" },
+          "decision_id": { "type": "string", "format": "uuid" }
+        },
+        "additionalProperties": false
+      },
+      "AnalyticsConsentState": {
+        "type": "object",
+        "required": ["state", "policy_version", "consent_revision", "decision_id"],
+        "properties": {
+          "state": { "type": "string", "enum": ["unknown", "granted", "denied"] },
+          "policy_version": { "type": "integer", "minimum": 1 },
+          "consent_revision": { "type": "integer", "minimum": 1 },
+          "decision_id": { "type": "string", "format": "uuid" }
+        },
+        "additionalProperties": false
+      },
+      "AccountActivationResponse": {
+        "type": "object",
+        "required": ["contract_version", "has_publisher_activity", "has_advertiser_activity", "has_managed_installations", "has_pending_advertiser_purchase", "connect_state", "recommended_destination"],
+        "properties": {
+          "contract_version": { "type": "integer", "const": 1 },
+          "has_publisher_activity": { "type": "boolean" },
+          "has_advertiser_activity": { "type": "boolean" },
+          "has_managed_installations": { "type": "boolean" },
+          "has_pending_advertiser_purchase": { "type": "boolean" },
+          "connect_state": { "type": "string", "enum": ["not_started", "pending", "ready"] },
+          "recommended_destination": { "type": "string", "enum": ["intent_choice", "wallet", "campaigns", "campaign_checkout"] }
+        },
+        "additionalProperties": false
+      },
+      "AdvertiserCapabilityResponse": {
+        "type": "object",
+        "required": ["protocol_version", "credential_id", "api_key", "scopes", "audience", "account_id", "device_id", "parent_credential_id", "issued_at", "expires_at"],
+        "properties": {
+          "protocol_version": { "type": "integer", "const": 1 },
+          "credential_id": { "type": "string" },
+          "api_key": { "type": "string", "pattern": "^wts_live_" },
+          "scopes": {
+            "type": "array",
+            "prefixItems": [
+              { "type": "string", "const": "campaigns:read" },
+              { "type": "string", "const": "campaigns:write" },
+              { "type": "string", "const": "blocks:purchase" }
+            ],
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "audience": { "type": "string", "const": "waitspin-macos-advertiser-v1" },
+          "account_id": { "type": "string" },
+          "device_id": { "type": "string" },
+          "parent_credential_id": { "type": "string" },
+          "issued_at": { "type": "string", "format": "date-time" },
+          "expires_at": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
+      "CredentialRevocationResponse": {
+        "type": "object",
+        "required": ["ok", "revoked_credential_id"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "revoked_credential_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "AnalyticsConsentDecision": {
+        "type": "object",
+        "required": ["state", "policy_version", "decision_id"],
+        "properties": {
+          "state": { "type": "string", "const": "granted" },
+          "policy_version": { "type": "integer", "const": 1 },
+          "decision_id": { "type": "string", "format": "uuid" },
+          "consent_revision": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "AnalyticsEvent": {
+        "type": "object",
+        "required": ["event_id", "occurred_at", "schema_version", "source", "name", "properties"],
+        "properties": {
+          "event_id": { "type": "string", "format": "uuid" },
+          "occurred_at": { "type": "string", "format": "date-time" },
+          "schema_version": { "type": "integer", "const": 1 },
+          "source": { "type": "string", "enum": ["macos", "web"] },
+          "name": { "type": "string", "enum": ["onboarding_opened", "otp_started", "first_action_selected", "earning_preview_completed", "install_started", "install_completed", "payout_setup_clicked", "purchase_option_selected", "run_again_clicked"] },
+          "properties": { "type": "object" },
+          "app_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "build": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
+          "release_channel": { "type": "string", "enum": ["stable", "beta", "nightly"] },
+          "os_major": { "type": "integer", "minimum": 12, "maximum": 99 },
+          "arch": { "type": "string", "enum": ["arm64", "x86_64"] },
+          "flow_id": { "type": "string", "format": "uuid" }
+        },
+        "additionalProperties": false
+      },
+      "AnalyticsEventsRequest": {
+        "type": "object",
+        "required": ["contract_version", "client_id", "consent", "events"],
+        "properties": {
+          "contract_version": { "type": "integer", "const": 1 },
+          "client_id": { "type": "string", "format": "uuid" },
+          "consent": { "$ref": "#/components/schemas/AnalyticsConsentDecision" },
+          "events": { "type": "array", "minItems": 1, "maxItems": 25, "items": { "$ref": "#/components/schemas/AnalyticsEvent" } }
+        },
+        "additionalProperties": false
+      },
+      "AnalyticsEventsResponse": {
+        "type": "object",
+        "required": ["accepted", "duplicates"],
+        "properties": {
+          "accepted": { "type": "integer", "minimum": 0, "maximum": 25 },
+          "duplicates": { "type": "integer", "minimum": 0, "maximum": 25 }
+        },
+        "additionalProperties": false
+      },
+      "AnalyticsConsentRequest": {
+        "type": "object",
+        "required": ["state", "policy_version", "decided_at", "decision_id", "expected_revision", "source"],
+        "properties": {
+          "state": { "type": "string", "enum": ["granted", "denied"] },
+          "policy_version": { "type": "integer", "const": 1 },
+          "decided_at": { "type": "string", "format": "date-time" },
+          "decision_id": { "type": "string", "format": "uuid" },
+          "expected_revision": { "type": "integer", "minimum": 0 },
+          "source": { "type": "string", "enum": ["macos", "web"] },
+          "client_id": { "type": "string", "format": "uuid" }
+        },
+        "additionalProperties": false
+      },
+      "AnalyticsConsentResponse": {
+        "type": "object",
+        "required": ["state", "policy_version", "decision_id", "consent_revision", "source", "account_id"],
+        "properties": {
+          "state": { "type": "string", "enum": ["unknown", "granted", "denied"] },
+          "policy_version": { "type": "integer", "const": 1 },
+          "decision_id": { "type": ["string", "null"], "format": "uuid" },
+          "consent_revision": { "type": "integer", "minimum": 0 },
+          "source": { "type": ["string", "null"], "enum": ["macos", "web", null] },
+          "account_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "EarningPolicyResponse": {
+        "type": "object",
+        "required": ["contract_version", "sponsored_messages_surface", "connect_required_for_earning", "connect_required_for_payout", "earning_maturity_hours", "trust_min_level", "trust_max_level", "policy_copy"],
+        "properties": {
+          "contract_version": { "type": "integer", "const": 1 },
+          "sponsored_messages_surface": { "type": "string", "const": "supported_developer_tools" },
+          "connect_required_for_earning": { "type": "boolean", "const": false },
+          "connect_required_for_payout": { "type": "boolean", "const": true },
+          "earning_maturity_hours": { "type": "integer", "minimum": 1 },
+          "trust_min_level": { "type": "integer", "minimum": 1 },
+          "trust_max_level": { "type": "integer", "minimum": 1 },
+          "policy_copy": {
+            "type": "object",
+            "required": ["earning_summary", "connect_summary", "maturity_summary"],
+            "properties": {
+              "earning_summary": { "type": "string", "minLength": 1 },
+              "connect_summary": { "type": "string", "minLength": 1 },
+              "maturity_summary": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "MacosInstallTarget": {
+        "type": "string",
+        "enum": ["vscode", "cursor", "devin", "claude-code", "mimocode", "opencode", "grok", "antigravity", "copilot", "qoder"]
+      },
+      "PublisherBootstrapRequest": {
+        "type": "object",
+        "required": ["operation_id", "install_id", "install_target", "generation"],
+        "properties": {
+          "operation_id": { "type": "string", "format": "uuid" },
+          "install_id": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^wins_[A-Za-z0-9._-]{3,123}$" },
+          "install_target": { "$ref": "#/components/schemas/MacosInstallTarget" },
+          "generation": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "PublisherDirectBootstrapResponse": {
+        "type": "object",
+        "required": ["protocol_version", "credential_mode", "installation_id", "credential_id", "api_key", "scopes", "install_id", "install_target", "publisher_target", "generation"],
+        "properties": {
+          "protocol_version": { "type": "integer", "const": 1 },
+          "credential_mode": { "type": "string", "const": "direct" },
+          "installation_id": { "type": "string" },
+          "credential_id": { "type": "string" },
+          "api_key": { "type": "string", "pattern": "^wts_live_" },
+          "scopes": { "type": "array", "items": { "$ref": "#/components/schemas/Scope" }, "minItems": 3, "maxItems": 3 },
+          "install_id": { "type": "string", "pattern": "^wins_[A-Za-z0-9._-]{3,123}$" },
+          "install_target": { "$ref": "#/components/schemas/MacosInstallTarget" },
+          "publisher_target": { "type": "string" },
+          "generation": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "PublisherEditorBootstrapResponse": {
+        "type": "object",
+        "required": ["protocol_version", "credential_mode", "installation_id", "install_id", "install_target", "publisher_target", "generation", "token", "expires_at", "api_base", "descriptor_schema_version"],
+        "properties": {
+          "protocol_version": { "type": "integer", "const": 1 },
+          "credential_mode": { "type": "string", "const": "bootstrap" },
+          "installation_id": { "type": "string" },
+          "install_id": { "type": "string", "pattern": "^wins_[A-Za-z0-9._-]{3,123}$" },
+          "install_target": { "type": "string", "enum": ["vscode", "cursor", "devin"] },
+          "publisher_target": { "type": "string", "const": "status-bar-fallback" },
+          "generation": { "type": "integer", "minimum": 1 },
+          "token": { "type": "string", "pattern": "^wbst_" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "api_base": { "type": "string", "format": "uri" },
+          "descriptor_schema_version": { "type": "integer", "const": 1 }
+        },
+        "additionalProperties": false
+      },
+      "PublisherBootstrapRedeemRequest": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/PublisherBootstrapRedeemV1Request" },
+          { "$ref": "#/components/schemas/PublisherBootstrapRedeemV2Request" }
+        ]
+      },
+      "PublisherBootstrapRedeemV1Request": {
+        "type": "object",
+        "required": ["token", "install_id", "install_target"],
+        "properties": {
+          "token": { "type": "string", "minLength": 32, "maxLength": 256 },
+          "install_id": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^wins_[A-Za-z0-9._-]{3,123}$" },
+          "install_target": { "type": "string", "enum": ["vscode", "cursor", "devin"] }
+        },
+        "additionalProperties": false
+      },
+      "PublisherBootstrapRedeemV2Request": {
+        "type": "object",
+        "required": ["token", "install_id", "install_target", "redeem_protocol", "api_key"],
+        "properties": {
+          "token": { "type": "string", "minLength": 32, "maxLength": 256 },
+          "install_id": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^wins_[A-Za-z0-9._-]{3,123}$" },
+          "install_target": { "type": "string", "enum": ["vscode", "cursor", "devin"] },
+          "redeem_protocol": { "type": "integer", "const": 2 },
+          "api_key": { "type": "string", "pattern": "^wts_live_[A-Za-z0-9_-]{43}$" }
+        },
+        "additionalProperties": false
+      },
+      "PublisherBootstrapRedeemResponse": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/PublisherBootstrapRedeemV1Response" },
+          { "$ref": "#/components/schemas/PublisherBootstrapRedeemV2Response" }
+        ]
+      },
+      "PublisherBootstrapRedeemV1Response": {
+        "type": "object",
+        "required": ["protocol_version", "credential_id", "api_key", "scopes", "device_id", "install_id", "install_target", "publisher_target", "generation"],
+        "properties": {
+          "protocol_version": { "type": "integer", "const": 1 },
+          "credential_id": { "type": "string" },
+          "api_key": { "type": "string", "pattern": "^wts_live_" },
+          "scopes": { "type": "array", "items": { "$ref": "#/components/schemas/Scope" }, "minItems": 4, "maxItems": 4 },
+          "device_id": { "type": "string" },
+          "install_id": { "type": "string" },
+          "install_target": { "type": "string", "enum": ["vscode", "cursor", "devin"] },
+          "publisher_target": { "type": "string", "const": "status-bar-fallback" },
+          "generation": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "PublisherBootstrapRedeemV2Response": {
+        "type": "object",
+        "required": ["protocol_version", "credential_id", "scopes", "device_id", "install_id", "install_target", "publisher_target", "generation"],
+        "properties": {
+          "protocol_version": { "type": "integer", "const": 2 },
+          "credential_id": { "type": "string" },
+          "scopes": { "type": "array", "items": { "$ref": "#/components/schemas/Scope" }, "minItems": 4, "maxItems": 4 },
+          "device_id": { "type": "string" },
+          "install_id": { "type": "string" },
+          "install_target": { "type": "string", "enum": ["vscode", "cursor", "devin"] },
+          "publisher_target": { "type": "string", "const": "status-bar-fallback" },
+          "generation": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "PublisherInstallationListResponse": {
+        "type": "object",
+        "required": ["protocol_version", "installations"],
+        "properties": {
+          "protocol_version": { "type": "integer", "const": 1 },
+          "installations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["install_id", "install_target", "publisher_target", "generation", "status", "confirmation_expires_at", "ready_at", "updated_at"],
+              "properties": {
+                "install_id": { "type": "string" },
+                "install_target": { "$ref": "#/components/schemas/MacosInstallTarget" },
+                "publisher_target": { "type": "string" },
+                "generation": { "type": "integer", "minimum": 1 },
+                "status": { "type": "string", "enum": ["preview_ready", "installed_credential_pending_activation", "ready", "conflict", "repair_required", "uninstalling", "removed", "failed_rollback"] },
+                "confirmation_expires_at": { "type": ["string", "null"], "format": "date-time" },
+                "ready_at": { "type": ["string", "null"], "format": "date-time" },
+                "updated_at": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "PublisherInstallationReadyResponse": {
+        "type": "object",
+        "required": ["ok", "status", "id", "install_target", "generation"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "status": { "type": "string", "const": "ready" },
+          "id": { "type": "string" },
+          "install_target": { "$ref": "#/components/schemas/MacosInstallTarget" },
+          "generation": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "PublisherInstallationRemovedResponse": {
+        "type": "object",
+        "required": ["ok", "status"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "status": { "type": "string", "const": "removed" }
+        },
+        "additionalProperties": false
       },
       "ListSubscribeRequest": {
         "type": "object",
@@ -766,25 +1500,120 @@
         },
         "additionalProperties": true
       },
+      "PurchaseOptionId": {
+        "type": "string",
+        "enum": ["single", "try_on", "growth", "launch", "custom"]
+      },
+      "FixedPurchaseOption": {
+        "type": "object",
+        "required": ["id", "label", "order", "kind", "blocks", "visible_impressions", "price_per_block_cents", "total_cents", "recommended", "available"],
+        "properties": {
+          "id": { "type": "string", "enum": ["single", "try_on", "growth", "launch"] },
+          "label": { "type": "string" },
+          "order": { "type": "integer", "minimum": 1 },
+          "kind": { "type": "string", "const": "fixed" },
+          "blocks": { "type": "integer", "minimum": 1 },
+          "visible_impressions": { "type": "integer", "minimum": 1000 },
+          "price_per_block_cents": { "type": "integer", "minimum": 100 },
+          "total_cents": { "type": "integer", "minimum": 100 },
+          "recommended": { "type": "boolean" },
+          "available": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "CustomPurchaseOption": {
+        "type": "object",
+        "required": ["id", "label", "order", "kind", "recommended", "available", "bounds"],
+        "properties": {
+          "id": { "type": "string", "const": "custom" },
+          "label": { "type": "string", "const": "Custom" },
+          "order": { "type": "integer", "const": 5 },
+          "kind": { "type": "string", "const": "custom" },
+          "recommended": { "type": "boolean", "const": false },
+          "available": { "type": "boolean" },
+          "bounds": {
+            "type": "object",
+            "required": ["blocks", "price_per_block_cents"],
+            "properties": {
+              "blocks": { "$ref": "#/components/schemas/IntegerBounds" },
+              "price_per_block_cents": { "$ref": "#/components/schemas/IntegerBounds" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "IntegerBounds": {
+        "type": "object",
+        "required": ["min", "max"],
+        "properties": {
+          "min": { "type": "integer" },
+          "max": { "type": "integer" }
+        },
+        "additionalProperties": false
+      },
+      "PurchaseOptionsResponse": {
+        "type": "object",
+        "required": ["version", "currency", "options"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "currency": { "type": "string", "const": "eur" },
+          "options": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/FixedPurchaseOption" },
+                { "$ref": "#/components/schemas/CustomPurchaseOption" }
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateCampaignRequest": {
         "type": "object",
-        "required": ["ad_line", "destination_url", "price_per_block_cents", "blocks"],
+        "required": ["ad_line", "destination_url"],
         "properties": {
           "ad_line": { "type": "string", "minLength": 3, "maxLength": 60 },
           "destination_url": { "type": "string", "format": "uri", "maxLength": 2048 },
           "brand_name": { "type": "string", "maxLength": 80 },
+          "purchase_option_id": { "$ref": "#/components/schemas/PurchaseOptionId" },
           "price_per_block_cents": { "type": "integer", "minimum": 100, "maximum": 100000 },
           "blocks": { "type": "integer", "minimum": 1, "maximum": 10000 }
         },
+        "anyOf": [
+          {
+            "required": ["purchase_option_id"],
+            "properties": {
+              "purchase_option_id": { "type": "string", "enum": ["single", "try_on", "growth", "launch"] }
+            },
+            "not": {
+              "anyOf": [
+                { "required": ["price_per_block_cents"] },
+                { "required": ["blocks"] }
+              ]
+            }
+          },
+          {
+            "required": ["purchase_option_id", "price_per_block_cents", "blocks"],
+            "properties": {
+              "purchase_option_id": { "type": "string", "const": "custom" }
+            }
+          }
+        ],
         "additionalProperties": false
       },
       "CreateCampaignResponse": {
         "type": "object",
-        "required": ["campaign_id", "block_purchase_id", "status", "blocks", "price_per_block_cents"],
+        "required": ["campaign_id", "block_purchase_id", "status", "purchase_option_id", "purchase_option_version", "blocks", "price_per_block_cents"],
         "properties": {
           "campaign_id": { "type": "string" },
           "block_purchase_id": { "type": "string" },
           "status": { "type": "string" },
+          "purchase_option_id": { "$ref": "#/components/schemas/PurchaseOptionId" },
+          "purchase_option_version": { "type": "integer", "minimum": 1 },
           "blocks": { "type": "integer" },
           "price_per_block_cents": { "type": "integer" }
         },
@@ -796,8 +1625,30 @@
         "properties": {
           "campaigns": {
             "type": "array",
-            "items": { "type": "object", "additionalProperties": true }
+            "items": { "$ref": "#/components/schemas/CampaignListItem" }
           }
+        },
+        "additionalProperties": false
+      },
+      "CampaignListItem": {
+        "type": "object",
+        "required": ["id", "ad_line", "destination_url", "brand_name", "status", "purchase_option_id", "purchase_status", "blocks_purchased", "price_per_block_cents", "units_remaining", "visible_impressions_purchased", "visible_impressions_served", "visible_impressions_remaining", "can_resume_payment", "can_repeat"],
+        "properties": {
+          "id": { "type": "string" },
+          "ad_line": { "type": "string" },
+          "destination_url": { "type": "string", "format": "uri" },
+          "brand_name": { "type": ["string", "null"] },
+          "status": { "type": "string" },
+          "purchase_option_id": { "oneOf": [{ "$ref": "#/components/schemas/PurchaseOptionId" }, { "type": "null" }] },
+          "purchase_status": { "type": ["string", "null"] },
+          "blocks_purchased": { "type": "integer", "minimum": 0 },
+          "price_per_block_cents": { "type": "integer", "minimum": 0 },
+          "units_remaining": { "type": "integer", "minimum": 0 },
+          "visible_impressions_purchased": { "type": "integer", "minimum": 0 },
+          "visible_impressions_served": { "type": "integer", "minimum": 0 },
+          "visible_impressions_remaining": { "type": "integer", "minimum": 0 },
+          "can_resume_payment": { "type": "boolean" },
+          "can_repeat": { "type": "boolean" }
         },
         "additionalProperties": false
       },
@@ -881,7 +1732,17 @@
         "required": ["install_id"],
         "properties": {
           "install_id": { "type": "string", "minLength": 8, "maxLength": 128 },
-          "slot_id": { "type": "string", "maxLength": 64 }
+          "slot_id": { "type": "string", "maxLength": 64 },
+          "capabilities": {
+            "type": "array",
+            "maxItems": 4,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": ["view_event_v1", "tracked_click_v1"]
+            },
+            "description": "Optional measurement capabilities; omission preserves the legacy CPM response."
+          }
         },
         "additionalProperties": false
       },
@@ -903,7 +1764,8 @@
         "properties": {
           "line": { "type": "string" },
           "destination_url": { "type": "string", "format": "uri" },
-          "campaign_id": { "type": "string" }
+          "campaign_id": { "type": "string" },
+          "click_url": { "type": "string", "format": "uri" }
         },
         "additionalProperties": true
       },
@@ -926,6 +1788,25 @@
           "billed_micro_units": { "type": "integer", "minimum": 0 }
         },
         "additionalProperties": true
+      },
+      "ViewEventRequest": {
+        "type": "object",
+        "required": ["serve_id", "serve_receipt", "install_id"],
+        "properties": {
+          "serve_id": { "type": "string", "minLength": 8, "maxLength": 64 },
+          "serve_receipt": { "type": "string", "minLength": 32, "maxLength": 2048 },
+          "install_id": { "type": "string", "minLength": 8, "maxLength": 128 }
+        },
+        "additionalProperties": false
+      },
+      "ViewEventResponse": {
+        "type": "object",
+        "required": ["ok", "recorded"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "recorded": { "type": "boolean" }
+        },
+        "additionalProperties": false
       },
       "WalletStatusResponse": {
         "type": "object",

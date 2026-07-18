@@ -13,11 +13,13 @@
     "waitspin:build": "npm --workspace packages/waitspin run build",
     "waitspin:extension:build": "npm --workspace extensions/waitspin-vscode run compile",
     "waitspin:package-smoke": "node scripts/waitspin-package-smoke.mjs",
+    "waitspin:vscode:release-integrity:test": "node --test scripts/waitspin-vscode-artifact-policy.test.mjs",
+    "waitspin:provenance:check": "node scripts/waitspin-public-tree-check.mjs",
     "waitspin:trust-boundary": "node scripts/public-trust-boundary-test.mjs",
-    "waitspin:ci": "npm run waitspin:build && npm run waitspin:extension:build && npm run openapi:lint && npm run waitspin:package-smoke && npm run waitspin:trust-boundary"
+    "waitspin:ci": "npm run waitspin:provenance:check && npm run waitspin:build && npm run waitspin:extension:build && npm run openapi:lint && npm run waitspin:package-smoke && npm run waitspin:vscode:release-integrity:test && npm run waitspin:trust-boundary"
   },
   "devDependencies": {
-    "@redocly/cli": "^2.33.0",
+    "@redocly/cli": "^2.38.0",
     "@vscode/vsce": "^3.9.2",
     "typescript": "5.9.2",
     "yauzl": "^3.4.0",

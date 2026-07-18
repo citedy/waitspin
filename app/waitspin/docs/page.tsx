@@ -86,7 +86,7 @@ const endpoints = [
     "POST",
     "/v1/serve/next",
     "serve:read",
-    "Return the next sponsored message, or 204 when no inventory is available.",
+    "Return the next sponsored message, 204 for genuine empty inventory, or 503 with Retry-After when capacity is temporarily exhausted.",
   ],
   [
     "POST",
@@ -171,7 +171,9 @@ response: { "publisher_id": "wpub_...", "install_id": "wins_...", "target": "sta
 
 POST /v1/serve/next
 request:  { "install_id": "wins_...", "slot_id": "optional" }
-response: 204, or { "serve_id": "wss_...", "creative": { "line": "...", "destination_url": "https://example.com", "campaign_id": "wcamp_..." }, "min_visible_ms": 5000, "expires_at": "...", "serve_receipt": "wtsr_v1..." }
+empty:    204 No Content only after an admitted inventory lookup finds no eligible campaign
+overload: 503 Service Unavailable with Retry-After: 2; clients must retain their current state and retry
+response: { "serve_id": "wss_...", "creative": { "line": "...", "destination_url": "https://example.com", "campaign_id": "wcamp_..." }, "min_visible_ms": 5000, "expires_at": "...", "serve_receipt": "wtsr_v1..." }
 
 POST /v1/events/impression
 request:  { "serve_id": "wss_...", "serve_receipt": "wtsr_v1...", "install_id": "wins_...", "visible_ms": 5000 }
@@ -573,8 +575,7 @@ export default function WaitSpinDocsPage() {
         <p>
           CLI setup remains an advanced local lifecycle path:{" "}
           <code>
-            waitspin extension install --target vscode --api-key
-            KEY_FROM_JSON
+            waitspin extension install --target vscode
           </code>
           , <code>waitspin extension install --target cursor</code>, or{" "}
           <code>waitspin extension install --target devin</code>. Cursor and
@@ -603,14 +604,14 @@ npx --yes waitspin status --all --demo --json
 npx skills add citedy/waitspin
 npm view waitspin version
 npx --yes waitspin init --email you@example.com --key-profile control
-export WAITSPIN_API_KEY=KEY_FROM_JSON
+read -rs WAITSPIN_API_KEY && export WAITSPIN_API_KEY && printf '\n'
 waitspin bid create --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1
 waitspin bid checkout CAMPAIGN_ID
 npx --yes waitspin init --email you@example.com --key-profile publisher-extension
 
 # Advanced agent install for detected supported targets
-waitspin install --all --dry-run --api-key KEY_FROM_JSON --compose-existing
-waitspin install --all --api-key KEY_FROM_JSON --compose-existing
+waitspin install --all --dry-run --compose-existing
+waitspin install --all --compose-existing
 waitspin status --all
 
 # VS Code user extension
@@ -632,35 +633,35 @@ waitspin extension uninstall --target devin
 # Then run "WaitSpin: Connect and earn" in the matching editor.
 
 # VS Code CLI fallback:
-waitspin extension install --target vscode --api-key KEY_FROM_JSON
+waitspin extension install --target vscode
 waitspin extension status --target vscode
 
 # Claude Code statusline
-waitspin claude-code install --api-key KEY_FROM_JSON --compose-existing
+waitspin claude-code install --compose-existing
 waitspin claude-code status
 
 # Antigravity CLI statusline
-waitspin antigravity install --api-key KEY_FROM_JSON --compose-existing
+waitspin antigravity install --compose-existing
 waitspin antigravity status
 
 # GitHub Copilot CLI statusline
-waitspin copilot install --api-key KEY_FROM_JSON --compose-existing
+waitspin copilot install --compose-existing
 waitspin copilot status
 
 # MiMo Code shell hook
-waitspin mimocode install --api-key KEY_FROM_JSON
+waitspin mimocode install
 waitspin mimocode status
 
 # OpenCode TUI plugin slot
-waitspin opencode install --api-key KEY_FROM_JSON
+waitspin opencode install
 waitspin opencode status
 
 # Grok Code CLI footer
-waitspin grok install --api-key KEY_FROM_JSON
+waitspin grok install
 waitspin grok status
 
 # Qoder CLI UserPromptSubmit/Stop hooks
-waitspin qoder install --api-key KEY_FROM_JSON
+waitspin qoder install
 waitspin qoder status`}
         </pre>
         <p>
@@ -703,7 +704,12 @@ waitspin qoder status`}
         <p>
           Successful JSON responses include route-specific fields and no cache
           storage for authenticated control routes. Empty inventory returns{" "}
-          <code>204 No Content</code>. Client errors use standard HTTP status
+          <code>204 No Content</code> only after an admitted inventory lookup
+          finds no eligible campaign. Temporary serve-capacity exhaustion
+          returns <code>503 Service Unavailable</code> with{" "}
+          <code>Retry-After: 2</code>; clients must retain their current state and
+          retry instead of treating overload as empty inventory. Client errors
+          use standard HTTP status
           codes such as <code>400</code>, <code>401</code>, <code>403</code>,{" "}
           <code>409</code>, <code>422</code>, and <code>429</code> with a JSON
           error body; rate limits may include <code>Retry-After</code>.

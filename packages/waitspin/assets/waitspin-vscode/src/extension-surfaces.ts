@@ -57,7 +57,7 @@ class PublisherViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
-function statusBarWalletText(status: WalletStatus | undefined): string {
+export function statusBarWalletText(status: WalletStatus | undefined): string {
   if (!status) {
     return "WaitSpin polling";
   }
@@ -145,7 +145,7 @@ export class PublisherSurfaces {
       return;
     }
 
-    if (this.state.inventoryStatus === "empty") {
+    if (this.state.inventoryStatus === "empty" && !this.state.walletStatus) {
       item.text = "$(circle-slash) WaitSpin no inventory";
     } else if (this.state.inventoryStatus === "error") {
       item.text = "$(warning) WaitSpin retrying";

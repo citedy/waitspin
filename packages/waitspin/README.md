@@ -46,6 +46,7 @@ export WAITSPIN_API_KEY=PASTE_CONTROL_KEY
 waitspin bid create --line "Your ad" --url https://example.com --price-per-block 500 --blocks 1
 waitspin bid checkout CAMPAIGN_ID
 npx --yes waitspin init --email you@example.com --key-profile publisher-extension
+read -rs WAITSPIN_API_KEY && export WAITSPIN_API_KEY && printf '\n'
 
 # First-class VS Code-compatible user paths
 code --install-extension waitspin.waitspin-vscode
@@ -62,40 +63,40 @@ waitspin extension status --target devin
 waitspin extension uninstall --target devin
 
 # Advanced agent install for every detected all-install target
-waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
-waitspin install --all --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+waitspin install --all --dry-run --compose-existing
+waitspin install --all --compose-existing
 waitspin status --all
 
 # CLI fallback for VS Code Activity Bar/status-bar extension
-waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin extension install --target vscode
 waitspin extension status --target vscode
 
 # Or install for Claude Code statusline
-waitspin claude-code install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+waitspin claude-code install --compose-existing
 waitspin claude-code status
 
 # Or install for Antigravity CLI statusline
-waitspin antigravity install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+waitspin antigravity install --compose-existing
 waitspin antigravity status
 
 # Or install for GitHub Copilot CLI statusline
-waitspin copilot install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+waitspin copilot install --compose-existing
 waitspin copilot status
 
 # Or install for MiMo Code shell hook
-waitspin mimocode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin mimocode install
 waitspin mimocode status
 
 # Or install for OpenCode TUI plugin slot
-waitspin opencode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin opencode install
 waitspin opencode status
 
 # Or install for Grok Code CLI footer
-waitspin grok install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin grok install
 waitspin grok status
 
 # Or install for Qoder CLI UserPromptSubmit/Stop hooks
-waitspin qoder install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+waitspin qoder install
 waitspin qoder status
 ```
 
@@ -117,7 +118,7 @@ Done means the CLI returns the created campaign or install ID, and the matching
 - `cursor --install-extension waitspin.waitspin-vscode --force` — install or update the same VS Code-compatible extension in Cursor Editor Mode
 - `devin-desktop --install-extension waitspin.waitspin-vscode --force` — install or update the same extension in Devin Desktop from Open VSX when the desktop CLI is on PATH
 - `WaitSpin: Connect and earn` — connect the VS Code-compatible extension from inside the matching editor
-- `waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY` — advanced CLI fallback for VS Code extension setup
+- `waitspin extension install --target vscode` — advanced CLI fallback for VS Code extension setup
 - `waitspin extension status --target vscode` — inspect managed VS Code extension lifecycle state
 - `waitspin extension uninstall --target vscode` — remove the managed VS Code extension runtime and local state
 - `waitspin extension install --target cursor` — install or update the extension through the Cursor editor CLI
@@ -193,27 +194,28 @@ user install polling/events:
 
 ```bash
 npx waitspin init --email you@example.com --key-profile publisher-extension
+read -rs WAITSPIN_API_KEY && export WAITSPIN_API_KEY && printf '\n'
 code --install-extension waitspin.waitspin-vscode
 cursor --install-extension waitspin.waitspin-vscode --force
 devin-desktop --install-extension waitspin.waitspin-vscode --force
 # Then run "WaitSpin: Connect and earn" inside the matching editor.
-npx waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
-npx waitspin install --all --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
+npx waitspin install --all --dry-run --compose-existing
+npx waitspin install --all --compose-existing
 npx waitspin status --all
-npx waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
+npx waitspin extension install --target vscode
 npx waitspin extension install --target cursor
 npx waitspin extension status --target cursor
 npx waitspin extension uninstall --target cursor
 npx waitspin extension install --target devin
 npx waitspin extension status --target devin
 npx waitspin extension uninstall --target devin
-npx waitspin claude-code install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
-npx waitspin antigravity install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
-npx waitspin copilot install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing
-npx waitspin mimocode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
-npx waitspin opencode install --api-key PASTE_PUBLISHER_EXTENSION_KEY
-npx waitspin grok install --api-key PASTE_PUBLISHER_EXTENSION_KEY
-npx waitspin qoder install --api-key PASTE_PUBLISHER_EXTENSION_KEY
+npx waitspin claude-code install --compose-existing
+npx waitspin antigravity install --compose-existing
+npx waitspin copilot install --compose-existing
+npx waitspin mimocode install
+npx waitspin opencode install
+npx waitspin grok install
+npx waitspin qoder install
 ```
 
 - `WAITSPIN_API_KEY` — temporary extension API key for CLI fallback flows
@@ -224,9 +226,9 @@ The VS Code Marketplace extension should normally be connected through
 Code-compatible SecretStorage and stores the install ID in user-scoped extension
 state. Cursor uses the same extension ID, and Devin Desktop uses the Open VSX
 listing at `https://open-vsx.org/extension/waitspin/waitspin-vscode`. The legacy
-`waitspin.apiKey` User setting is still migrated into SecretStorage for
-fallback/rotation, but normal user operation does not require copying install
-IDs or broad control keys into workspace settings.
+`waitspin.apiKey` User setting is not accepted; raw credentials never enter
+editor settings. Normal editor onboarding writes directly to SecretStorage,
+while the macOS app uses one-time target-bound bootstrap descriptors.
 
 The Claude Code installer writes a managed statusline runtime/state under
 `~/.waitspin` and updates `~/.claude/settings.json` with a safe

@@ -7,6 +7,7 @@ coverage/
 !.env.example
 *.log
 *.vsix
+!packages/waitspin/assets/waitspin-vscode/waitspin-vscode.vsix
 *.tsbuildinfo
 .DS_Store
 infra/waitspin-vps/secrets/
@@ -55,3 +56,9 @@ docs/waitspin/promo/youtube/*
 !docs/waitspin/promo/youtube/remotion/**
 docs/waitspin/promo/youtube/remotion/node_modules/
 docs/waitspin/promo/youtube/out/
+
+# Python operator tooling
+__pycache__/
+*.py[cod]
+.ci-postgres-account-deletion/
+test-results/

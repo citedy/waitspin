@@ -1,0 +1,666 @@
+{
+  "schema_version": 1,
+  "tree_sha256": "935c6b892f893c70c474ab3c9cb1277c547705781cdff0cde60c721570eb621d",
+  "files": [
+    {
+      "path": ".github/workflows/public-ci.yml",
+      "sha256": "7368dd3ce50be5155e974daedb14b93b4c0956cb9ed9685a44eda9e15fd2dcf9"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "8eef2c05c34c446d207093c5d29e0cdbcf398add2a7c37113107693669ccd97f"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+    },
+    {
+      "path": "NOTICE",
+      "sha256": "8a083e379370dc23a625f4c3c21a8620c491b2b6afba63a5fa0b82413e42c8ca"
+    },
+    {
+      "path": "README.md",
+      "sha256": "6f7321d6ff9e9f4f0d85b42f6638d2840b9d949937af53c7fd60dee398243806"
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "d7a2dfc6a8707e5590bf278b478a5ea4690cab0f5d240ef3386e08d20e634b4e"
+    },
+    {
+      "path": "TRUST.md",
+      "sha256": "64b7ab821748867de737663443d40663c08b72d8e1647945f4e639e4f03afd29"
+    },
+    {
+      "path": "app/.well-known/agents.md/route.ts",
+      "sha256": "33f45a0483a8b4abfcdcdb6e3d3b0054c279427d58d8706e21baca96826ecfea"
+    },
+    {
+      "path": "app/llms.txt/route.ts",
+      "sha256": "ec9d514402748b4778c28f2739e404811ea748d039249130e4279077441ac0c8"
+    },
+    {
+      "path": "app/quickstart.md/route.ts",
+      "sha256": "73959b3affb61156a0a4c0adc64aeedf342f987775f77a8ba021709e3a6b3839"
+    },
+    {
+      "path": "app/waitspin/WaitSpinTurnstile.tsx",
+      "sha256": "b4ea1132fb7ee6a0ce61e0872faac15c5232d4d2d694dee57d69111e837bb749"
+    },
+    {
+      "path": "app/waitspin/agents.md/route.ts",
+      "sha256": "33f45a0483a8b4abfcdcdb6e3d3b0054c279427d58d8706e21baca96826ecfea"
+    },
+    {
+      "path": "app/waitspin/docs/page.tsx",
+      "sha256": "6e7716a8c67b7b02f7bdd231bd455a46463c820800ada1e82d4d8e2150ea2c47"
+    },
+    {
+      "path": "app/waitspin/legal-content.tsx",
+      "sha256": "fed6cb41d94cb0bf7719eb0d5f2b864964e2b3ed362dd95d3379ddb17469ffff"
+    },
+    {
+      "path": "app/waitspin/privacy/page.tsx",
+      "sha256": "86a5eb2e7f15cc754fe220ca53ef42c5f9c7d2853510a3e38a92333381b93560"
+    },
+    {
+      "path": "app/waitspin/public-surface-copy-label.tsx",
+      "sha256": "a138a5d00ab769cdced3750a5b29fd07109fa67757a34caf6339f6ad345650cb"
+    },
+    {
+      "path": "app/waitspin/terms/page.tsx",
+      "sha256": "c8000c6fc0a27d5934d431e121c446f1b52f45c7f1fdcab1b04aa74d65236ec6"
+    },
+    {
+      "path": "app/waitspin/trust/page.tsx",
+      "sha256": "10b96b56cadf0385f342c831c1e5e884113c73e930cdc097510498438ececf41"
+    },
+    {
+      "path": "app/wallet/connect/WalletConnectCodeInput.tsx",
+      "sha256": "64c4b5ff17684020f219fdb3a6d4415f8950bd281d06a66620f604cc8edc78de"
+    },
+    {
+      "path": "app/wallet/connect/WalletConnectRequestForm.tsx",
+      "sha256": "16cf6ae10d1f897e412e30b069d14f409219dfc226f2ba04e01d81844bd4027a"
+    },
+    {
+      "path": "app/wallet/connect/page.tsx",
+      "sha256": "05ed1c343b1351c0d24ac4be6e980e05b0d7cb5b96478c6dabf6e5acfeeb75a3"
+    },
+    {
+      "path": "docs/DATA_BOUNDARY.md",
+      "sha256": "f33d72684ed3a51d13586cf10a205c9c9b788832d3d6dd934cdbaffc84d02e83"
+    },
+    {
+      "path": "docs/PUBLISHER_SURFACES.md",
+      "sha256": "84da957951218d4c91c7df9b90cbce6735cdc74a268bd638112bd0cd754edf9c"
+    },
+    {
+      "path": "extensions/waitspin-vscode/.vscodeignore",
+      "sha256": "2fb1d4f47621ad2063d35b1d4f323c45fb70a7dc7d8f1ada4b7535d6cd16df08"
+    },
+    {
+      "path": "extensions/waitspin-vscode/LICENSE.txt",
+      "sha256": "7704ca542fac744d1a26a02ca7cfbd15b45c08f5f594b853544e104c264eb38e"
+    },
+    {
+      "path": "extensions/waitspin-vscode/README.md",
+      "sha256": "4daed518026cfce9a4a257e720328d59766eaf8ac7bc7acee7fa2773e24696c0"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-activation-lock.test.ts",
+      "sha256": "ee7241b1df0cf5d549ca966cbbef304450caa1df457d02ffbec5dfd92c07ac8d"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-activation-retry.test.ts",
+      "sha256": "aeae63004e4bbe6d2eec31b4aa65b181f82022f2758fde6cfe3a418369ac0bf5"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-activation-state.test.ts",
+      "sha256": "1836c57579759d99222aeacd7e904205ca9dbefef5fb076ae8be9a8ad5e9be13"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-core.test.ts",
+      "sha256": "9217579036f7559d270dcb0adecde650dcec25995bc9fbec16470d28285a2490"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-managed-activation.test.ts",
+      "sha256": "0fc9d64374ea156fbbaef1b5e39fad7cc5fc367852157dc0f7be19d9288eb1de"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-managed-failures.test.ts",
+      "sha256": "53004377e82f63b267369b43e81aa30cb36d724ed45c630031410e8451e490aa"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-onboarding.test.ts",
+      "sha256": "69b3fc5011bf9453d02cbdf1200ddf67de91cdd78c5fe0b2c40b0f67ad0f61a8"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-sponsor.test.ts",
+      "sha256": "3cdae11ca53968e3cb82ffa6c03ec17fdaddfd24162fd718bc311b796a7f38f6"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-state.test.ts",
+      "sha256": "d381059860c12595ff00f47dcb4fcc473453d6ad43a91c9fe550130a03977b2e"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-surfaces.test.ts",
+      "sha256": "d4243ac972589be9abfcbe4580e991b7afc5600f8b6533b431fb4aa1813f0034"
+    },
+    {
+      "path": "extensions/waitspin-vscode/__tests__/extension-wallet.test.ts",
+      "sha256": "4ece16142a08a33b48fa331f9a45d4923915996b8f19cdf4d8fd6f8abccc6c57"
+    },
+    {
+      "path": "extensions/waitspin-vscode/media/waitspin-activitybar.svg",
+      "sha256": "3d8afa7b18b11d01e47bbdc7426371b8f18a29f4f0e7bc8224542c3acb35cf9c"
+    },
+    {
+      "path": "extensions/waitspin-vscode/media/waitspin-icon.png",
+      "sha256": "c483da51bb46b08aaba2a2c0ac71e4041fae0391f1d812900c444b745d34f50d"
+    },
+    {
+      "path": "extensions/waitspin-vscode/media/waitspin-icon.svg",
+      "sha256": "2740006f21faac97ac90274cf9524b6e51b0a15abb9a3a7e3abb02d1d5a8162b"
+    },
+    {
+      "path": "extensions/waitspin-vscode/package-lock.json",
+      "sha256": "3d30a431018f67f491ec22dc3457fdee273f6e39a91b7f1f1004337b70712635"
+    },
+    {
+      "path": "extensions/waitspin-vscode/package.json",
+      "sha256": "7cb80856d59181dc22f5971b35e25f9f05d0379dd3360d68177ed078464145a0"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-activation-lock.ts",
+      "sha256": "c3b96c9653d4a7274d381815223a333e7af5c7fd582678c8bf77ac080e4c91cd"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-activation-retry.ts",
+      "sha256": "eaaea1989f6c49f7243c7516e4d8b4565e7dc011689364b9c36f03d0017b38f3"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-activation-state.ts",
+      "sha256": "a519a94b7861aad12d195b5d9db3a614021a8e675e02b22768304a4477caf05f"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-core.ts",
+      "sha256": "2796f1f7aa1918286f6ffa8d0c8de3c503130148e56bab22373f2667bacfaaf4"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-html.ts",
+      "sha256": "e9423779bffded7a96fa0607d07a3d6381f79323dc8258a8979084361454d537"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-managed-activation.ts",
+      "sha256": "125365e2c146306b1635df1f8aa52bf79eb486753785860f567e5b3ec3645664"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-manual-activation.ts",
+      "sha256": "b893af2c4e101fb30d73c9f684c58e5ebaf19a53e111f89cc221e10a95a34752"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-onboarding.ts",
+      "sha256": "9279dea35348674c8f151cacba8e3c3b1e53a4634db71d42e6c74cf2eb3f34cd"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-sponsor.ts",
+      "sha256": "6bf94f50da882c1c5cbf1cf4f0ef5a483af06bf08740e16b082ddb60a8062f31"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-state.ts",
+      "sha256": "3a4b4061209bb53e449d4a633fc024d1610e9b2bc7729711111e53c9125e0f3b"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-surfaces.ts",
+      "sha256": "2502f16fe85789746674c738bfe7e375a40c4bb390cab02ac5d009fc717f4b32"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-wallet-view.ts",
+      "sha256": "48ccc639753fb1f888139c3161f2d8bc2174a220833433083b3d405c7d5c3e42"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension-wallet.ts",
+      "sha256": "ce44c14f1d04324c90c5f0564e34befcc8a3da6f14887b85d418f6feba977f04"
+    },
+    {
+      "path": "extensions/waitspin-vscode/src/extension.ts",
+      "sha256": "9392228b06b76e1c58bb3e71f00a1e4c083b8f4bb7c617121936756d6b6013d6"
+    },
+    {
+      "path": "extensions/waitspin-vscode/tsconfig.json",
+      "sha256": "05696b3395cac6c8e9b3c1e7e3a25a36b212d5cb4acd70e58b5ba4a4d41d279a"
+    },
+    {
+      "path": "lib/waitspin/agent-docs.ts",
+      "sha256": "faf61366840f360303e8cc843bcae7631c816b3f4d4b6fa2bf64f08064260dbb"
+    },
+    {
+      "path": "lib/waitspin/payout-connect-web.ts",
+      "sha256": "df0291dd13c2824a9f2cb4186d6893ffec76f01f1682aa99dee04a5a3c09e2f0"
+    },
+    {
+      "path": "lib/waitspin/public-trust.ts",
+      "sha256": "036dca79a0f9d6314dc1cfb2c0879f52481fd6f40d31b887f262cf9e99fcae83"
+    },
+    {
+      "path": "lib/waitspin/publisher-connect-countries.ts",
+      "sha256": "da19b343c5e09648376f9a47d75a5745382515ac94db2c8dc916be24f6b2073b"
+    },
+    {
+      "path": "lib/waitspin/vscode-marketplace-status.ts",
+      "sha256": "656e5c73f67f6c1e3c37b89685d822fee429d3e07a04ca920ef369bd873994e4"
+    },
+    {
+      "path": "openapi/waitspin-api.openapi.json",
+      "sha256": "9d08b69e0d9e708042d866384750cc1e8c963c4de1580af6a3b4cec54018f4cb"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "17fc94a5a1be58eb0f52e3dfdba5651e18e567ac16dd8f685aa9d423d6b50a36"
+    },
+    {
+      "path": "package.json",
+      "sha256": "0cd6c94e8bbf063bf6628250321567176756bfbe82f7f67392582504757cc5d0"
+    },
+    {
+      "path": "packages/waitspin/README.md",
+      "sha256": "2a9d89485026602c4e2c1609272e7a476680d60d564719cfa6f9f9ec20d59dfb"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-mimocode/README.md",
+      "sha256": "9d60ce82919a580a0c8eeedae6b90674416fdb81c54db0b930a2a4b729443b7a"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-mimocode/mimocode-install.sh",
+      "sha256": "b6717b96402f4886f0edf941b8bcaab2e3c622c7b3912a4c1c1ea8b73f8d7713"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-mimocode/mimocode-runtime.sh",
+      "sha256": "baf69a72f6e89e373ea89363cb3668a7a340997a038c0235b77a6ab106e0ed81"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-mimocode/mimocode-status.sh",
+      "sha256": "8aefd420ce4eb684ffe143943b8ef1ce33cfc1b990671d407bf975722a2bb13c"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-mimocode/mimocode-uninstall.sh",
+      "sha256": "4d5b180520df8e2f958b6ab49ab7010d7180a3a5e88876635c3b8cf72df40d85"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-opencode/opencode-statusline.mjs",
+      "sha256": "648aebba442f0bd23fb3ee7878f911d9b67d09c326a29a0b23adcec84a14c2d0"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-opencode/waitspin-opencode.plugin.ts",
+      "sha256": "9093036733348088166e15d260e907f69afa56bfc92e5315273c48e258d5beda"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-opencode/waitspin-opencode.plugin.tsx",
+      "sha256": "43563ab3a44b81f31b4c7dd2330bbdfa9eb439939e45f3379446cb6ef9962229"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/media/waitspin-activitybar.svg",
+      "sha256": "3d8afa7b18b11d01e47bbdc7426371b8f18a29f4f0e7bc8224542c3acb35cf9c"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/media/waitspin-icon.png",
+      "sha256": "c483da51bb46b08aaba2a2c0ac71e4041fae0391f1d812900c444b745d34f50d"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/media/waitspin-icon.svg",
+      "sha256": "2740006f21faac97ac90274cf9524b6e51b0a15abb9a3a7e3abb02d1d5a8162b"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-lock.js",
+      "sha256": "4f6d2a4128352c3fd14c2473d1ffa1cdf3efa584b09377edc789fb124d6140ea"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-lock.js.map",
+      "sha256": "df1154ea9fe7370bd6db285d9c0ad36a7f190391df086152826d310a9e880917"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-retry.js",
+      "sha256": "c85c7d2efa4cb5cd181c2f77d0b2662fe6000a8573d46f9000c6e7b9150bacc9"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-retry.js.map",
+      "sha256": "6975221d87f608567d6e1e2423a64ac92224825908690ff396ecac40e5fb9ecb"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-state.js",
+      "sha256": "0f4eeb411720c82929ff307da30ede613b0fd52abf730951986584d0b3b914db"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-state.js.map",
+      "sha256": "ad3a290dad57050c1a1a91ad4af857c5a291d5d4f96cadfe237bcc61aab5ce57"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-core.js",
+      "sha256": "319944a63d8e18cd0fc177a4195f2e5ae516327ee3e50e05819027843834b414"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-core.js.map",
+      "sha256": "d36cc92d005d1baea186153b28183d3fe1b6b8019c0de12ec3263e6410842ba8"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-html.js",
+      "sha256": "1d3082a9ec5431d062371b5a32445032886b23b62ace984043a8310149ec0c8e"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-html.js.map",
+      "sha256": "f63287b8a3b1afe3464a94bd5ff203881e4eb6d95ce940f96ce1efa81aeeb493"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-managed-activation.js",
+      "sha256": "ff0fd9aba7c5e7fe81ba07e3d952e2fb0aa7b5ab60a7b33b43b00fda53c7e299"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-managed-activation.js.map",
+      "sha256": "783d3cb374a7a8ecb3617a0512ac8047711b87c05938c7124edc57c521ac2e57"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-manual-activation.js",
+      "sha256": "2bab5746ae6c6809183107315fd77c8082d9b5febfa9a1215b8ebb14284f429e"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-manual-activation.js.map",
+      "sha256": "c3ea57d156d4aceab520a6d14104a3dd98b389d6cf47473c08d765f0e06edaf5"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-onboarding.js",
+      "sha256": "00c11be19a5cdca81a2de484dd6a90c17b873113edbf49cf0becede5f276a77d"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-onboarding.js.map",
+      "sha256": "5b62fa3a8627b860ef4c26f5735412e7bb32ee873d3a63546e4d6a32bbab7020"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-sponsor.js",
+      "sha256": "a24b536f7ddbb6810fefea4c62d0ffc5dcd2736e2fbc7290cc908bf2efefd7d6"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-sponsor.js.map",
+      "sha256": "2949dc2d1ca43f3def462470b13745df7a7e0944e47f8c9dda513f0e3687a4d6"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-state.js",
+      "sha256": "28c4e2d4a3f68c869e8305cf45b265a48fe84af3f8e6445e57aff922ca0f960a"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-state.js.map",
+      "sha256": "27501036780f8709cf67dcdc52a3dc431bc5299552f8ef312e968b42aa5599a0"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-surfaces.js",
+      "sha256": "baff5952495567fb26bdc9c0a9287ffd573cfe944720895019bb9de7cb007eb8"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-surfaces.js.map",
+      "sha256": "071ff8f1b444d90156709c21f69b4fc52b027e51e50540b62f9ca72eb92f57c1"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-wallet-view.js",
+      "sha256": "7e437e30b716598c31f5336e1c55d2c393586fc7642a2956f0fff95335240628"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-wallet-view.js.map",
+      "sha256": "3d50e978f64b88aadb69afb008cbb5a212bb03735205b5365622c81462cf00e8"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-wallet.js",
+      "sha256": "f56db817de8a74f0e1ac846813be8edaf22a4237eaf88d91606ce7a9c9610006"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension-wallet.js.map",
+      "sha256": "b73c38a81badfb12f48b867676385c216920b128f53ade8f2f2421cfc8f7962c"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension.js",
+      "sha256": "37e97e2a2680fae5b8a5bfd7cf75769a0583990f0307cb7f66666ab33d1f6517"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/out/extension.js.map",
+      "sha256": "2c99c2333efc8b673328a41829fc6323b023e30afbae08757783dc9188c87fa4"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/package-lock.json",
+      "sha256": "3d30a431018f67f491ec22dc3457fdee273f6e39a91b7f1f1004337b70712635"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/package.json",
+      "sha256": "7cb80856d59181dc22f5971b35e25f9f05d0379dd3360d68177ed078464145a0"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-activation-lock.ts",
+      "sha256": "c3b96c9653d4a7274d381815223a333e7af5c7fd582678c8bf77ac080e4c91cd"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-activation-retry.ts",
+      "sha256": "eaaea1989f6c49f7243c7516e4d8b4565e7dc011689364b9c36f03d0017b38f3"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-activation-state.ts",
+      "sha256": "a519a94b7861aad12d195b5d9db3a614021a8e675e02b22768304a4477caf05f"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-core.ts",
+      "sha256": "2796f1f7aa1918286f6ffa8d0c8de3c503130148e56bab22373f2667bacfaaf4"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-html.ts",
+      "sha256": "e9423779bffded7a96fa0607d07a3d6381f79323dc8258a8979084361454d537"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-managed-activation.ts",
+      "sha256": "125365e2c146306b1635df1f8aa52bf79eb486753785860f567e5b3ec3645664"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-manual-activation.ts",
+      "sha256": "b893af2c4e101fb30d73c9f684c58e5ebaf19a53e111f89cc221e10a95a34752"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-onboarding.ts",
+      "sha256": "9279dea35348674c8f151cacba8e3c3b1e53a4634db71d42e6c74cf2eb3f34cd"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-sponsor.ts",
+      "sha256": "6bf94f50da882c1c5cbf1cf4f0ef5a483af06bf08740e16b082ddb60a8062f31"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-state.ts",
+      "sha256": "3a4b4061209bb53e449d4a633fc024d1610e9b2bc7729711111e53c9125e0f3b"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-surfaces.ts",
+      "sha256": "2502f16fe85789746674c738bfe7e375a40c4bb390cab02ac5d009fc717f4b32"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-wallet-view.ts",
+      "sha256": "48ccc639753fb1f888139c3161f2d8bc2174a220833433083b3d405c7d5c3e42"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension-wallet.ts",
+      "sha256": "ce44c14f1d04324c90c5f0564e34befcc8a3da6f14887b85d418f6feba977f04"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/src/extension.ts",
+      "sha256": "9392228b06b76e1c58bb3e71f00a1e4c083b8f4bb7c617121936756d6b6013d6"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/tsconfig.json",
+      "sha256": "05696b3395cac6c8e9b3c1e7e3a25a36b212d5cb4acd70e58b5ba4a4d41d279a"
+    },
+    {
+      "path": "packages/waitspin/assets/waitspin-vscode/waitspin-vscode.vsix",
+      "sha256": "6bae6074fc50f0002eabc766796340eae1228fb01abeb75a585ad2ed7acafd4a"
+    },
+    {
+      "path": "packages/waitspin/package.json",
+      "sha256": "adacfba32ae742de0bb2ba2f44492f7309523c341ba104a169fe81c053e4f2a5"
+    },
+    {
+      "path": "packages/waitspin/scripts/build.mjs",
+      "sha256": "f773afb13a38f158d45a62f183b6173697af40c77d6ef7b503142167222fd4fa"
+    },
+    {
+      "path": "packages/waitspin/scripts/build.test.mjs",
+      "sha256": "05279d2d73270b034f823d9a951d6ea4e460c9fb30aa58225282e3acd14b7479"
+    },
+    {
+      "path": "packages/waitspin/scripts/sync-vscode-extension-assets.mjs",
+      "sha256": "973ea8d9ca07f204c08a44902b8f63cbde8413d2b4fb3c1734e096fc3439ca53"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/cli-extension-install.test.ts",
+      "sha256": "898869af8acc812aba21a2ee6875c71c5d5721c51f34b1fe089d0907c0b40bef"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/cli-format.test.ts",
+      "sha256": "b18e8ee618ca7793139f4f784e05e43313c26a0fd22af589c9e102390e2dac9f"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/cli-hidden-statusline-targets.test.ts",
+      "sha256": "f209afa6c96a9a562dbf33aaa023e36165aaca6c429c8a9eaea14f517ebf9eca"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/cli-mimocode-install.test.ts",
+      "sha256": "7d4480c70d2141b69d0355511d54784e90c999f0191cacbfbc4cd361833968bf"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/cli-wallet-output.test.ts",
+      "sha256": "8de2210f5c3e87377f1e87100f5d0e788a27cac5085b533360baafe597ad2887"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/helper-protocol.test.ts",
+      "sha256": "dc1c5d1fa6ab6a7dc4ef9011e176fad56292c6a4d30aa3a2ce59b7b3718a3f10"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/helper-recovery.test.ts",
+      "sha256": "0f040545ea63cac73c9368fb3cf49f874130b25ccb7fb0135cb668b3f979f56a"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/helper-state-io.test.ts",
+      "sha256": "9fec24765d1e8e39e18f66d202f0d05c68d83fcfce2bb42a39ec991109a175ac"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/helper-state.test.ts",
+      "sha256": "d1e30f48d600c1ed6d4ece7b0dacc0ff006d6bc8db0d217131091f6569e5c71e"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/install-core.test.ts",
+      "sha256": "35c37bab65f4622bd6d5937d253ecd25a6c25ce85014be4bc089e68d85269b35"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/managed-install-orchestration.test.ts",
+      "sha256": "b016807befc43b9a7f48d324543c98317a8169f562d5c9a722235ef462e7682c"
+    },
+    {
+      "path": "packages/waitspin/src/__tests__/package-assets.test.ts",
+      "sha256": "491954f44e6b39b17eecedf947425a3a2531225977abf18d75b2aff1c7a17df6"
+    },
+    {
+      "path": "packages/waitspin/src/cli-format.ts",
+      "sha256": "99457e0913ef893ca3e208d15467bdd5ab82593998eb887095bec5d212d6b3a6"
+    },
+    {
+      "path": "packages/waitspin/src/cli.ts",
+      "sha256": "4f803108374dfb5f6cd4087422436c47d61444bba8f7bf2f6fd555a22004198d"
+    },
+    {
+      "path": "packages/waitspin/src/helper-protocol.ts",
+      "sha256": "b3bd3c7a4dfa03644d5fc2898c1910853ae39be53e0b97c219d63c10a6f4111a"
+    },
+    {
+      "path": "packages/waitspin/src/helper-recovery.ts",
+      "sha256": "dab9a1cbbe979c087dc7f17b550c02602f4cb983abc1f5d34af465f0e915d714"
+    },
+    {
+      "path": "packages/waitspin/src/helper-state.ts",
+      "sha256": "2d6a4b5b7feb448772c3d3b989024e714197baf60f715f96918c614e5f762aab"
+    },
+    {
+      "path": "packages/waitspin/src/helper.ts",
+      "sha256": "c1c508e19ef6c6d420565677de430da184bf53fcfd3f8c19961778735c90deaf"
+    },
+    {
+      "path": "packages/waitspin/src/install-core.ts",
+      "sha256": "a5d8ae3de168f69567f3f37c2a2dc45f297c53469e6f3a88beefd9ff21de7734"
+    },
+    {
+      "path": "packages/waitspin/src/managed-install-orchestration.ts",
+      "sha256": "d7f550e2668df3c4dbea13c357b996da7f7bdc53409d762a02b08938e2b8e2f9"
+    },
+    {
+      "path": "packages/waitspin/src/targets/experimental-cli.ts",
+      "sha256": "940eaecdf0bff9b639b0177afe41589addbdcb99184f5667719342e352f3a5eb"
+    },
+    {
+      "path": "packages/waitspin/src/targets/experimental-runtime.ts",
+      "sha256": "d91dd39ec1a1a632bf123dbcdea480b94f1e4e016e5f3582dd8bb343d37267aa"
+    },
+    {
+      "path": "packages/waitspin/src/wallet-format.ts",
+      "sha256": "d51c82e11efc4b22930ed763ab4d39e781c65d7ab173ea937bc2105b4f571c96"
+    },
+    {
+      "path": "packages/waitspin/tsconfig.json",
+      "sha256": "315843ac8480a90702a4bc708f5bb2cab7eda505831b0bab57cf413c0146edc2"
+    },
+    {
+      "path": "public/openapi/waitspin-api.openapi.json",
+      "sha256": "9d08b69e0d9e708042d866384750cc1e8c963c4de1580af6a3b4cec54018f4cb"
+    },
+    {
+      "path": "public/status/waitspin-vscode-marketplace.json",
+      "sha256": "45ce5fffeb50c01e5ae49529b0e53903cba9b6726ba9cde77c06437b90f29096"
+    },
+    {
+      "path": "public/status/waitspin-vscode-open-vsx.json",
+      "sha256": "e757a0e793834beacd356513d2d06d33821a0d0c144ecf3815fdda1e41c95332"
+    },
+    {
+      "path": "scripts/copy-openapi.js",
+      "sha256": "5dd37ec2dcda98fcc6790258c615f10829c1542590bd71978f3a43aa56b3ccba"
+    },
+    {
+      "path": "scripts/public-trust-boundary-test.mjs",
+      "sha256": "dbceaf426052cfac07a05b7305cabf2757eee07dd086bafffb8babe52e107f1f"
+    },
+    {
+      "path": "scripts/waitspin-package-smoke.mjs",
+      "sha256": "382914177974067c02501be2e1f4a7afc15a9e077deb94cf44c6b95e477a0c81"
+    },
+    {
+      "path": "scripts/waitspin-public-tree-check.mjs",
+      "sha256": "999f749745c31eebe61fe647ff87978e1656c2aa87a2f82112311c058995c527"
+    },
+    {
+      "path": "scripts/waitspin-vscode-artifact-policy.mjs",
+      "sha256": "b079019dde8aea751afd2fd213cc88adeed755ba31ea82cce6c038b09a02db20"
+    },
+    {
+      "path": "scripts/waitspin-vscode-artifact-policy.test.mjs",
+      "sha256": "7edcdeb06ea6320a09dc7363819b626f8983633c6eb7377953c33be2629348f8"
+    },
+    {
+      "path": "scripts/waitspin-vscode-package-determinism.test.mjs",
+      "sha256": "902fa1aa4c25a8dc0265e548839c8719fd0694a290654ea5ad89b3df85ebdb57"
+    },
+    {
+      "path": "scripts/waitspin-vscode-package.mjs",
+      "sha256": "ac7a37d4954afa64231fedc67b876f7d0b108281edbd88a2ee205c1fd180f6ac"
+    },
+    {
+      "path": "scripts/waitspin-vscode-provenance.mjs",
+      "sha256": "e7a2aa81e45499f11cb27fa7bf0eb0d3132c9e0a95066d6044c1926d6dca2cf2"
+    },
+    {
+      "path": "skills/waitspin/SKILL.md",
+      "sha256": "0e44958c2653e7d097f0bbe6e4891453bd2dc334d2ad5b794d0b0added3e0c4a"
+    },
+    {
+      "path": "skills/waitspin/skill-card.md",
+      "sha256": "0d0c0bbfa8e84bdaf5483b0b17585e52d0c3cbf16bf0028f80e39eb7de7f1647"
+    }
+  ]
+}

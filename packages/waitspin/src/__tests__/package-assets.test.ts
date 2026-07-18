@@ -12,6 +12,7 @@ describe("waitspin package assets", () => {
       "extension-core.ts",
       "extension-onboarding.ts",
       "extension-surfaces.ts",
+      "extension-state.ts",
       "extension-wallet.ts",
     ]) {
       const [canonical, packaged] = await Promise.all([
@@ -45,6 +46,7 @@ describe("waitspin package assets", () => {
       expect.arrayContaining([
         "dist",
         "assets/waitspin-vscode/package.json",
+        "assets/waitspin-vscode/waitspin-vscode.vsix",
         "assets/waitspin-vscode/media",
         "assets/waitspin-vscode/out",
         "assets/waitspin-mimocode",
@@ -54,6 +56,20 @@ describe("waitspin package assets", () => {
       ]),
     );
     expect(packageJson.files).not.toContain("assets");
+  });
+
+  it("builds the exact VSIX before compiling the package runtime", async () => {
+    const packageJson = JSON.parse(
+      await readFile(
+        path.join(repoRoot, "packages/waitspin/package.json"),
+        "utf8",
+      ),
+    ) as { scripts: Record<string, string> };
+
+    expect(packageJson.scripts.build).toBe(
+      "npm run sync:extension-assets && node scripts/build.mjs",
+    );
+    expect(packageJson.scripts.prepack).toBe("npm run build");
   });
 
   it("keeps npm metadata scoped to verified user targets", async () => {
@@ -127,15 +143,9 @@ describe("waitspin package assets", () => {
   });
 
   it("keeps packaged extension metadata aligned with the first-class VS Code plugin", async () => {
-    const manifest = JSON.parse(
-      await readFile(
-        path.join(
-          repoRoot,
-          "packages/waitspin/assets/waitspin-vscode/package.json",
-        ),
-        "utf8",
-      ),
-    ) as {
+    type ExtensionManifest = {
+      activationEvents: string[];
+      capabilities: { untrustedWorkspaces: { supported: boolean } };
       publisher: string;
       description: string;
       repository: { url?: string; directory?: string };
@@ -146,14 +156,32 @@ describe("waitspin package assets", () => {
         viewsContainers: { activitybar: Array<{ id: string; icon: string }> };
       };
     };
-    const apiKeySetting = manifest.contributes.configuration.properties[
-      "waitspin.apiKey"
-    ] as { description?: string } | undefined;
+    const [canonicalManifest, manifest] = await Promise.all(
+      [
+        "extensions/waitspin-vscode/package.json",
+        "packages/waitspin/assets/waitspin-vscode/package.json",
+      ].map(async (manifestPath) =>
+        JSON.parse(
+          await readFile(path.join(repoRoot, manifestPath), "utf8"),
+        ) as ExtensionManifest,
+      ),
+    );
 
+    for (const extensionManifest of [canonicalManifest, manifest]) {
+      expect(extensionManifest.activationEvents).toContain("*");
+      expect(extensionManifest.activationEvents).toContain(
+        "onStartupFinished",
+      );
+      expect(extensionManifest.capabilities.untrustedWorkspaces.supported).toBe(
+        true,
+      );
+    }
     expect(manifest.publisher).toBe("waitspin");
     expect(manifest.description).toContain("Earn from VS Code wait states");
     expect(manifest.description).toContain("ledger visibility");
-    expect(manifest.repository.url).toBe("https://github.com/citedy/waitspin.git");
+    expect(manifest.repository.url).toBe(
+      "https://github.com/citedy/waitspin.git",
+    );
     expect(manifest.repository.directory).toBe("extensions/waitspin-vscode");
     expect(manifest.description).not.toMatch(/Claude|Codex|patch/i);
     expect(manifest.contributes.viewsContainers.activitybar).toEqual([
@@ -168,7 +196,9 @@ describe("waitspin package assets", () => {
         type: "webview",
       }),
     ]);
-    expect(manifest.contributes.commands.map((command) => command.command)).toEqual(
+    expect(
+      manifest.contributes.commands.map((command) => command.command),
+    ).toEqual(
       expect.arrayContaining([
         "waitspin.refreshWallet",
         "waitspin.connectPublisher",
@@ -180,13 +210,21 @@ describe("waitspin package assets", () => {
     expect(manifest.contributes.configuration.properties).not.toHaveProperty(
       "waitspin.useSpinnerPatch",
     );
-    expect(apiKeySetting?.description).toContain("SecretStorage only");
-    expect(apiKeySetting?.description).not.toMatch(/WAITSPIN_API_KEY|env/i);
+    expect(manifest.contributes.configuration.properties).not.toHaveProperty(
+      "waitspin.apiKey",
+    );
   });
 
   it("keeps extension runtime credentials out of VS Code settings", async () => {
     const source = await readFile(
       path.join(repoRoot, "extensions/waitspin-vscode/src/extension.ts"),
+      "utf8",
+    );
+    const sponsorSource = await readFile(
+      path.join(
+        repoRoot,
+        "extensions/waitspin-vscode/src/extension-sponsor.ts",
+      ),
       "utf8",
     );
     const resolveApiKeyBody = source.match(
@@ -196,22 +234,35 @@ describe("waitspin package assets", () => {
     expect(resolveApiKeyBody).toBeDefined();
     expect(resolveApiKeyBody).not.toContain("readGlobalWaitSpinSetting");
     expect(resolveApiKeyBody).not.toContain("process.env.WAITSPIN_API_KEY");
-    expect(source).not.toContain("secretApiKey = fromConfig;\n    warnCredentialStorageFailure");
+    expect(source).not.toContain(
+      "secretApiKey = fromConfig;\n    warnCredentialStorageFailure",
+    );
     expect(source).not.toContain("WAITSPIN_API_KEY remains env-only");
-    expect(source).not.toMatch(/workspace\.(textDocuments|workspaceFolders|fs)/);
+    expect(source).not.toMatch(
+      /workspace\.(textDocuments|workspaceFolders|fs)/,
+    );
     expect(source).not.toContain("activeTextEditor");
     expect(source).not.toContain("Terminal.shellIntegration");
     expect(source).toContain("vscode.window.state.focused");
     expect(source).toContain("onDidChangeWindowState");
-    expect(source).toContain("visibleStartedAt");
-    expect(source).toContain("hasImpressionVisibilityEvidence");
-    expect(source).toContain("shouldKeepActiveServeBeforeNextFetch");
-    expect(source).toContain("if (shouldKeepActiveServeBeforeNextFetch())");
+    expect(sponsorSource).toContain("visibleStartedAt");
+    expect(sponsorSource).toContain("isSponsorVisible");
+    expect(sponsorSource).toContain("shouldKeepActiveServe");
+    expect(sponsorSource).toContain("if (this.shouldKeepActiveServe())");
+    const emptyInventoryBranch = sponsorSource.match(
+      /if \(response\.status === 204\) \{[\s\S]*?\n    \}/,
+    )?.[0];
+    expect(emptyInventoryBranch).toBeDefined();
+    expect(emptyInventoryBranch).toContain("refreshWallet(false);");
+    expect(emptyInventoryBranch).not.toContain("refreshWallet(true);");
   });
 
   it("does not expose dev verification codes in VS Code onboarding", async () => {
     const source = await readFile(
-      path.join(repoRoot, "extensions/waitspin-vscode/src/extension-onboarding.ts"),
+      path.join(
+        repoRoot,
+        "extensions/waitspin-vscode/src/extension-onboarding.ts",
+      ),
       "utf8",
     );
 
