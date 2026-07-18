@@ -5,10 +5,12 @@ import { WaitSpinFooter, WaitSpinTextNav } from "./public-chrome";
 export function WaitSpinLegalPage({
   title,
   description,
+  lastUpdated = "July 2, 2026",
   children,
 }: {
   title: string;
   description: string;
+  lastUpdated?: string;
   children: ReactNode;
 }) {
   return (
@@ -20,7 +22,7 @@ export function WaitSpinLegalPage({
           <h1>{title}</h1>
           <p>{description}</p>
           <div className="waitspin-text-status">
-            Last updated: July 2, 2026. The public launch surface is CLI, REST
+            Last updated: {lastUpdated}. The public launch surface is CLI, REST
             API, Stripe Checkout and Stripe/Tempo stablecoin MPP block
             purchases, verified user earning surfaces for VS Code, Cursor
             Editor Mode, Devin Desktop, Claude Code, Antigravity CLI, GitHub

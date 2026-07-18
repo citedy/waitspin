@@ -1,7 +1,16 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PUBLISHER_EXTENSION_REQUIRED_SCOPES = exports.PUBLISHER_KEY_INTENDED_USE = exports.VSCODE_PUBLISHER_TARGET = exports.MIN_VISIBLE_MS = exports.DEFAULT_API_BASE = exports.formatMicroUnits = void 0;
+exports.EDITOR_BOOTSTRAP_SCHEMA_VERSION = exports.PUBLISHER_EXTENSION_REQUIRED_SCOPES = exports.PUBLISHER_KEY_INTENDED_USE = exports.VSCODE_PUBLISHER_TARGET = exports.MIN_VISIBLE_MS = exports.DEFAULT_API_BASE = exports.formatMicroUnits = void 0;
+exports.resolveWaitSpinStateRoot = resolveWaitSpinStateRoot;
+exports.resolveWaitSpinApiBase = resolveWaitSpinApiBase;
+exports.selectEditorBootstrapCandidate = selectEditorBootstrapCandidate;
+exports.recoverManagedBootstrap = recoverManagedBootstrap;
 exports.generatePublisherInstallId = generatePublisherInstallId;
+exports.parseEditorBootstrapDescriptor = parseEditorBootstrapDescriptor;
+exports.parseRedeemedPublisherCredential = parseRedeemedPublisherCredential;
 exports.hasPublisherExtensionScopes = hasPublisherExtensionScopes;
 exports.parseVerifiedPublisherKeyPayload = parseVerifiedPublisherKeyPayload;
 exports.parsePublisherRegistrationPayload = parsePublisherRegistrationPayload;
@@ -15,6 +24,7 @@ exports.parseWalletStatusPayload = parseWalletStatusPayload;
 exports.parseLedgerPayload = parseLedgerPayload;
 exports.renderPublisherViewHtml = renderPublisherViewHtml;
 const node_crypto_1 = require("node:crypto");
+const node_path_1 = __importDefault(require("node:path"));
 const extension_html_1 = require("./extension-html");
 const extension_wallet_view_1 = require("./extension-wallet-view");
 var extension_wallet_view_2 = require("./extension-wallet-view");
@@ -29,8 +39,144 @@ exports.PUBLISHER_EXTENSION_REQUIRED_SCOPES = [
     "events:write",
     "wallet:read",
 ];
+function resolveWaitSpinStateRoot(home, configured) {
+    const root = configured?.trim() || node_path_1.default.join(home, ".waitspin");
+    const relative = node_path_1.default.relative(home, root);
+    if (!node_path_1.default.isAbsolute(root) ||
+        !relative ||
+        relative.startsWith("..") ||
+        node_path_1.default.isAbsolute(relative)) {
+        return undefined;
+    }
+    return node_path_1.default.normalize(root);
+}
+function resolveWaitSpinApiBase(configuredSetting, guardedEnvironment, allowDeveloperApiBase) {
+    if (guardedEnvironment !== undefined) {
+        return normalizeTrustedApiBase(guardedEnvironment.trim(), allowDeveloperApiBase);
+    }
+    return normalizeTrustedApiBase(configuredSetting?.trim() || exports.DEFAULT_API_BASE, allowDeveloperApiBase);
+}
+exports.EDITOR_BOOTSTRAP_SCHEMA_VERSION = 1;
+function selectEditorBootstrapCandidate(candidates, expected) {
+    const eligible = expected
+        ? candidates.filter(({ descriptor }) => descriptor.installId === expected.installId &&
+            descriptor.generation === expected.generation &&
+            (expected.token === undefined || descriptor.token === expected.token))
+        : [...candidates];
+    if (eligible.length === 0)
+        return { kind: "none" };
+    const ranked = [...eligible].sort((left, right) => {
+        const generation = right.descriptor.generation - left.descriptor.generation;
+        if (generation !== 0)
+            return generation;
+        const expiry = Date.parse(right.descriptor.expiresAt ?? "") -
+            Date.parse(left.descriptor.expiresAt ?? "");
+        if (Number.isFinite(expiry) && expiry !== 0)
+            return expiry;
+        const canonical = Number(right.canonical === true) - Number(left.canonical === true);
+        if (canonical !== 0)
+            return canonical;
+        const modified = (right.modifiedAtMs ?? 0) - (left.modifiedAtMs ?? 0);
+        if (modified !== 0)
+            return modified;
+        return (right.descriptor.token ?? "").localeCompare(left.descriptor.token ?? "");
+    });
+    const winner = ranked[0];
+    const runnerUp = ranked[1];
+    if (runnerUp &&
+        winner.descriptor.installId === runnerUp.descriptor.installId &&
+        winner.descriptor.generation === runnerUp.descriptor.generation &&
+        winner.descriptor.token === runnerUp.descriptor.token &&
+        winner.canonical === runnerUp.canonical &&
+        winner.modifiedAtMs === runnerUp.modifiedAtMs) {
+        return { kind: "ambiguous" };
+    }
+    return { kind: "selected", candidate: winner };
+}
+async function recoverManagedBootstrap(input) {
+    if (await input.resumePendingReady())
+        return true;
+    return input.redeemEditorBootstrap();
+}
 function generatePublisherInstallId(randomUuid = node_crypto_1.randomUUID) {
     return `wins_${randomUuid().replace(/-/g, "")}`;
+}
+function parseEditorBootstrapDescriptor(payload, expectedTarget, now = Date.now(), allowDeveloperApiBase = false, expectedApiBase) {
+    const value = objectRecord(payload);
+    if (!value)
+        return undefined;
+    const expiresAt = typeof value.expires_at === "string" ? value.expires_at : "";
+    const expiresAtMs = Date.parse(expiresAt);
+    const apiBase = typeof value.api_base === "string"
+        ? normalizeTrustedApiBase(value.api_base, allowDeveloperApiBase)
+        : undefined;
+    if (value.managed_by !== "waitspin-macos" ||
+        value.schema_version !== exports.EDITOR_BOOTSTRAP_SCHEMA_VERSION ||
+        value.protocol_version !== 1 ||
+        typeof value.token !== "string" ||
+        !value.token.startsWith("wbst_") ||
+        value.token.length > 256 ||
+        typeof value.install_id !== "string" ||
+        !/^wins_[A-Za-z0-9._-]{3,123}$/.test(value.install_id) ||
+        value.install_target !== expectedTarget ||
+        value.publisher_target !== exports.VSCODE_PUBLISHER_TARGET ||
+        !Number.isSafeInteger(value.generation) ||
+        Number(value.generation) <= 0 ||
+        !Number.isFinite(expiresAtMs) ||
+        expiresAtMs <= now ||
+        !apiBase ||
+        (expectedApiBase !== undefined && apiBase !== expectedApiBase)) {
+        return undefined;
+    }
+    return {
+        token: value.token,
+        installId: value.install_id,
+        installTarget: expectedTarget,
+        publisherTarget: exports.VSCODE_PUBLISHER_TARGET,
+        generation: Number(value.generation),
+        expiresAt,
+        apiBase,
+    };
+}
+function parseRedeemedPublisherCredential(payload, descriptor, clientApiKey) {
+    const value = objectRecord(payload);
+    if (!value)
+        return undefined;
+    if (!Array.isArray(value.scopes) ||
+        !value.scopes.every((scope) => typeof scope === "string")) {
+        return undefined;
+    }
+    const scopes = readStringArray(value.scopes);
+    const protocolVersion = value.protocol_version;
+    const apiKey = protocolVersion === 1 &&
+        typeof value.api_key === "string" &&
+        value.api_key.startsWith("wts_live_")
+        ? value.api_key
+        : protocolVersion === 2 &&
+            value.api_key === undefined &&
+            typeof clientApiKey === "string" &&
+            /^wts_live_[A-Za-z0-9_-]{43}$/.test(clientApiKey)
+            ? clientApiKey
+            : undefined;
+    if (!apiKey ||
+        typeof value.credential_id !== "string" ||
+        !value.credential_id ||
+        value.install_id !== descriptor.installId ||
+        value.install_target !== descriptor.installTarget ||
+        value.publisher_target !== descriptor.publisherTarget ||
+        value.generation !== descriptor.generation ||
+        scopes.length !== exports.PUBLISHER_EXTENSION_REQUIRED_SCOPES.length ||
+        !hasPublisherExtensionScopes(scopes)) {
+        return undefined;
+    }
+    return {
+        apiKey,
+        credentialId: value.credential_id,
+        installId: descriptor.installId,
+        installTarget: descriptor.installTarget,
+        publisherTarget: descriptor.publisherTarget,
+        generation: Number(value.generation),
+    };
 }
 function hasPublisherExtensionScopes(scopes) {
     return exports.PUBLISHER_EXTENSION_REQUIRED_SCOPES.every((scope) => scopes.includes(scope));
@@ -38,6 +184,10 @@ function hasPublisherExtensionScopes(scopes) {
 function parseVerifiedPublisherKeyPayload(payload) {
     const record = objectRecord(payload);
     if (!record) {
+        return undefined;
+    }
+    if (!Array.isArray(record.scopes) ||
+        !record.scopes.every((scope) => typeof scope === "string")) {
         return undefined;
     }
     const accountId = typeof record.account_id === "string" ? record.account_id.trim() : "";
@@ -100,7 +250,10 @@ function normalizeTrustedApiBase(value, allowDeveloperApiBase) {
     return undefined;
 }
 function normalizeHostname(hostname) {
-    return hostname.toLowerCase().replace(/\.$/, "").replace(/^\[(.*)\]$/, "$1");
+    return hostname
+        .toLowerCase()
+        .replace(/\.$/, "")
+        .replace(/^\[(.*)\]$/, "$1");
 }
 function parseIpv4Number(value) {
     const normalized = value.toLowerCase();

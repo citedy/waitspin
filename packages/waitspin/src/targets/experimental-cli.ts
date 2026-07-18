@@ -1059,7 +1059,24 @@ export async function runExperimentalCliTargetInstall(
   const dryRun = deps.booleanFlag(flags, "dry-run");
   const version = await preflightExperimentalTarget(target);
   const existingState = await loadState(target);
-  const installId = existingState?.install_id || deps.generateInstallId();
+  const requestedInstallId = deps.optionalFlag(flags, "install-id");
+  if (
+    requestedInstallId &&
+    !/^wins_[A-Za-z0-9._-]{3,123}$/.test(requestedInstallId)
+  ) {
+    throw new Error("Invalid internal --install-id value.");
+  }
+  if (
+    requestedInstallId &&
+    existingState?.install_id &&
+    requestedInstallId !== existingState.install_id
+  ) {
+    throw new Error(
+      `Existing WaitSpin install is bound to ${existingState.install_id}; refusing to replace it with another install ID. Uninstall or repair the existing installation first.`,
+    );
+  }
+  const installId =
+    existingState?.install_id || requestedInstallId || deps.generateInstallId();
   let plan: PatchPlan | null = null;
   let planFailure: ExperimentalPatchPlanError | null = null;
   try {

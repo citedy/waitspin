@@ -32,30 +32,33 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
+const node_os_1 = __importDefault(require("node:os"));
 const extension_core_1 = require("./extension-core");
+const extension_activation_state_1 = require("./extension-activation-state");
+const extension_managed_activation_1 = require("./extension-managed-activation");
+const extension_activation_retry_1 = require("./extension-activation-retry");
 const extension_onboarding_1 = require("./extension-onboarding");
+const extension_state_1 = require("./extension-state");
 const extension_surfaces_1 = require("./extension-surfaces");
+const extension_sponsor_1 = require("./extension-sponsor");
 const extension_wallet_1 = require("./extension-wallet");
-const POLL_INTERVAL_MS = 15_000;
 const FETCH_TIMEOUT_MS = 10_000;
-const IMPRESSION_EXPIRY_SAFETY_MS = 500;
-const API_KEY_SECRET_STORAGE_KEY = "waitspin.publisherApiKey";
 const INSTALL_ID_GLOBAL_STATE_KEY = "waitspin.publisherInstallId";
-let pollTimer;
-let impressionTimeout;
-let serveExpiryTimeout;
 let outputChannel;
 let secretApiKey;
 let storedInstallId;
 let authPollingStopped = false;
-let isPolling = false;
 let invalidApiBaseWarned = false;
-let activeServe;
 let walletController;
+let sponsorController;
+let activationRetryController;
 const surfaces = new extension_surfaces_1.PublisherSurfaces();
 function getOutputChannel() {
     if (!outputChannel) {
@@ -91,38 +94,40 @@ function resolveApiKey() {
     }
     return undefined;
 }
-async function migratePublisherApiKeyToSecretStorage(context) {
-    const fromConfig = readGlobalWaitSpinSetting("apiKey");
-    if (fromConfig) {
-        try {
-            await storePublisherApiKey(context, fromConfig);
-        }
-        catch (error) {
-            secretApiKey = undefined;
-            warnCredentialStorageFailure("Unable to migrate waitspin.apiKey into VS Code SecretStorage", error);
-            return;
-        }
-        try {
-            await vscode.workspace
-                .getConfiguration("waitspin")
-                .update("apiKey", undefined, vscode.ConfigurationTarget.Global);
-        }
-        catch (error) {
-            warnCredentialStorageFailure("Unable to clear migrated waitspin.apiKey from settings", error);
-        }
-        logWaitSpin("Migrated waitspin.apiKey into VS Code SecretStorage for sponsor polling.");
-        return;
-    }
+async function loadPublisherApiKeyFromSecretStorage(context) {
+    let secretReadSucceeded = false;
     try {
-        secretApiKey = (await context.secrets.get(API_KEY_SECRET_STORAGE_KEY))?.trim();
+        const active = await (0, extension_activation_state_1.migrateLegacyCredential)(context.secrets, storedInstallId);
+        secretApiKey = active?.apiKey;
+        if (active) {
+            storedInstallId = active.installId;
+            await context.globalState.update(INSTALL_ID_GLOBAL_STATE_KEY, active.installId);
+        }
+        secretReadSucceeded = true;
     }
     catch (error) {
         secretApiKey = undefined;
         refreshConfiguredState();
         warnCredentialStorageFailure("Unable to read WaitSpin extension key from SecretStorage", error);
-        return;
     }
     refreshConfiguredState();
+    if (storedInstallId) {
+        try {
+            const receipt = await readCurrentEditorActivationReceipt();
+            const publisherRegistered = (0, extension_state_1.resolveActivationReceiptRegistration)({
+                secretReadSucceeded,
+                secretApiKey,
+                installId: storedInstallId,
+                receipt,
+            });
+            if (publisherRegistered !== undefined) {
+                await writeCurrentEditorActivationReceipt(storedInstallId, publisherRegistered);
+            }
+        }
+        catch (error) {
+            warnCredentialStorageFailure("Unable to update WaitSpin editor activation receipt", error);
+        }
+    }
 }
 async function migratePublisherInstallIdToGlobalState(context) {
     const fromConfig = readGlobalWaitSpinSetting("installId");
@@ -130,6 +135,10 @@ async function migratePublisherInstallIdToGlobalState(context) {
         return;
     }
     if (fromConfig === storedInstallId) {
+        await clearPublisherInstallIdSetting();
+        return;
+    }
+    if (secretApiKey && storedInstallId) {
         await clearPublisherInstallIdSetting();
         return;
     }
@@ -152,16 +161,108 @@ async function clearPublisherInstallIdSetting() {
         warnCredentialStorageFailure("Unable to clear migrated waitspin.installId from settings", error);
     }
 }
-async function storePublisherApiKey(context, apiKey) {
-    await context.secrets.store(API_KEY_SECRET_STORAGE_KEY, apiKey);
-    secretApiKey = apiKey;
+async function updateActiveCredentialProjection(context, identity) {
+    await context.globalState.update(INSTALL_ID_GLOBAL_STATE_KEY, identity.installId);
+    secretApiKey = identity.apiKey;
+    storedInstallId = identity.installId;
     getWalletController().reset();
     refreshConfiguredState();
+}
+async function activateManualPublisherCredential(context, candidate) {
+    const result = await (0, extension_managed_activation_1.runManualEditorActivation)({
+        stateRoot: waitSpinStateRoot(),
+        installTarget: currentEditorInstallTarget(),
+        secrets: context.secrets,
+        globalState: context.globalState,
+        candidate,
+        allowDeveloperApiBase: allowDeveloperApiBase(),
+        fetchWithTimeout,
+        updateProjections: (identity) => updateActiveCredentialProjection(context, identity),
+        writeReceipt: async (identity) => {
+            await writeCurrentEditorActivationReceipt(identity.installId, true);
+        },
+    });
+    authPollingStopped = false;
+    return { walletReadable: result.walletReadable };
 }
 async function storePublisherInstallId(context, installId) {
     await context.globalState.update(INSTALL_ID_GLOBAL_STATE_KEY, installId);
     storedInstallId = installId;
     refreshConfiguredState();
+    try {
+        await writeCurrentEditorActivationReceipt(installId, Boolean(secretApiKey));
+    }
+    catch (error) {
+        warnCredentialStorageFailure("Unable to update WaitSpin editor activation receipt", error);
+    }
+}
+function currentEditorInstallTarget() {
+    const appName = vscode.env.appName.toLowerCase();
+    if (appName.includes("cursor"))
+        return "cursor";
+    if (appName.includes("devin"))
+        return "devin";
+    return "vscode";
+}
+function waitSpinStateRoot() {
+    const root = (0, extension_core_1.resolveWaitSpinStateRoot)(node_os_1.default.homedir(), process.env.WAITSPIN_STATE_ROOT);
+    if (!root) {
+        throw new Error("WaitSpin state root must be an absolute path inside the current home");
+    }
+    return root;
+}
+function writeCurrentEditorActivationReceipt(installId, publisherRegistered) {
+    return (0, extension_state_1.writeEditorActivationReceipt)(waitSpinStateRoot(), currentEditorInstallTarget(), installId, publisherRegistered);
+}
+function readCurrentEditorActivationReceipt() {
+    return (0, extension_state_1.readEditorActivationReceipt)(waitSpinStateRoot(), currentEditorInstallTarget());
+}
+async function runManagedActivationAttempt(context, allowManagedOverride, signal) {
+    const active = await (0, extension_managed_activation_1.runManagedEditorActivation)({
+        stateRoot: waitSpinStateRoot(),
+        installTarget: currentEditorInstallTarget(),
+        secrets: context.secrets,
+        globalState: context.globalState,
+        allowDeveloperApiBase: allowDeveloperApiBase(),
+        allowManagedOverride,
+        signal,
+        fetchWithTimeout,
+        updateProjections: (identity) => updateActiveCredentialProjection(context, identity),
+        writeReceipt: async (identity) => {
+            await writeCurrentEditorActivationReceipt(identity.installId, true);
+        },
+    });
+    if (!active || signal.aborted)
+        return;
+    logWaitSpin(`Activated managed WaitSpin install ${active.installId}.`);
+    authPollingStopped = false;
+    getWalletController().reset();
+    refreshConfiguredState();
+    getWalletController().resetThrottle();
+    await getWalletController().refresh(false, true);
+    startPollingIfConfigured();
+}
+function getActivationRetryController(context) {
+    if (activationRetryController)
+        return activationRetryController;
+    activationRetryController = new extension_activation_retry_1.ManagedActivationRetryController({
+        attempt: ({ allowManagedOverride, signal }) => runManagedActivationAttempt(context, allowManagedOverride, signal),
+        onRetryScheduled: (failure, delayMs) => {
+            const status = failure.httpStatus === undefined ? "none" : String(failure.httpStatus);
+            logWaitSpin(`Managed activation retry scheduled phase=${failure.phase} reason=${failure.reason} status=${status} delay_ms=${delayMs}.`);
+        },
+        onTerminalFailure: (failure) => {
+            warnCredentialStorageFailure(`Managed activation stopped phase=${failure.phase} reason=${failure.reason}`, failure);
+        },
+    });
+    return activationRetryController;
+}
+function activateManagedBootstrapIfPresent(context, source, allowManagedOverride = false) {
+    return getActivationRetryController(context).trigger({
+        source,
+        allowManagedOverride,
+        surfaceTerminal: source !== "focus",
+    });
 }
 function resolveInstallId() {
     if (storedInstallId) {
@@ -183,27 +284,20 @@ function allowDeveloperApiBase() {
     return process.env.WAITSPIN_ALLOW_DEV_API_BASE === "1";
 }
 function resolveApiBase() {
-    const configured = readGlobalWaitSpinSetting("apiBase") ||
-        process.env.WAITSPIN_BASE_URL?.trim() ||
-        extension_core_1.DEFAULT_API_BASE;
-    const normalized = (0, extension_core_1.normalizeTrustedApiBase)(configured, allowDeveloperApiBase());
+    const normalized = (0, extension_core_1.resolveWaitSpinApiBase)(readGlobalWaitSpinSetting("apiBase"), process.env.WAITSPIN_BASE_URL, allowDeveloperApiBase());
     if (!normalized && !invalidApiBaseWarned) {
         invalidApiBaseWarned = true;
-        logWaitSpin("Ignoring untrusted waitspin.apiBase. Store credentials globally and use https://api.waitspin.com for sponsor polling.");
+        logWaitSpin("WaitSpin API configuration is invalid; credentialed network traffic is disabled.");
     }
     return normalized;
 }
 function resetPollingAfterConfigChange() {
     authPollingStopped = false;
     getWalletController().reset();
-    clearActiveServe("configuration changed");
+    getSponsorController().reset("configuration changed");
     updatePublisherState({ authStopped: false, lastError: undefined });
     refreshConfiguredState();
-    if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = undefined;
-    }
-    startPollingIfConfigured();
+    getSponsorController().start();
 }
 function isAuthError(status) {
     return status === 401 || status === 403;
@@ -213,26 +307,31 @@ function stopPollingForAuth(message) {
         return;
     }
     authPollingStopped = true;
-    if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = undefined;
-    }
     updatePublisherState({
         authStopped: true,
         inventoryStatus: "error",
         lastError: message,
     });
     logWaitSpin(message);
+    if (storedInstallId) {
+        void writeCurrentEditorActivationReceipt(storedInstallId, false).catch((error) => logWaitSpin(`Unable to mark WaitSpin editor activation as unhealthy: ${formatCredentialError(error)}`));
+    }
     void vscode.window.showWarningMessage(`WaitSpin: ${message}`);
 }
 async function fetchWithTimeout(url, init) {
     const controller = new AbortController();
+    const upstreamSignal = init.signal;
+    const abortFromUpstream = () => controller.abort();
+    if (upstreamSignal?.aborted)
+        controller.abort();
+    upstreamSignal?.addEventListener("abort", abortFromUpstream, { once: true });
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
         return await fetch(url, { ...init, signal: controller.signal });
     }
     finally {
         clearTimeout(timeout);
+        upstreamSignal?.removeEventListener("abort", abortFromUpstream);
     }
 }
 function getWalletController() {
@@ -249,290 +348,35 @@ function getWalletController() {
     }
     return walletController;
 }
-async function fetchNextCreative() {
-    if (isPolling || authPollingStopped) {
-        return;
-    }
-    if (shouldKeepActiveServeBeforeNextFetch()) {
-        updateActiveServeVisibilityEvidence();
-        updatePublisherState({
-            inventoryStatus: "serving",
-            activeServe,
-            lastError: undefined,
+function getSponsorController() {
+    if (!sponsorController) {
+        sponsorController = new extension_sponsor_1.PublisherSponsorController({
+            fetchWithTimeout,
+            isAuthError,
+            isAuthStopped: () => authPollingStopped,
+            isSponsorVisible: () => vscode.window.state.focused && surfaces.hasVisibleSponsorSurface(),
+            logWaitSpin,
+            onAuthError: stopPollingForAuth,
+            refreshConfiguredState,
+            refreshWallet: (force) => getWalletController().refresh(false, force),
+            resetWalletThrottle: () => getWalletController().resetThrottle(),
+            resolveApiBase,
+            resolveApiKey,
+            resolveInstallId,
+            updatePublisherState,
         });
-        return;
     }
-    const apiKey = resolveApiKey();
-    const installId = resolveInstallId();
-    const apiBase = resolveApiBase();
-    if (!apiKey || !installId || !apiBase) {
-        refreshConfiguredState();
-        return;
-    }
-    isPolling = true;
-    updatePublisherState({
-        apiBase,
-        installId,
-        hasApiKey: true,
-        inventoryStatus: activeServe ? "serving" : "polling",
-        lastError: undefined,
-    });
-    try {
-        const response = await fetchWithTimeout(`${apiBase}/v1/serve/next`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ install_id: installId }),
-        });
-        if (response.status === 204) {
-            hideAdSurfaces();
-            updatePublisherState({
-                inventoryStatus: "empty",
-                lastUpdatedAt: new Date().toISOString(),
-            });
-            void getWalletController().refresh(false);
-            return;
-        }
-        if (isAuthError(response.status)) {
-            stopPollingForAuth(`Serve auth failed (HTTP ${response.status}). Check your WaitSpin extension key and waitspin.installId.`);
-            hideAdSurfaces();
-            return;
-        }
-        if (!response.ok) {
-            logWaitSpin(`Serve request failed: HTTP ${response.status}`);
-            updatePublisherState({
-                inventoryStatus: "error",
-                lastError: `Serve request failed: HTTP ${response.status}`,
-            });
-            return;
-        }
-        const payload = await response.json();
-        const parsed = (0, extension_core_1.parseServePayload)(payload);
-        if (!parsed) {
-            logWaitSpin("Serve response failed validation");
-            updatePublisherState({
-                inventoryStatus: "error",
-                lastError: "Serve response failed validation",
-            });
-            return;
-        }
-        activeServe = {
-            ...parsed,
-            apiBase,
-            installId,
-            shownAt: Date.now(),
-            visibleStartedAt: undefined,
-            impressionRecorded: false,
-            impressionRecording: false,
-        };
-        scheduleServeExpiry(activeServe);
-        updatePublisherState({
-            inventoryStatus: "serving",
-            activeServe,
-            lastUpdatedAt: new Date().toISOString(),
-            lastError: undefined,
-        });
-        scheduleVisibleImpression(activeServe, parsed.minVisibleMs);
-    }
-    catch (error) {
-        const message = `Serve network error: ${error instanceof Error ? error.message : String(error)}`;
-        logWaitSpin(message);
-        updatePublisherState({ inventoryStatus: "error", lastError: message });
-    }
-    finally {
-        isPolling = false;
-    }
-}
-function scheduleVisibleImpression(serve, minVisibleMs) {
-    if (expireActiveServeIfNeeded(serve, "before scheduling impression")) {
-        queueFetchNextCreative();
-        return;
-    }
-    if (impressionTimeout) {
-        clearTimeout(impressionTimeout);
-    }
-    updateActiveServeVisibilityEvidence();
-    const visibleMs = activeServeVisibleEvidenceMs(serve);
-    const waitMs = Math.min(Math.max(250, minVisibleMs - visibleMs), Math.max(250, (0, extension_core_1.serveExpiryDelayMs)(serve)));
-    impressionTimeout = setTimeout(() => {
-        impressionTimeout = undefined;
-        if (!activeServe || activeServe.serveId !== serve.serveId) {
-            return;
-        }
-        if (expireActiveServeIfNeeded(serve, "before recording impression")) {
-            queueFetchNextCreative();
-            return;
-        }
-        updateActiveServeVisibilityEvidence();
-        const visibleMs = activeServeVisibleEvidenceMs(serve);
-        if (visibleMs < minVisibleMs) {
-            scheduleVisibleImpression(serve, minVisibleMs);
-            return;
-        }
-        void recordImpression(serve.serveId, serve.serveReceipt, visibleMs);
-    }, waitMs);
-}
-function scheduleServeExpiry(serve) {
-    if (serveExpiryTimeout) {
-        clearTimeout(serveExpiryTimeout);
-    }
-    serveExpiryTimeout = setTimeout(() => {
-        serveExpiryTimeout = undefined;
-        if (!activeServe || activeServe.serveId !== serve.serveId) {
-            return;
-        }
-        clearActiveServe("serve expired before billable impression");
-        updatePublisherState({
-            inventoryStatus: "polling",
-            lastError: undefined,
-        });
-        queueFetchNextCreative();
-    }, Math.max(250, (0, extension_core_1.serveExpiryDelayMs)(serve)));
-}
-function hasImpressionVisibilityEvidence() {
-    return vscode.window.state.focused && surfaces.hasVisibleSponsorSurface();
-}
-function updateActiveServeVisibilityEvidence() {
-    const serve = activeServe;
-    if (!serve || serve.impressionRecorded) {
-        return;
-    }
-    if (hasImpressionVisibilityEvidence()) {
-        serve.visibleStartedAt ??= Date.now();
-        return;
-    }
-    serve.visibleStartedAt = undefined;
-}
-function activeServeVisibleEvidenceMs(serve) {
-    if (!serve.visibleStartedAt) {
-        return 0;
-    }
-    return Math.max(0, Date.now() - serve.visibleStartedAt);
-}
-function shouldKeepActiveServeBeforeNextFetch() {
-    const serve = activeServe;
-    if (!serve) {
-        return false;
-    }
-    if (serve.impressionRecorded) {
-        clearActiveServe("impression already recorded");
-        return false;
-    }
-    if (expireActiveServeIfNeeded(serve, "polling gate")) {
-        return false;
-    }
-    return true;
-}
-function flushPendingImpressionIfEligible() {
-    const serve = activeServe;
-    if (!serve) {
-        return;
-    }
-    updateActiveServeVisibilityEvidence();
-    const visibleMs = activeServeVisibleEvidenceMs(serve);
-    if (visibleMs >= serve.minVisibleMs) {
-        if (expireActiveServeIfNeeded(serve, "flush before hide")) {
-            return;
-        }
-        void recordImpression(serve.serveId, serve.serveReceipt, visibleMs);
-    }
-}
-function clearImpressionSchedulingAndFlush() {
-    if (impressionTimeout) {
-        clearTimeout(impressionTimeout);
-        impressionTimeout = undefined;
-    }
-    if (serveExpiryTimeout) {
-        clearTimeout(serveExpiryTimeout);
-        serveExpiryTimeout = undefined;
-    }
-    flushPendingImpressionIfEligible();
-}
-function stopPollingAndFlushImpression() {
-    if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = undefined;
-    }
-    clearImpressionSchedulingAndFlush();
-}
-function hideAdSurfaces() {
-    clearImpressionSchedulingAndFlush();
-    clearActiveServe("surfaces hidden");
-}
-function clearActiveServeIfCurrent(serveId) {
-    if (!activeServe || activeServe.serveId !== serveId) {
-        return;
-    }
-    clearActiveServe("serve cleared");
-}
-function clearActiveServe(reason) {
-    if (impressionTimeout) {
-        clearTimeout(impressionTimeout);
-        impressionTimeout = undefined;
-    }
-    if (serveExpiryTimeout) {
-        clearTimeout(serveExpiryTimeout);
-        serveExpiryTimeout = undefined;
-    }
-    if (activeServe) {
-        logWaitSpin(`Cleared sponsor serve ${activeServe.serveId} (${activeServe.campaignId ?? "unknown campaign"}): ${reason}`);
-    }
-    activeServe = undefined;
-    updatePublisherState({ activeServe: undefined });
-}
-function expireActiveServeIfNeeded(serve, reason) {
-    if (!(0, extension_core_1.isServeExpired)(serve, Date.now(), IMPRESSION_EXPIRY_SAFETY_MS)) {
-        return false;
-    }
-    if (!activeServe || activeServe.serveId !== serve.serveId) {
-        return true;
-    }
-    clearActiveServe(`expired ${reason}`);
-    updatePublisherState({
-        inventoryStatus: "polling",
-        lastError: undefined,
-    });
-    return true;
-}
-function queueFetchNextCreative() {
-    setTimeout(() => {
-        void fetchNextCreative();
-    }, 0);
-}
-function handleImpressionVisibilityChange() {
-    updateActiveServeVisibilityEvidence();
-    const serve = activeServe;
-    if (!serve || serve.impressionRecorded) {
-        return;
-    }
-    if (expireActiveServeIfNeeded(serve, "visibility change")) {
-        queueFetchNextCreative();
-        return;
-    }
-    scheduleVisibleImpression(serve, serve.minVisibleMs);
+    return sponsorController;
 }
 function disposeExtensionResources() {
-    stopPollingAndFlushImpression();
+    activationRetryController?.dispose();
+    activationRetryController = undefined;
+    sponsorController?.dispose();
     surfaces.dispose();
     outputChannel?.dispose();
 }
 function startPollingIfConfigured() {
-    if (authPollingStopped || pollTimer) {
-        return;
-    }
-    if (!resolveApiKey() || !resolveInstallId()) {
-        refreshConfiguredState();
-        return;
-    }
-    refreshConfiguredState();
-    getWalletController().resetThrottle();
-    void getWalletController().refresh(false);
-    void fetchNextCreative();
-    pollTimer = setInterval(() => {
-        void fetchNextCreative();
-    }, POLL_INTERVAL_MS);
+    getSponsorController().start();
 }
 async function showPublisherSetupPrompt() {
     const choice = await vscode.window.showInformationMessage("Connect WaitSpin before sponsor polling can start.", "Connect WaitSpin", "Open docs");
@@ -543,81 +387,17 @@ async function showPublisherSetupPrompt() {
         await vscode.env.openExternal(vscode.Uri.parse("https://waitspin.com/docs"));
     }
 }
-async function recordImpression(serveId, serveReceipt, visibleMs) {
-    const serve = activeServe;
-    if (!serve ||
-        serve.serveId !== serveId ||
-        serve.impressionRecorded ||
-        serve.impressionRecording) {
-        return;
-    }
-    const apiKey = resolveApiKey();
-    const apiBase = resolveApiBase();
-    const currentInstallId = resolveInstallId();
-    if (!apiKey || !currentInstallId || !apiBase) {
-        return;
-    }
-    if (serve.installId !== currentInstallId ||
-        serve.apiBase !== apiBase ||
-        expireActiveServeIfNeeded(serve, "recording guard")) {
-        queueFetchNextCreative();
-        return;
-    }
-    serve.impressionRecording = true;
-    try {
-        const response = await fetchWithTimeout(`${serve.apiBase}/v1/events/impression`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                serve_id: serveId,
-                serve_receipt: serveReceipt,
-                install_id: serve.installId,
-                visible_ms: visibleMs,
-            }),
-        });
-        if (isAuthError(response.status)) {
-            stopPollingForAuth(`Impression auth failed (HTTP ${response.status}). Check your WaitSpin extension key and waitspin.installId.`);
-            return;
-        }
-        if (!response.ok) {
-            const message = `Impression request failed: HTTP ${response.status}`;
-            logWaitSpin(message);
-            clearActiveServeIfCurrent(serveId);
-            updatePublisherState({
-                inventoryStatus: "error",
-                lastError: message,
-            });
-            return;
-        }
-        serve.impressionRecorded = true;
-        clearActiveServeIfCurrent(serveId);
-        updatePublisherState({
-            inventoryStatus: "polling",
-            lastUpdatedAt: new Date().toISOString(),
-            lastError: undefined,
-        });
-        getWalletController().resetThrottle();
-        void getWalletController().refresh(false);
-    }
-    catch (error) {
-        const message = `Impression network error: ${error instanceof Error ? error.message : String(error)}`;
-        logWaitSpin(message);
-        clearActiveServeIfCurrent(serveId);
-        updatePublisherState({
-            inventoryStatus: "error",
-            lastError: message,
-        });
-    }
-    finally {
-        serve.impressionRecording = false;
-    }
-}
 function activate(context) {
-    surfaces.register(context, handleImpressionVisibilityChange);
-    context.subscriptions.push(vscode.window.onDidChangeWindowState(handleImpressionVisibilityChange));
+    const sponsor = getSponsorController();
+    surfaces.register(context, () => sponsor.handleVisibilityChange());
+    context.subscriptions.push(vscode.window.onDidChangeWindowState((state) => {
+        sponsor.handleVisibilityChange();
+        if (state.focused) {
+            void activateManagedBootstrapIfPresent(context, "focus").finally(() => {
+                startPollingIfConfigured();
+            });
+        }
+    }));
     storedInstallId = context.globalState
         .get(INSTALL_ID_GLOBAL_STATE_KEY)
         ?.trim();
@@ -627,13 +407,12 @@ function activate(context) {
         resolveApiBase,
         resolveApiKey,
         resolveInstallId,
-        storeApiKey: (apiKey) => storePublisherApiKey(context, apiKey),
-        storeInstallId: (installId) => storePublisherInstallId(context, installId),
+        activateManualCredential: (candidate) => activateManualPublisherCredential(context, candidate),
         startPolling: resetPollingAfterConfigChange,
         updatePublisherState,
     });
     const openAd = vscode.commands.registerCommand("waitspin.openAd", () => {
-        const destinationUrl = activeServe?.destinationUrl;
+        const destinationUrl = sponsor.destinationUrl();
         if (!destinationUrl || !(0, extension_core_1.isSafeExternalUrl)(destinationUrl)) {
             return;
         }
@@ -643,13 +422,16 @@ function activate(context) {
     const activatePublisher = vscode.commands.registerCommand("waitspin.activatePublisher", () => {
         authPollingStopped = false;
         updatePublisherState({ authStopped: false, lastError: undefined });
-        refreshConfiguredState();
-        if (!resolveApiKey() || !resolveInstallId()) {
-            void showPublisherSetupPrompt();
-            return;
-        }
-        void getWalletController().refresh(false);
-        startPollingIfConfigured();
+        void activateManagedBootstrapIfPresent(context, "manual", true).finally(() => {
+            refreshConfiguredState();
+            if (!resolveApiKey() || !resolveInstallId()) {
+                void showPublisherSetupPrompt();
+                return;
+            }
+            getWalletController().resetThrottle();
+            void getWalletController().refresh(false, true);
+            startPollingIfConfigured();
+        });
     });
     context.subscriptions.push(activatePublisher);
     context.subscriptions.push(vscode.commands.registerCommand("waitspin.connectPublisher", () => {
@@ -672,20 +454,28 @@ function activate(context) {
     }));
     authPollingStopped = false;
     refreshConfiguredState();
-    void Promise.all([
-        migratePublisherInstallIdToGlobalState(context),
-        migratePublisherApiKeyToSecretStorage(context),
-    ]).finally(() => {
+    void (async () => {
+        await migratePublisherInstallIdToGlobalState(context);
+        await loadPublisherApiKeyFromSecretStorage(context);
+        await (0, extension_managed_activation_1.migrateLegacyManagedActivation)({
+            stateRoot: waitSpinStateRoot(),
+            installTarget: currentEditorInstallTarget(),
+            secrets: context.secrets,
+            globalState: context.globalState,
+            allowDeveloperApiBase: allowDeveloperApiBase(),
+        });
+        void activateManagedBootstrapIfPresent(context, "startup");
+    })()
+        .catch((error) => {
+        warnCredentialStorageFailure("WaitSpin activation failed", error);
+    })
+        .finally(() => {
         startPollingIfConfigured();
     });
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration("waitspin.apiKey") ||
-            event.affectsConfiguration("waitspin.installId") ||
+        if (event.affectsConfiguration("waitspin.installId") ||
             event.affectsConfiguration("waitspin.apiBase")) {
-            void Promise.all([
-                migratePublisherInstallIdToGlobalState(context),
-                migratePublisherApiKeyToSecretStorage(context),
-            ]).finally(() => {
+            void migratePublisherInstallIdToGlobalState(context).finally(() => {
                 resetPollingAfterConfigChange();
             });
         }

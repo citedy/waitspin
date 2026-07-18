@@ -1,13 +1,14 @@
 import {
   WAITSPIN_CONTROL_V1_PATHS,
   WAITSPIN_CONTROL_API_PATHS,
+  WAITSPIN_CONTROL_DYNAMIC_PATHS,
 } from "@/lib/waitspin/control-api-hosts";
 import { WTS_EARNING_MATURITY_HOURS } from "@/lib/waitspin/constants";
 import { renderPublicCommissionSplitSentence } from "@/lib/waitspin/billing";
 import { waitSpinWebMcpToolListMarkdown } from "@/lib/waitspin/webmcp/tool-definitions";
 
 type AgentEndpoint = {
-  method: "GET" | "POST";
+  method: "DELETE" | "GET" | "POST" | "PUT";
   path: string;
   auth: string;
   purpose: string;
@@ -25,6 +26,42 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
     path: "/v1/keys/verify",
     auth: "none",
     purpose: "Verify code and receive a wts_live API key.",
+  },
+  {
+    method: "GET",
+    path: "/v1/account/activation",
+    auth: "exact publisher-extension parent credential",
+    purpose: "Restore the account-derived native destination and activity state.",
+  },
+  {
+    method: "POST",
+    path: "/v1/keys/advertiser-capability",
+    auth: "exact publisher-extension parent credential",
+    purpose: "Issue a short-lived device-bound native advertiser capability.",
+  },
+  {
+    method: "DELETE",
+    path: "/v1/keys/current",
+    auth: "current credential",
+    purpose: "Revoke the current credential and its dependent credentials.",
+  },
+  {
+    method: "POST",
+    path: "/v1/analytics/events",
+    auth: "consented client; authentication required after OTP",
+    purpose: "Ingest bounded allowlisted product analytics events.",
+  },
+  {
+    method: "GET",
+    path: "/v1/analytics/consent",
+    auth: "exact publisher-extension parent credential",
+    purpose: "Read the authoritative analytics consent revision.",
+  },
+  {
+    method: "PUT",
+    path: "/v1/analytics/consent",
+    auth: "exact publisher-extension parent credential",
+    purpose: "Commit a monotonic authenticated analytics consent decision.",
   },
   {
     method: "POST",
@@ -52,6 +89,18 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
     purpose: "List campaigns for the API key account.",
   },
   {
+    method: "GET",
+    path: "/v1/campaigns/purchase-options",
+    auth: "none",
+    purpose: "Read versioned fixed packages and server-owned Custom bounds.",
+  },
+  {
+    method: "POST",
+    path: "/v1/campaigns/{campaign_id}/repeat",
+    auth: "campaigns:write",
+    purpose: "Create a distinct prefilled repeat campaign and purchase.",
+  },
+  {
     method: "POST",
     path: "/v1/blocks/checkout",
     auth: "blocks:purchase",
@@ -72,6 +121,43 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
       "Register a user install ID for VS Code Activity Bar/status-bar extension, Cursor Editor Mode through the VS Code-compatible extension path, Devin Desktop through Open VSX, Claude Code statusline, MiMo Code shell hook, OpenCode TUI slot, Grok Code CLI footer, Antigravity CLI statusline, GitHub Copilot CLI statusline, or Qoder CLI UserPromptSubmit/Stop hooks.",
   },
   {
+    method: "GET",
+    path: "/v1/publishers/earning-policy",
+    auth: "exact publisher-extension parent credential",
+    purpose: "Read canonical earning, maturity, Connect, and payout policy copy.",
+  },
+  {
+    method: "GET",
+    path: "/v1/publisher-installations",
+    auth: "exact publisher-extension parent credential",
+    purpose:
+      "List the current device's publisher installations and child-generation readiness.",
+  },
+  {
+    method: "POST",
+    path: "/v1/publisher-installations/bootstrap",
+    auth: "exact publisher-extension parent credential",
+    purpose: "Issue one target-bound child credential generation.",
+  },
+  {
+    method: "POST",
+    path: "/v1/publisher-installations/bootstrap/redeem",
+    auth: "target bootstrap token plus client key proof for protocol 2",
+    purpose: "Bind or idempotently resume an editor child credential.",
+  },
+  {
+    method: "DELETE",
+    path: "/v1/publisher-installations/{install_id}",
+    auth: "exact publisher-extension parent credential",
+    purpose: "Deactivate one device-bound installation and its child credentials.",
+  },
+  {
+    method: "POST",
+    path: "/v1/publisher-installations/{install_id}/ready",
+    auth: "exact install-bound publisher child credential",
+    purpose: "Confirm authenticated readiness for one child generation.",
+  },
+  {
     method: "POST",
     path: "/v1/serve/next",
     auth: "serve:read",
@@ -82,6 +168,18 @@ export const WAITSPIN_AGENT_ENDPOINTS: readonly AgentEndpoint[] = [
     path: "/v1/events/impression",
     auth: "events:write",
     purpose: "Record an impression after the visible interval.",
+  },
+  {
+    method: "POST",
+    path: "/v1/events/view",
+    auth: "events:write",
+    purpose: "Record an idempotent analytics view for a capability-gated serve.",
+  },
+  {
+    method: "GET",
+    path: "/v1/click/{token}",
+    auth: "opaque token",
+    purpose: "Record the first analytics-only click and redirect without caching.",
   },
   {
     method: "GET",
@@ -124,9 +222,11 @@ function endpointTable() {
 
 export function waitSpinAgentDocsMissingShippedPaths(): string[] {
   const documented = new Set(WAITSPIN_AGENT_ENDPOINTS.map((item) => item.path));
-  return [...WAITSPIN_CONTROL_V1_PATHS, ...WAITSPIN_CONTROL_API_PATHS].filter(
-    (path) => !documented.has(path),
-  );
+  return [
+    ...WAITSPIN_CONTROL_V1_PATHS,
+    ...WAITSPIN_CONTROL_API_PATHS,
+    ...WAITSPIN_CONTROL_DYNAMIC_PATHS.map((item) => item.openapiPath),
+  ].filter((path) => !documented.has(path));
 }
 
 export const WAITSPIN_AGENT_QUICKSTART_MARKDOWN = `Use this credential-free path when an agent needs one clean WaitSpin onboarding
@@ -224,7 +324,7 @@ waitspin bid checkout CAMPAIGN_ID
 npx --yes waitspin init --email you@example.com --key-profile publisher-extension
 # Check the email inbox again if prompted, then verify the publisher key.
 npx --yes waitspin init --email you@example.com --code CODE_FROM_EMAIL --key-profile publisher-extension --json
-export WAITSPIN_API_KEY=wts_live_publisher_key_returned_by_verified_init
+read -rs WAITSPIN_API_KEY && export WAITSPIN_API_KEY && printf '\\n'
 
 # Install every detected all-install target.
 waitspin install --all --dry-run --compose-existing
@@ -269,8 +369,8 @@ Authenticated routes use \`Authorization: Bearer wts_live_...\`.
 Use \`npx --yes waitspin init --email EMAIL --key-profile control\` for
 advertiser/control actions. Use \`--key-profile publisher-extension\` to create
 an extension API key for user install registration, serve polling, and
-impression reporting. Keys from that profile can register user installs, poll
-serve inventory, report impressions,
+impression/view reporting. Keys from that profile can register user installs,
+poll serve inventory, report impressions and capability-gated views,
 and read wallet/ledger status. They cannot create campaigns, start Checkout,
 start MPP block purchases, manage Connect, or execute payouts.
 
@@ -337,8 +437,9 @@ CLI is on PATH. The equivalent WaitSpin local lifecycle commands are
 \`uninstall\` subcommands. On Windows, they resolve Cursor command shims and
 auto-detect \`%LOCALAPPDATA%\\devin\\bin\\devin.exe\`,
 then connected by running \`WaitSpin: Connect and earn\` inside the matching
-editor. The VS Code CLI fallback is \`waitspin extension install --target vscode
---api-key PASTE_PUBLISHER_EXTENSION_KEY\`. Claude Code statusline command,
+editor. The VS Code CLI fallback is \`waitspin extension install --target vscode\`;
+manual credential setup uses the hidden \`WAITSPIN_API_KEY\` environment variable,
+never a command-line argument. Claude Code statusline command,
 installed by \`waitspin claude-code install --compose-existing\`; Antigravity
 CLI statusline command, installed by \`waitspin antigravity install
 --compose-existing\`; GitHub Copilot CLI statusline command, installed by
@@ -363,8 +464,10 @@ prompts, model responses, integrated terminal output, shell history, repository
 URLs, screenshots, clipboard contents, or raw keystrokes. Qoder's official hook
 payload is delivered locally by Qoder and can include prompt or assistant
 message fields; the WaitSpin Qoder runtime discards those fields before cache or
-API work. Serve polling sends only the install ID; impression events send serve
-ID, serve receipt, install ID, and visible milliseconds, plus normal network
+API work. Legacy serve polling sends the install ID; measurement clients also
+send explicit capabilities. Impression events send serve ID, serve receipt,
+install ID, and visible milliseconds. Capability-gated views use the same
+receipt binding, and user clicks follow an opaque redirect, plus normal network
 metadata for rate limits and fraud controls.
 
 Advanced agent install may use \`waitspin install --all --dry-run
@@ -399,7 +502,8 @@ not expose internal constant names in public user or advertiser instructions.
 Do not claim these as shipped public paid-launch capabilities:
 
 - Native spinner patching beyond supported status surfaces.
-- \`POST /v1/events/click\` and 50x click billing.
+- Capability-aware client rollout, advertiser click statistics, and CPC click
+  billing. The dormant redirect foundation records zero-cost CPM analytics only.
 - Automated account-credit balance, redemption, or self-serve cash refund
   request flow for unused prepaid blocks.
 - Geo targeting and house ads on empty inventory.
@@ -412,6 +516,9 @@ ${WAITSPIN_AGENT_QUICKSTART_MARKDOWN}
 Supported user-surface install commands:
 
 \`\`\`bash
+# Manual CLI setup reads the credential only from hidden environment state.
+read -s WAITSPIN_API_KEY && export WAITSPIN_API_KEY
+
 # VS Code Activity Bar/status-bar extension
 # Marketplace: https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode
 code --install-extension waitspin.waitspin-vscode
@@ -432,35 +539,35 @@ waitspin extension uninstall --target devin
 # Then run "WaitSpin: Connect and earn" in Devin Desktop.
 
 # VS Code CLI fallback:
-waitspin extension install --target vscode --api-key wts_live_...
+waitspin extension install --target vscode
 waitspin extension status --target vscode
 
 # Claude Code statusline
-waitspin claude-code install --api-key wts_live_... --compose-existing
+waitspin claude-code install --compose-existing
 waitspin claude-code status
 
 # Antigravity CLI statusline
-waitspin antigravity install --api-key wts_live_... --compose-existing
+waitspin antigravity install --compose-existing
 waitspin antigravity status
 
 # GitHub Copilot CLI statusline
-waitspin copilot install --api-key wts_live_... --compose-existing
+waitspin copilot install --compose-existing
 waitspin copilot status
 
 # MiMo Code shell hook
-waitspin mimocode install --api-key wts_live_...
+waitspin mimocode install
 waitspin mimocode status
 
 # OpenCode TUI plugin slot
-waitspin opencode install --api-key wts_live_...
+waitspin opencode install
 waitspin opencode status
 
 # Grok Code CLI footer
-waitspin grok install --api-key wts_live_...
+waitspin grok install
 waitspin grok status
 
 # Qoder CLI UserPromptSubmit/Stop hooks
-waitspin qoder install --api-key wts_live_...
+waitspin qoder install
 waitspin qoder status
 \`\`\`
 `;

@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PublisherSurfaces = void 0;
+exports.statusBarWalletText = statusBarWalletText;
 const vscode = __importStar(require("vscode"));
 const extension_core_1 = require("./extension-core");
 const INITIAL_PUBLISHER_STATE = {
@@ -143,7 +144,7 @@ class PublisherSurfaces {
             item.show();
             return;
         }
-        if (this.state.inventoryStatus === "empty") {
+        if (this.state.inventoryStatus === "empty" && !this.state.walletStatus) {
             item.text = "$(circle-slash) WaitSpin no inventory";
         }
         else if (this.state.inventoryStatus === "error") {

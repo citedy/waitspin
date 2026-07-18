@@ -2,7 +2,7 @@
   "name": "waitspin-vscode",
   "displayName": "WaitSpin: Sponsored Wait States",
   "description": "Earn from VS Code wait states with sponsored cards, wallet status, and ledger visibility without giving WaitSpin access to your code.",
-  "version": "0.1.12",
+  "version": "0.1.15",
   "publisher": "waitspin",
   "license": "AGPL-3.0-or-later",
   "icon": "media/waitspin-icon.png",
@@ -40,11 +40,17 @@
     "theme": "dark"
   },
   "activationEvents": [
+    "*",
+    "onStartupFinished",
     "onCommand:waitspin.connectPublisher",
     "onCommand:waitspin.activatePublisher",
-    "onView:waitspin.publisherView",
-    "onStartupFinished"
+    "onView:waitspin.publisherView"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/citedy/waitspin.git",
@@ -103,11 +109,6 @@
     "configuration": {
       "title": "WaitSpin",
       "properties": {
-        "waitspin.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "One-time bootstrap WaitSpin extension API key. On activation the extension migrates this setting into VS Code SecretStorage; runtime polling uses SecretStorage only."
-        },
         "waitspin.installId": {
           "type": "string",
           "default": "",

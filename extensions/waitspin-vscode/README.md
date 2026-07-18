@@ -39,35 +39,17 @@ an existing extension API key. It registers the VS Code install, stores the key
 in VS Code SecretStorage, stores the install ID in global extension state, and
 starts wallet/sponsor polling.
 
-### CLI fallback
+### Standalone Marketplace and managed macOS onboarding
 
-The WaitSpin CLI remains available for advanced setup and diagnostics:
+For standalone Marketplace onboarding, run `WaitSpin: Connect and earn` and
+complete the one-time email code flow inside VS Code. The extension stores its
+install-bound credential directly in VS Code SecretStorage. It does not accept
+credentials through settings, command arguments, URLs, clipboard, or files.
 
-```bash
-npx --yes waitspin extension install --target vscode --api-key PASTE_PUBLISHER_EXTENSION_KEY
-```
-
-If you use the CLI fallback, copy the generated install ID into VS Code User
-settings:
-
-```json
-{
-  "waitspin.installId": "wins_..."
-}
-```
-
-Then add the same extension API key once as a temporary User setting:
-
-```json
-{
-  "waitspin.apiKey": "wts_live_..."
-}
-```
-
-On activation, WaitSpin migrates `waitspin.apiKey` into VS Code SecretStorage
-and clears it from settings. To rotate a key, set `waitspin.apiKey` again; the
-extension overwrites the stored secret and clears the setting again. For the
-normal Marketplace path, use `WaitSpin: Connect and earn` instead.
+WaitSpin for macOS uses the separate managed bootstrap lifecycle: the app
+installs the extension, and each supported editor redeems its own short-lived,
+target-bound token before storing the returned child credential in that
+editor's SecretStorage.
 
 Open the WaitSpin Activity Bar view or run `WaitSpin: Start sponsor polling`.
 The extension talks to `https://api.waitspin.com` by default.

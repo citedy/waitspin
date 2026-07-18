@@ -4,7 +4,6 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,8 +45,15 @@ if (!marketplacePublisher) {
 
 const sourceCommit =
   process.env.WAITSPIN_SOURCE_COMMIT ||
-  (mode === "check" ? existingManifest?.source_commit : undefined) ||
-  git(["rev-parse", "HEAD"]);
+  (mode === "check" ? existingManifest?.source_commit : undefined);
+if (!sourceCommit) {
+  throw new Error(
+    "WAITSPIN_SOURCE_COMMIT is required when writing public provenance. It must be the exported source commit reachable in citedy/waitspin.",
+  );
+}
+if (!/^[0-9a-f]{40}$/.test(sourceCommit)) {
+  throw new Error("WAITSPIN_SOURCE_COMMIT must be a full lowercase Git SHA.");
+}
 const generatedAt =
   process.env.WAITSPIN_PROVENANCE_GENERATED_AT ||
   (mode === "check" ? existingManifest?.generated_at : undefined) ||
@@ -55,6 +61,18 @@ const generatedAt =
 const vsixSha256 = createHash("sha256")
   .update(await readFile(vsixPath))
   .digest("hex");
+const existingRegistryArtifacts =
+  existingManifest?.version === extensionPackageJson.version
+    ? existingManifest.registry_artifacts
+    : undefined;
+const marketplaceVsixSha256 =
+  process.env.WAITSPIN_MARKETPLACE_VSIX_SHA256 ||
+  existingRegistryArtifacts?.marketplace?.vsix_sha256 ||
+  vsixSha256;
+const openVsxVsixSha256 =
+  process.env.WAITSPIN_OPEN_VSX_VSIX_SHA256 ||
+  existingRegistryArtifacts?.open_vsx?.vsix_sha256 ||
+  vsixSha256;
 
 const manifest = {
   schema_version: 1,
@@ -67,6 +85,16 @@ const manifest = {
   generated_at: generatedAt,
   vsix_filename: vsixFilename,
   vsix_sha256: vsixSha256,
+  registry_artifacts: {
+    marketplace: {
+      vsix_sha256: marketplaceVsixSha256,
+      matches_canonical: marketplaceVsixSha256 === vsixSha256,
+    },
+    open_vsx: {
+      vsix_sha256: openVsxVsixSha256,
+      matches_canonical: openVsxVsixSha256 === vsixSha256,
+    },
+  },
   npm_package_version: npmPackageJson.version,
   npm_package_url: `https://www.npmjs.com/package/${npmPackageJson.name}/v/${npmPackageJson.version}`,
 };
@@ -79,15 +107,6 @@ if (mode === "write") {
 } else {
   const current = await readFile(provenancePath, "utf8").catch(() => "");
   if (current !== serialized) {
-    if (isAllowedLocalHashDrift(current, serialized)) {
-      console.warn(
-        "WaitSpin VS Code provenance manifest matches all non-hash fields; VSIX SHA differs on this non-Linux host.",
-      );
-      console.warn(
-        "Ubuntu CI is the canonical provenance packager and remains strict for vsix_sha256.",
-      );
-      process.exit(0);
-    }
     console.error("WaitSpin VS Code provenance manifest is stale.");
     console.error(`Run npm run waitspin:vscode:provenance and commit ${path.relative(repoRoot, provenancePath)}.`);
     printManifestDiff(current, serialized);
@@ -115,17 +134,6 @@ async function readExistingManifest() {
   }
 }
 
-function git(args) {
-  const result = spawnSync("git", args, {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  if (result.status !== 0) {
-    throw new Error(result.stderr.trim() || `git ${args.join(" ")} failed`);
-  }
-  return result.stdout.trim();
-}
-
 function printManifestDiff(current, expected) {
   let currentJson;
   let expectedJson;
@@ -142,30 +150,10 @@ function printManifestDiff(current, expected) {
     ...Object.keys(expectedJson),
   ]);
   for (const key of [...keys].sort()) {
-    if (currentJson[key] !== expectedJson[key]) {
+    if (JSON.stringify(currentJson[key]) !== JSON.stringify(expectedJson[key])) {
       console.error(
         `  ${key}: current=${JSON.stringify(currentJson[key])} expected=${JSON.stringify(expectedJson[key])}`,
       );
     }
   }
-}
-
-function isAllowedLocalHashDrift(current, expected) {
-  if (process.platform === "linux") return false;
-
-  let currentJson;
-  let expectedJson;
-  try {
-    currentJson = JSON.parse(current || "{}");
-    expectedJson = JSON.parse(expected);
-  } catch {
-    return false;
-  }
-
-  const keys = new Set([
-    ...Object.keys(currentJson),
-    ...Object.keys(expectedJson),
-  ]);
-  const changedKeys = [...keys].filter((key) => currentJson[key] !== expectedJson[key]);
-  return changedKeys.length === 1 && changedKeys[0] === "vsix_sha256";
 }

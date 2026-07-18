@@ -63,6 +63,7 @@ run("npm", [
 ], { cwd: extensionDir });
 
 await normalizeVsix(tmpVsixPath, normalizedVsixPath);
+await assertNoZipExtraFields(normalizedVsixPath);
 await copyFile(normalizedVsixPath, vsixPath);
 await rm(tmpDir, { force: true, recursive: true });
 
@@ -94,17 +95,33 @@ async function normalizeVsix(inputPath, outputPath) {
     zipFile.outputStream.on("end", resolve);
     zipFile.outputStream.on("error", reject);
   });
-  const mtime = new Date("2000-01-01T00:00:00.000Z");
+  // yazl serializes DOS timestamps from local calendar fields. Constructing a
+  // local midnight keeps those fields identical in every release-host timezone
+  // while forceDosTimestamp suppresses the rejected extended timestamp field.
+  const mtime = new Date(2000, 0, 1, 0, 0, 0, 0);
   for (const entry of entries) {
     zipFile.addBuffer(entry.buffer, entry.name, {
       mtime,
       mode: 0o100644,
-      compress: false,
+      compress: true,
+      forceDosTimestamp: true,
     });
   }
   zipFile.end();
   await output;
   await writeFile(outputPath, Buffer.concat(chunks));
+}
+
+async function assertNoZipExtraFields(zipPath) {
+  const entries = await readZipEntries(zipPath);
+  const incompatibleEntries = entries
+    .filter((entry) => entry.extraFieldLength !== 0)
+    .map((entry) => entry.name);
+  if (incompatibleEntries.length > 0) {
+    throw new Error(
+      `VSIX contains ZIP extra fields rejected by Open VSX: ${incompatibleEntries.join(", ")}`,
+    );
+  }
 }
 
 function readZipEntries(zipPath) {
@@ -132,6 +149,7 @@ function readZipEntries(zipPath) {
             entries.push({
               name: entry.fileName,
               buffer: Buffer.concat(chunks),
+              extraFieldLength: entry.extraFieldLength,
             });
             zipFile.readEntry();
           });

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import { escapeHtml } from "./extension-html";
 import {
   PUBLISHER_LEVELS_DOCS_LINK,
@@ -18,6 +19,40 @@ export const PUBLISHER_EXTENSION_REQUIRED_SCOPES = [
   "events:write",
   "wallet:read",
 ] as const;
+
+export function resolveWaitSpinStateRoot(
+  home: string,
+  configured?: string,
+): string | undefined {
+  const root = configured?.trim() || path.join(home, ".waitspin");
+  const relative = path.relative(home, root);
+  if (
+    !path.isAbsolute(root) ||
+    !relative ||
+    relative.startsWith("..") ||
+    path.isAbsolute(relative)
+  ) {
+    return undefined;
+  }
+  return path.normalize(root);
+}
+
+export function resolveWaitSpinApiBase(
+  configuredSetting: string | undefined,
+  guardedEnvironment: string | undefined,
+  allowDeveloperApiBase: boolean,
+): string | undefined {
+  if (guardedEnvironment !== undefined) {
+    return normalizeTrustedApiBase(
+      guardedEnvironment.trim(),
+      allowDeveloperApiBase,
+    );
+  }
+  return normalizeTrustedApiBase(
+    configuredSetting?.trim() || DEFAULT_API_BASE,
+    allowDeveloperApiBase,
+  );
+}
 
 export type ServeCreative = {
   serveId: string;
@@ -87,13 +122,197 @@ export type PublisherRegistration = {
   target: string;
 };
 
+export const EDITOR_BOOTSTRAP_SCHEMA_VERSION = 1;
+
+export type EditorInstallTarget = "vscode" | "cursor" | "devin";
+
+export type EditorBootstrapDescriptor = {
+  token: string;
+  installId: string;
+  installTarget: EditorInstallTarget;
+  publisherTarget: typeof VSCODE_PUBLISHER_TARGET;
+  generation: number;
+  expiresAt: string;
+  apiBase: string;
+};
+
+export type EditorBootstrapCandidateSelection<T> =
+  { kind: "none" } | { kind: "selected"; candidate: T } | { kind: "ambiguous" };
+
+export function selectEditorBootstrapCandidate<
+  T extends {
+    descriptor: Pick<EditorBootstrapDescriptor, "installId" | "generation"> &
+      Partial<Pick<EditorBootstrapDescriptor, "token" | "expiresAt">>;
+    canonical?: boolean;
+    modifiedAtMs?: number;
+  },
+>(
+  candidates: readonly T[],
+  expected?: Pick<EditorBootstrapDescriptor, "installId" | "generation"> &
+    Partial<Pick<EditorBootstrapDescriptor, "token">>,
+): EditorBootstrapCandidateSelection<T> {
+  const eligible = expected
+    ? candidates.filter(
+        ({ descriptor }) =>
+          descriptor.installId === expected.installId &&
+          descriptor.generation === expected.generation &&
+          (expected.token === undefined || descriptor.token === expected.token),
+      )
+    : [...candidates];
+  if (eligible.length === 0) return { kind: "none" };
+  const ranked = [...eligible].sort((left, right) => {
+    const generation = right.descriptor.generation - left.descriptor.generation;
+    if (generation !== 0) return generation;
+    const expiry =
+      Date.parse(right.descriptor.expiresAt ?? "") -
+      Date.parse(left.descriptor.expiresAt ?? "");
+    if (Number.isFinite(expiry) && expiry !== 0) return expiry;
+    const canonical =
+      Number(right.canonical === true) - Number(left.canonical === true);
+    if (canonical !== 0) return canonical;
+    const modified = (right.modifiedAtMs ?? 0) - (left.modifiedAtMs ?? 0);
+    if (modified !== 0) return modified;
+    return (right.descriptor.token ?? "").localeCompare(
+      left.descriptor.token ?? "",
+    );
+  });
+  const winner = ranked[0]!;
+  const runnerUp = ranked[1];
+  if (
+    runnerUp &&
+    winner.descriptor.installId === runnerUp.descriptor.installId &&
+    winner.descriptor.generation === runnerUp.descriptor.generation &&
+    winner.descriptor.token === runnerUp.descriptor.token &&
+    winner.canonical === runnerUp.canonical &&
+    winner.modifiedAtMs === runnerUp.modifiedAtMs
+  ) {
+    return { kind: "ambiguous" };
+  }
+  return { kind: "selected", candidate: winner };
+}
+
+export async function recoverManagedBootstrap(input: {
+  resumePendingReady: () => Promise<boolean>;
+  redeemEditorBootstrap: () => Promise<boolean>;
+}): Promise<boolean> {
+  if (await input.resumePendingReady()) return true;
+  return input.redeemEditorBootstrap();
+}
+
+export type RedeemedPublisherCredential = {
+  apiKey: string;
+  credentialId: string;
+  installId: string;
+  installTarget: EditorInstallTarget;
+  publisherTarget: typeof VSCODE_PUBLISHER_TARGET;
+  generation: number;
+};
+
 export function generatePublisherInstallId(
   randomUuid: () => string = randomUUID,
 ): string {
   return `wins_${randomUuid().replace(/-/g, "")}`;
 }
 
-export function hasPublisherExtensionScopes(scopes: readonly string[]): boolean {
+export function parseEditorBootstrapDescriptor(
+  payload: unknown,
+  expectedTarget: EditorInstallTarget,
+  now = Date.now(),
+  allowDeveloperApiBase = false,
+  expectedApiBase?: string,
+): EditorBootstrapDescriptor | undefined {
+  const value = objectRecord(payload);
+  if (!value) return undefined;
+  const expiresAt =
+    typeof value.expires_at === "string" ? value.expires_at : "";
+  const expiresAtMs = Date.parse(expiresAt);
+  const apiBase =
+    typeof value.api_base === "string"
+      ? normalizeTrustedApiBase(value.api_base, allowDeveloperApiBase)
+      : undefined;
+  if (
+    value.managed_by !== "waitspin-macos" ||
+    value.schema_version !== EDITOR_BOOTSTRAP_SCHEMA_VERSION ||
+    value.protocol_version !== 1 ||
+    typeof value.token !== "string" ||
+    !value.token.startsWith("wbst_") ||
+    value.token.length > 256 ||
+    typeof value.install_id !== "string" ||
+    !/^wins_[A-Za-z0-9._-]{3,123}$/.test(value.install_id) ||
+    value.install_target !== expectedTarget ||
+    value.publisher_target !== VSCODE_PUBLISHER_TARGET ||
+    !Number.isSafeInteger(value.generation) ||
+    Number(value.generation) <= 0 ||
+    !Number.isFinite(expiresAtMs) ||
+    expiresAtMs <= now ||
+    !apiBase ||
+    (expectedApiBase !== undefined && apiBase !== expectedApiBase)
+  ) {
+    return undefined;
+  }
+  return {
+    token: value.token,
+    installId: value.install_id,
+    installTarget: expectedTarget,
+    publisherTarget: VSCODE_PUBLISHER_TARGET,
+    generation: Number(value.generation),
+    expiresAt,
+    apiBase,
+  };
+}
+
+export function parseRedeemedPublisherCredential(
+  payload: unknown,
+  descriptor: EditorBootstrapDescriptor,
+  clientApiKey?: string,
+): RedeemedPublisherCredential | undefined {
+  const value = objectRecord(payload);
+  if (!value) return undefined;
+  if (
+    !Array.isArray(value.scopes) ||
+    !value.scopes.every((scope) => typeof scope === "string")
+  ) {
+    return undefined;
+  }
+  const scopes = readStringArray(value.scopes);
+  const protocolVersion = value.protocol_version;
+  const apiKey =
+    protocolVersion === 1 &&
+    typeof value.api_key === "string" &&
+    value.api_key.startsWith("wts_live_")
+      ? value.api_key
+      : protocolVersion === 2 &&
+          value.api_key === undefined &&
+          typeof clientApiKey === "string" &&
+          /^wts_live_[A-Za-z0-9_-]{43}$/.test(clientApiKey)
+        ? clientApiKey
+        : undefined;
+  if (
+    !apiKey ||
+    typeof value.credential_id !== "string" ||
+    !value.credential_id ||
+    value.install_id !== descriptor.installId ||
+    value.install_target !== descriptor.installTarget ||
+    value.publisher_target !== descriptor.publisherTarget ||
+    value.generation !== descriptor.generation ||
+    scopes.length !== PUBLISHER_EXTENSION_REQUIRED_SCOPES.length ||
+    !hasPublisherExtensionScopes(scopes)
+  ) {
+    return undefined;
+  }
+  return {
+    apiKey,
+    credentialId: value.credential_id,
+    installId: descriptor.installId,
+    installTarget: descriptor.installTarget,
+    publisherTarget: descriptor.publisherTarget,
+    generation: Number(value.generation),
+  };
+}
+
+export function hasPublisherExtensionScopes(
+  scopes: readonly string[],
+): boolean {
   return PUBLISHER_EXTENSION_REQUIRED_SCOPES.every((scope) =>
     scopes.includes(scope),
   );
@@ -106,9 +325,16 @@ export function parseVerifiedPublisherKeyPayload(
   if (!record) {
     return undefined;
   }
+  if (
+    !Array.isArray(record.scopes) ||
+    !record.scopes.every((scope) => typeof scope === "string")
+  ) {
+    return undefined;
+  }
   const accountId =
     typeof record.account_id === "string" ? record.account_id.trim() : "";
-  const apiKey = typeof record.api_key === "string" ? record.api_key.trim() : "";
+  const apiKey =
+    typeof record.api_key === "string" ? record.api_key.trim() : "";
   const keyProfile =
     typeof record.key_profile === "string" ? record.key_profile.trim() : "";
   const scopes = readStringArray(record.scopes);
@@ -188,7 +414,10 @@ export function normalizeTrustedApiBase(
 }
 
 function normalizeHostname(hostname: string): string {
-  return hostname.toLowerCase().replace(/\.$/, "").replace(/^\[(.*)\]$/, "$1");
+  return hostname
+    .toLowerCase()
+    .replace(/\.$/, "")
+    .replace(/^\[(.*)\]$/, "$1");
 }
 
 function parseIpv4Number(value: string): number | undefined {
@@ -237,9 +466,7 @@ function parseIpv4Octets(hostname: string): number[] | undefined {
     return undefined;
   }
   const octets = parts.map(parseIpv4Number);
-  if (
-    octets.some((octet) => octet === undefined || octet < 0 || octet > 255)
-  ) {
+  if (octets.some((octet) => octet === undefined || octet < 0 || octet > 255)) {
     return undefined;
   }
   return octets as number[];
@@ -375,7 +602,9 @@ export function serveExpiryDelayMs(
   return Math.max(0, serve.expiresAtMs - nowMs);
 }
 
-export function parseWalletStatusPayload(payload: unknown): WalletStatus | undefined {
+export function parseWalletStatusPayload(
+  payload: unknown,
+): WalletStatus | undefined {
   if (!payload || typeof payload !== "object") {
     return undefined;
   }
@@ -393,15 +622,15 @@ export function parseWalletStatusPayload(payload: unknown): WalletStatus | undef
   const heldMicroUnits = readInteger(balance.held_micro_units);
   const reversalDebtMicroUnits =
     readInteger(balance.reversal_debt_micro_units) ?? 0;
-  const pendingPayoutMicroUnits = readInteger(balance.pending_payout_micro_units);
+  const pendingPayoutMicroUnits = readInteger(
+    balance.pending_payout_micro_units,
+  );
   const lifetimeEarnedMicroUnits = readInteger(
     balance.lifetime_earned_micro_units,
   );
   const payoutTransferCents = readInteger(payoutPolicy.transfer_cents);
   const minPayoutCents = readInteger(payoutPolicy.min_payout_cents);
-  const earningMaturityHours = readInteger(
-    payoutPolicy.earning_maturity_hours,
-  );
+  const earningMaturityHours = readInteger(payoutPolicy.earning_maturity_hours);
   const nextEligibleAt =
     typeof payoutPolicy.next_eligible_at === "string" &&
     payoutPolicy.next_eligible_at.trim()

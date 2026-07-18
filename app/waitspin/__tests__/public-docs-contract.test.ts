@@ -108,14 +108,16 @@ describe("WaitSpin public docs contract", () => {
     expect(markdown).toContain("`PaymentIntent` is `succeeded`");
     expect(markdown).toContain("publishers continue to receive standard");
     expect(markdown).toContain(
-      "waitspin claude-code install --api-key wts_live_... --compose-existing",
+      "waitspin claude-code install --compose-existing",
     );
     expect(markdown).toContain("waitspin antigravity install");
     expect(markdown).toContain("waitspin copilot install");
     expect(markdown).toContain("waitspin qoder install");
     expect(markdown).not.toContain("waitspin kilo");
-    expect(markdown).toContain("`POST /v1/events/click`");
+    expect(markdown).toContain("| POST | `/v1/events/view` |");
+    expect(markdown).toContain("| GET | `/v1/click/{token}` |");
     expect(markdown).not.toContain("| POST | `/v1/events/click` |");
+    expect(markdown).not.toContain("/v1/events/click");
     expect(markdown).toContain("## WebMCP Browser Tools");
     expect(quickstart).toContain("# WaitSpin Quickstart");
     expect(quickstart).toContain("campaigns[0].campaign_id");
@@ -133,6 +135,7 @@ describe("WaitSpin public docs contract", () => {
       "npx --yes waitspin init --email you@example.com --code CODE_FROM_EMAIL --key-profile publisher-extension --json",
     );
     expect(quickstart).not.toContain("--api-key wts_live_");
+    expect(markdown).not.toContain("--api-key");
     for (const tool of WAITSPIN_WEBMCP_TOOLS) {
       expect(markdown).toContain(`\`${tool.toolName}\``);
     }
@@ -448,12 +451,6 @@ describe("WaitSpin public docs contract", () => {
     expect(publicCopySources).not.toContain("Kilo CLI");
     expect(publicCopySources).not.toContain("waitspin kilo");
     expect(publicCopySources).not.toMatch(/\bkilo\b/i);
-    expect(sources[1]).not.toContain('"target": "cursor"');
-    expect(sources[1]).not.toContain("`cursor`");
-    expect(sources[0]).not.toContain('"target": "devin"');
-    expect(sources[1]).not.toContain('"target": "devin"');
-    expect(sources[1]).not.toContain("`devin`");
-
     const apiTargetSources = (
       await Promise.all(
         [
@@ -464,8 +461,8 @@ describe("WaitSpin public docs contract", () => {
       )
     ).join("\n");
     expect(apiTargetSources).toContain("status-bar-fallback");
-    expect(apiTargetSources).not.toContain("devin");
-    expect(apiTargetSources).not.toContain("cursor");
+    expect(apiTargetSources).toContain("devin");
+    expect(apiTargetSources).toContain("cursor");
   });
 
   it("does not advertise an automated account-credit balance before redemption ships", async () => {
@@ -872,7 +869,7 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("WAITSPIN_VERIFICATION_CODE");
     expect(skill).not.toContain('--code "$WAITSPIN_VERIFICATION_CODE"');
     expect(skill).toContain(
-      "npx --yes waitspin@0.1.14 init --email you@example.com --key-profile control --json",
+      "npx --yes waitspin@0.1.15 init --email you@example.com --key-profile control --json",
     );
     expect(skill).toContain("next: \"enter_email_code\"");
     expect(skill).toContain("Validate user-supplied emails");
@@ -888,7 +885,7 @@ describe("WaitSpin public docs contract", () => {
     expect(skill).toContain("waitspin install --all --dry-run");
     expect(skill).toContain("A `publisher-extension` key is appropriate for publisher earnings reads");
     expect(skill).toContain("do not echo it in chat");
-    expect(skill).toContain("npx --yes waitspin@0.1.14");
+    expect(skill).toContain("npx --yes waitspin@0.1.15");
     expect(skill).not.toContain("waitspin@latest");
     expect(skill).not.toContain("USER_EMAIL");
     expect(skill).not.toContain("CODE_FROM_EMAIL");
@@ -1207,20 +1204,21 @@ describe("WaitSpin public docs contract", () => {
     expect(landingRoadmap).toContain("Geo targeting");
     expect(landingRoadmap).not.toContain("Public skill registry publication");
     expect(launchClient).toContain(
-      "waitspin install --all --dry-run --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing",
+      "waitspin install --all --dry-run --compose-existing",
     );
     expect(launchClient).toContain(
-      "waitspin install --all --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing",
+      "waitspin install --all --compose-existing",
     );
     expect(launchClient).toContain("waitspin status --all");
+    expect(launchClient).not.toContain("--api-key KEY_FROM_JSON");
     expect(launchClient).toContain(
-      "waitspin claude-code install --api-key PASTE_PUBLISHER_EXTENSION_KEY --compose-existing",
+      "waitspin claude-code install --compose-existing",
     );
     expect(launchClient).toContain(
-      "waitspin mimocode install --api-key PASTE_PUBLISHER_EXTENSION_KEY",
+      "waitspin mimocode install",
     );
     expect(launchClient).toContain(
-      "waitspin opencode install --api-key PASTE_PUBLISHER_EXTENSION_KEY",
+      "waitspin opencode install",
     );
     expect(launchClient).toContain("MiMo Code shell hook");
     expect(launchClient).toContain("OpenCode TUI plugin slot");

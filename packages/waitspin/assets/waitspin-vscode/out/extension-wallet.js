@@ -49,22 +49,64 @@ class PublisherWalletController {
     host;
     walletReadStopped = false;
     lastWalletRefreshStartedAt = 0;
+    refreshEpoch = 0;
+    refreshInFlight;
+    refreshQueued = false;
+    queuedForce = false;
+    queuedShowMessage = false;
     constructor(host) {
         this.host = host;
     }
     reset() {
+        this.refreshEpoch += 1;
         this.walletReadStopped = false;
         this.lastWalletRefreshStartedAt = 0;
+        this.host.updatePublisherState({
+            walletStatus: undefined,
+            ledgerEntries: [],
+            lastError: undefined,
+        });
     }
     resetThrottle() {
         this.lastWalletRefreshStartedAt = 0;
     }
-    async refresh(showMessage) {
+    refresh(showMessage, force = false) {
+        if (this.refreshInFlight) {
+            if (force || showMessage) {
+                this.refreshQueued = true;
+                this.queuedForce ||= force;
+                this.queuedShowMessage ||= showMessage;
+            }
+            return this.refreshInFlight;
+        }
+        const inFlight = this.runRefreshQueue(showMessage, force).finally(() => {
+            if (this.refreshInFlight === inFlight)
+                this.refreshInFlight = undefined;
+        });
+        this.refreshInFlight = inFlight;
+        return inFlight;
+    }
+    async runRefreshQueue(showMessage, force) {
+        let nextShowMessage = showMessage;
+        let nextForce = force;
+        while (true) {
+            await this.performRefresh(nextShowMessage, nextForce);
+            if (!this.refreshQueued)
+                return;
+            nextShowMessage = this.queuedShowMessage;
+            nextForce = this.queuedForce;
+            this.refreshQueued = false;
+            this.queuedForce = false;
+            this.queuedShowMessage = false;
+        }
+    }
+    async performRefresh(showMessage, force) {
         if (this.walletReadStopped && !showMessage) {
             return;
         }
         const now = Date.now();
-        if (!showMessage &&
+        if (!force &&
+            !showMessage &&
             now - this.lastWalletRefreshStartedAt < WALLET_REFRESH_INTERVAL_MS) {
             return;
         }
@@ -75,11 +117,14 @@ class PublisherWalletController {
             this.host.refreshConfiguredState();
             return;
         }
+        const epoch = this.refreshEpoch;
         try {
             const statusResponse = await this.host.fetchWithTimeout(`${apiBase}/v1/wallet/status`, {
                 method: "GET",
                 headers: { Authorization: `Bearer ${apiKey}` },
             });
+            if (epoch !== this.refreshEpoch)
+                return;
             if (this.host.isAuthError(statusResponse.status)) {
                 this.stopForAuth(`Wallet auth failed (HTTP ${statusResponse.status}). Create an extension key with wallet:read and update WaitSpin settings.`, showMessage);
                 return;
@@ -90,17 +135,28 @@ class PublisherWalletController {
                 });
                 return;
             }
-            const walletStatus = (0, extension_core_1.parseWalletStatusPayload)(await readJsonBody(statusResponse));
+            const statusBody = await readJsonBody(statusResponse);
+            if (epoch !== this.refreshEpoch)
+                return;
+            const walletStatus = (0, extension_core_1.parseWalletStatusPayload)(statusBody);
             if (!walletStatus) {
                 this.host.updatePublisherState({
                     lastError: "Wallet status failed validation",
                 });
                 return;
             }
+            this.host.updatePublisherState({
+                walletStatus,
+                ledgerEntries: [],
+                lastUpdatedAt: new Date().toISOString(),
+                lastError: undefined,
+            });
             const ledgerResponse = await this.host.fetchWithTimeout(`${apiBase}/v1/wallet/ledger?limit=5`, {
                 method: "GET",
                 headers: { Authorization: `Bearer ${apiKey}` },
             });
+            if (epoch !== this.refreshEpoch)
+                return;
             if (this.host.isAuthError(ledgerResponse.status)) {
                 this.stopForAuth(`Wallet ledger auth failed (HTTP ${ledgerResponse.status}). Create an extension key with wallet:read and update WaitSpin settings.`, showMessage);
                 return;
@@ -108,15 +164,19 @@ class PublisherWalletController {
             if (!ledgerResponse.ok) {
                 this.host.updatePublisherState({
                     walletStatus,
+                    ledgerEntries: [],
                     lastUpdatedAt: new Date().toISOString(),
                     lastError: `Wallet ledger failed: HTTP ${ledgerResponse.status}`,
                 });
                 return;
             }
+            const ledgerBody = await readJsonBody(ledgerResponse);
+            if (epoch !== this.refreshEpoch)
+                return;
             this.walletReadStopped = false;
             this.host.updatePublisherState({
                 walletStatus,
-                ledgerEntries: (0, extension_core_1.parseLedgerPayload)(await readJsonBody(ledgerResponse)),
+                ledgerEntries: (0, extension_core_1.parseLedgerPayload)(ledgerBody),
                 lastUpdatedAt: new Date().toISOString(),
                 lastError: undefined,
             });
@@ -125,6 +185,8 @@ class PublisherWalletController {
             }
         }
         catch (error) {
+            if (epoch !== this.refreshEpoch)
+                return;
             const message = `Wallet refresh failed: ${error instanceof Error ? error.message : String(error)}`;
             this.host.updatePublisherState({ lastError: message });
             this.host.logWaitSpin(message);

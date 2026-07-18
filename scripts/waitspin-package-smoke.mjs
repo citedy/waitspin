@@ -12,7 +12,9 @@ const repoRoot = path.resolve(
 );
 const packageRoot = path.join(repoRoot, "packages", "waitspin");
 const packageNodeModules = path.join(packageRoot, "node_modules");
+const rootNodeModules = path.join(repoRoot, "node_modules");
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), "waitspin-package-smoke-"));
+const tempNpmCache = path.join(tempRoot, "npm-cache");
 
 function run(command, args, options = {}) {
   const { env: extraEnv = {}, timeout = 60_000, ...execOptions } = options;
@@ -27,6 +29,7 @@ function run(command, args, options = {}) {
       env: {
         ...process.env,
         npm_config_audit: "false",
+        npm_config_cache: tempNpmCache,
         npm_config_fund: "false",
         npm_config_update_notifier: "false",
         ...extraEnv,
@@ -50,13 +53,26 @@ function runInstalledBin(binPath, args, options = {}) {
 }
 
 function ensurePackageDependencies() {
-  if (existsSync(path.join(packageNodeModules, "typescript", "bin", "tsc"))) {
+  const typescriptRelativePath = path.join("typescript", "bin", "tsc");
+  if (
+    existsSync(path.join(packageNodeModules, typescriptRelativePath)) ||
+    existsSync(path.join(rootNodeModules, typescriptRelativePath))
+  ) {
     return;
   }
-  run("npm", ["install", "--ignore-scripts", "--no-package-lock"], {
-    cwd: packageRoot,
-    timeout: 120_000,
-  });
+  run(
+    "npm",
+    [
+      "install",
+      "--ignore-scripts",
+      "--no-package-lock",
+      "--workspaces=false",
+    ],
+    {
+      cwd: packageRoot,
+      timeout: 120_000,
+    },
+  );
 }
 
 function assertIncludes(values, required, label) {
@@ -95,6 +111,7 @@ try {
   const requiredPackageFiles = [
     "README.md",
     "assets/waitspin-vscode/package.json",
+    "assets/waitspin-vscode/waitspin-vscode.vsix",
     "assets/waitspin-vscode/out/extension.js",
     "assets/waitspin-mimocode/mimocode-install.sh",
     "assets/waitspin-mimocode/mimocode-runtime.sh",

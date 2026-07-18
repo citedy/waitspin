@@ -1,4 +1,4 @@
-import { access, copyFile, cp, mkdir, rm } from "node:fs/promises";
+import { access, copyFile, cp, mkdir, readFile, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,8 @@ const extensionSource = path.resolve(
   "../../extensions/waitspin-vscode",
 );
 const destination = path.join(packageRoot, "assets", "waitspin-vscode");
+const repoRoot = path.resolve(packageRoot, "../..");
+const bundledVsix = path.join(destination, "waitspin-vscode.vsix");
 
 async function ensureExtensionCompiled() {
   try {
@@ -60,4 +62,20 @@ await cp(path.join(extensionSource, "media"), path.join(destination, "media"), {
   recursive: true,
   force: true,
 });
+await execFileAsync("node", ["scripts/waitspin-vscode-package.mjs"], {
+  cwd: repoRoot,
+});
+const extensionManifest = JSON.parse(
+  await readFile(path.join(extensionSource, "package.json"), "utf8"),
+);
+await copyFile(
+  path.join(
+    repoRoot,
+    "dist",
+    "waitspin-vscode",
+    `${extensionManifest.name}-${extensionManifest.version}.vsix`,
+  ),
+  bundledVsix,
+);
 await access(path.join(destination, "out", "extension.js"));
+await access(bundledVsix);

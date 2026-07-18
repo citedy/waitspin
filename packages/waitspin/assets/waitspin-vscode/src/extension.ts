@@ -1,44 +1,51 @@
 import * as vscode from "vscode";
+import os from "node:os";
+import path from "node:path";
 import {
   DEFAULT_API_BASE,
-  isServeExpired,
   isSafeExternalUrl,
   normalizeTrustedApiBase,
-  parseServePayload,
-  serveExpiryDelayMs,
+  resolveWaitSpinApiBase,
+  resolveWaitSpinStateRoot,
+  VSCODE_PUBLISHER_TARGET,
+  type EditorInstallTarget,
   type PublisherViewState,
-  type ServeCreative,
 } from "./extension-core";
-import { PublisherOnboardingController } from "./extension-onboarding";
+import { migrateLegacyCredential } from "./extension-activation-state";
+import {
+  migrateLegacyManagedActivation,
+  runManualEditorActivation,
+  runManagedEditorActivation,
+} from "./extension-managed-activation";
+import {
+  ManagedActivationRetryController,
+  type ManagedActivationCompletion,
+  type ManagedActivationTriggerSource,
+} from "./extension-activation-retry";
+import {
+  PublisherOnboardingController,
+  type ManualCredentialCandidate,
+} from "./extension-onboarding";
+import {
+  readEditorActivationReceipt,
+  resolveActivationReceiptRegistration,
+  writeEditorActivationReceipt,
+} from "./extension-state";
 import { PublisherSurfaces } from "./extension-surfaces";
+import { PublisherSponsorController } from "./extension-sponsor";
 import { PublisherWalletController } from "./extension-wallet";
 
-const POLL_INTERVAL_MS = 15_000;
 const FETCH_TIMEOUT_MS = 10_000;
-const IMPRESSION_EXPIRY_SAFETY_MS = 500;
-const API_KEY_SECRET_STORAGE_KEY = "waitspin.publisherApiKey";
 const INSTALL_ID_GLOBAL_STATE_KEY = "waitspin.publisherInstallId";
 
-type ActiveServe = ServeCreative & {
-  apiBase: string;
-  installId: string;
-  shownAt: number;
-  visibleStartedAt: number | undefined;
-  impressionRecorded: boolean;
-  impressionRecording: boolean;
-};
-
-let pollTimer: ReturnType<typeof setInterval> | undefined;
-let impressionTimeout: ReturnType<typeof setTimeout> | undefined;
-let serveExpiryTimeout: ReturnType<typeof setTimeout> | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
 let secretApiKey: string | undefined;
 let storedInstallId: string | undefined;
 let authPollingStopped = false;
-let isPolling = false;
 let invalidApiBaseWarned = false;
-let activeServe: ActiveServe | undefined;
 let walletController: PublisherWalletController | undefined;
+let sponsorController: PublisherSponsorController | undefined;
+let activationRetryController: ManagedActivationRetryController | undefined;
 
 const surfaces = new PublisherSurfaces();
 
@@ -83,41 +90,24 @@ function resolveApiKey(): string | undefined {
   return undefined;
 }
 
-async function migratePublisherApiKeyToSecretStorage(
+async function loadPublisherApiKeyFromSecretStorage(
   context: vscode.ExtensionContext,
 ): Promise<void> {
-  const fromConfig = readGlobalWaitSpinSetting("apiKey");
-
-  if (fromConfig) {
-    try {
-      await storePublisherApiKey(context, fromConfig);
-    } catch (error) {
-      secretApiKey = undefined;
-      warnCredentialStorageFailure(
-        "Unable to migrate waitspin.apiKey into VS Code SecretStorage",
-        error,
-      );
-      return;
-    }
-
-    try {
-      await vscode.workspace
-        .getConfiguration("waitspin")
-        .update("apiKey", undefined, vscode.ConfigurationTarget.Global);
-    } catch (error) {
-      warnCredentialStorageFailure(
-        "Unable to clear migrated waitspin.apiKey from settings",
-        error,
-      );
-    }
-    logWaitSpin(
-      "Migrated waitspin.apiKey into VS Code SecretStorage for sponsor polling.",
-    );
-    return;
-  }
-
+  let secretReadSucceeded = false;
   try {
-    secretApiKey = (await context.secrets.get(API_KEY_SECRET_STORAGE_KEY))?.trim();
+    const active = await migrateLegacyCredential(
+      context.secrets,
+      storedInstallId,
+    );
+    secretApiKey = active?.apiKey;
+    if (active) {
+      storedInstallId = active.installId;
+      await context.globalState.update(
+        INSTALL_ID_GLOBAL_STATE_KEY,
+        active.installId,
+      );
+    }
+    secretReadSucceeded = true;
   } catch (error) {
     secretApiKey = undefined;
     refreshConfiguredState();
@@ -125,10 +115,31 @@ async function migratePublisherApiKeyToSecretStorage(
       "Unable to read WaitSpin extension key from SecretStorage",
       error,
     );
-    return;
   }
 
   refreshConfiguredState();
+  if (storedInstallId) {
+    try {
+      const receipt = await readCurrentEditorActivationReceipt();
+      const publisherRegistered = resolveActivationReceiptRegistration({
+        secretReadSucceeded,
+        secretApiKey,
+        installId: storedInstallId,
+        receipt,
+      });
+      if (publisherRegistered !== undefined) {
+        await writeCurrentEditorActivationReceipt(
+          storedInstallId,
+          publisherRegistered,
+        );
+      }
+    } catch (error) {
+      warnCredentialStorageFailure(
+        "Unable to update WaitSpin editor activation receipt",
+        error,
+      );
+    }
+  }
 }
 
 async function migratePublisherInstallIdToGlobalState(
@@ -142,10 +153,16 @@ async function migratePublisherInstallIdToGlobalState(
     await clearPublisherInstallIdSetting();
     return;
   }
+  if (secretApiKey && storedInstallId) {
+    await clearPublisherInstallIdSetting();
+    return;
+  }
   try {
     await storePublisherInstallId(context, fromConfig);
     await clearPublisherInstallIdSetting();
-    logWaitSpin("Migrated waitspin.installId into VS Code global extension state.");
+    logWaitSpin(
+      "Migrated waitspin.installId into VS Code global extension state.",
+    );
   } catch (error) {
     warnCredentialStorageFailure(
       "Unable to migrate waitspin.installId into VS Code global extension state",
@@ -167,14 +184,40 @@ async function clearPublisherInstallIdSetting(): Promise<void> {
   }
 }
 
-async function storePublisherApiKey(
+async function updateActiveCredentialProjection(
   context: vscode.ExtensionContext,
-  apiKey: string,
+  identity: { apiKey: string; installId: string },
 ): Promise<void> {
-  await context.secrets.store(API_KEY_SECRET_STORAGE_KEY, apiKey);
-  secretApiKey = apiKey;
+  await context.globalState.update(
+    INSTALL_ID_GLOBAL_STATE_KEY,
+    identity.installId,
+  );
+  secretApiKey = identity.apiKey;
+  storedInstallId = identity.installId;
   getWalletController().reset();
   refreshConfiguredState();
+}
+
+async function activateManualPublisherCredential(
+  context: vscode.ExtensionContext,
+  candidate: ManualCredentialCandidate,
+): Promise<{ walletReadable: boolean }> {
+  const result = await runManualEditorActivation({
+    stateRoot: waitSpinStateRoot(),
+    installTarget: currentEditorInstallTarget(),
+    secrets: context.secrets,
+    globalState: context.globalState,
+    candidate,
+    allowDeveloperApiBase: allowDeveloperApiBase(),
+    fetchWithTimeout,
+    updateProjections: (identity) =>
+      updateActiveCredentialProjection(context, identity),
+    writeReceipt: async (identity) => {
+      await writeCurrentEditorActivationReceipt(identity.installId, true);
+    },
+  });
+  authPollingStopped = false;
+  return { walletReadable: result.walletReadable };
 }
 
 async function storePublisherInstallId(
@@ -184,6 +227,117 @@ async function storePublisherInstallId(
   await context.globalState.update(INSTALL_ID_GLOBAL_STATE_KEY, installId);
   storedInstallId = installId;
   refreshConfiguredState();
+  try {
+    await writeCurrentEditorActivationReceipt(installId, Boolean(secretApiKey));
+  } catch (error) {
+    warnCredentialStorageFailure(
+      "Unable to update WaitSpin editor activation receipt",
+      error,
+    );
+  }
+}
+
+function currentEditorInstallTarget(): EditorInstallTarget {
+  const appName = vscode.env.appName.toLowerCase();
+  if (appName.includes("cursor")) return "cursor";
+  if (appName.includes("devin")) return "devin";
+  return "vscode";
+}
+
+function waitSpinStateRoot(): string {
+  const root = resolveWaitSpinStateRoot(
+    os.homedir(),
+    process.env.WAITSPIN_STATE_ROOT,
+  );
+  if (!root) {
+    throw new Error("WaitSpin state root must be an absolute path inside the current home");
+  }
+  return root;
+}
+
+function writeCurrentEditorActivationReceipt(
+  installId: string,
+  publisherRegistered: boolean,
+): Promise<void> {
+  return writeEditorActivationReceipt(
+    waitSpinStateRoot(),
+    currentEditorInstallTarget(),
+    installId,
+    publisherRegistered,
+  );
+}
+
+function readCurrentEditorActivationReceipt() {
+  return readEditorActivationReceipt(
+    waitSpinStateRoot(),
+    currentEditorInstallTarget(),
+  );
+}
+
+async function runManagedActivationAttempt(
+  context: vscode.ExtensionContext,
+  allowManagedOverride: boolean,
+  signal: AbortSignal,
+): Promise<void> {
+  const active = await runManagedEditorActivation({
+    stateRoot: waitSpinStateRoot(),
+    installTarget: currentEditorInstallTarget(),
+    secrets: context.secrets,
+    globalState: context.globalState,
+    allowDeveloperApiBase: allowDeveloperApiBase(),
+    allowManagedOverride,
+    signal,
+    fetchWithTimeout,
+    updateProjections: (identity) =>
+      updateActiveCredentialProjection(context, identity),
+    writeReceipt: async (identity) => {
+      await writeCurrentEditorActivationReceipt(identity.installId, true);
+    },
+  });
+  if (!active || signal.aborted) return;
+  logWaitSpin(`Activated managed WaitSpin install ${active.installId}.`);
+  authPollingStopped = false;
+  getWalletController().reset();
+  refreshConfiguredState();
+  getWalletController().resetThrottle();
+  await getWalletController().refresh(false, true);
+  startPollingIfConfigured();
+}
+
+function getActivationRetryController(
+  context: vscode.ExtensionContext,
+): ManagedActivationRetryController {
+  if (activationRetryController) return activationRetryController;
+  activationRetryController = new ManagedActivationRetryController({
+    attempt: ({ allowManagedOverride, signal }) =>
+      runManagedActivationAttempt(context, allowManagedOverride, signal),
+    onRetryScheduled: (failure, delayMs) => {
+      const status =
+        failure.httpStatus === undefined ? "none" : String(failure.httpStatus);
+      logWaitSpin(
+        `Managed activation retry scheduled phase=${failure.phase} reason=${failure.reason} status=${status} delay_ms=${delayMs}.`,
+      );
+    },
+    onTerminalFailure: (failure) => {
+      warnCredentialStorageFailure(
+        `Managed activation stopped phase=${failure.phase} reason=${failure.reason}`,
+        failure,
+      );
+    },
+  });
+  return activationRetryController;
+}
+
+function activateManagedBootstrapIfPresent(
+  context: vscode.ExtensionContext,
+  source: ManagedActivationTriggerSource,
+  allowManagedOverride = false,
+): Promise<ManagedActivationCompletion> {
+  return getActivationRetryController(context).trigger({
+    source,
+    allowManagedOverride,
+    surfaceTerminal: source !== "focus",
+  });
 }
 
 function resolveInstallId(): string | undefined {
@@ -209,15 +363,15 @@ function allowDeveloperApiBase(): boolean {
 }
 
 function resolveApiBase(): string | undefined {
-  const configured =
-    readGlobalWaitSpinSetting("apiBase") ||
-    process.env.WAITSPIN_BASE_URL?.trim() ||
-    DEFAULT_API_BASE;
-  const normalized = normalizeTrustedApiBase(configured, allowDeveloperApiBase());
+  const normalized = resolveWaitSpinApiBase(
+    readGlobalWaitSpinSetting("apiBase"),
+    process.env.WAITSPIN_BASE_URL,
+    allowDeveloperApiBase(),
+  );
   if (!normalized && !invalidApiBaseWarned) {
     invalidApiBaseWarned = true;
     logWaitSpin(
-      "Ignoring untrusted waitspin.apiBase. Store credentials globally and use https://api.waitspin.com for sponsor polling.",
+      "WaitSpin API configuration is invalid; credentialed network traffic is disabled.",
     );
   }
   return normalized;
@@ -226,14 +380,10 @@ function resolveApiBase(): string | undefined {
 function resetPollingAfterConfigChange(): void {
   authPollingStopped = false;
   getWalletController().reset();
-  clearActiveServe("configuration changed");
+  getSponsorController().reset("configuration changed");
   updatePublisherState({ authStopped: false, lastError: undefined });
   refreshConfiguredState();
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = undefined;
-  }
-  startPollingIfConfigured();
+  getSponsorController().start();
 }
 
 function isAuthError(status: number): boolean {
@@ -245,16 +395,20 @@ function stopPollingForAuth(message: string): void {
     return;
   }
   authPollingStopped = true;
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = undefined;
-  }
   updatePublisherState({
     authStopped: true,
     inventoryStatus: "error",
     lastError: message,
   });
   logWaitSpin(message);
+  if (storedInstallId) {
+    void writeCurrentEditorActivationReceipt(storedInstallId, false).catch(
+      (error) =>
+        logWaitSpin(
+          `Unable to mark WaitSpin editor activation as unhealthy: ${formatCredentialError(error)}`,
+        ),
+    );
+  }
   void vscode.window.showWarningMessage(`WaitSpin: ${message}`);
 }
 
@@ -263,11 +417,16 @@ async function fetchWithTimeout(
   init: RequestInit,
 ): Promise<Response> {
   const controller = new AbortController();
+  const upstreamSignal = init.signal;
+  const abortFromUpstream = () => controller.abort();
+  if (upstreamSignal?.aborted) controller.abort();
+  upstreamSignal?.addEventListener("abort", abortFromUpstream, { once: true });
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
+    upstreamSignal?.removeEventListener("abort", abortFromUpstream);
   }
 }
 
@@ -286,322 +445,38 @@ function getWalletController(): PublisherWalletController {
   return walletController;
 }
 
-async function fetchNextCreative(): Promise<void> {
-  if (isPolling || authPollingStopped) {
-    return;
-  }
-  if (shouldKeepActiveServeBeforeNextFetch()) {
-    updateActiveServeVisibilityEvidence();
-    updatePublisherState({
-      inventoryStatus: "serving",
-      activeServe,
-      lastError: undefined,
+function getSponsorController(): PublisherSponsorController {
+  if (!sponsorController) {
+    sponsorController = new PublisherSponsorController({
+      fetchWithTimeout,
+      isAuthError,
+      isAuthStopped: () => authPollingStopped,
+      isSponsorVisible: () =>
+        vscode.window.state.focused && surfaces.hasVisibleSponsorSurface(),
+      logWaitSpin,
+      onAuthError: stopPollingForAuth,
+      refreshConfiguredState,
+      refreshWallet: (force) => getWalletController().refresh(false, force),
+      resetWalletThrottle: () => getWalletController().resetThrottle(),
+      resolveApiBase,
+      resolveApiKey,
+      resolveInstallId,
+      updatePublisherState,
     });
-    return;
   }
-
-  const apiKey = resolveApiKey();
-  const installId = resolveInstallId();
-  const apiBase = resolveApiBase();
-  if (!apiKey || !installId || !apiBase) {
-    refreshConfiguredState();
-    return;
-  }
-
-  isPolling = true;
-  updatePublisherState({
-    apiBase,
-    installId,
-    hasApiKey: true,
-    inventoryStatus: activeServe ? "serving" : "polling",
-    lastError: undefined,
-  });
-  try {
-    const response = await fetchWithTimeout(`${apiBase}/v1/serve/next`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ install_id: installId }),
-    });
-
-    if (response.status === 204) {
-      hideAdSurfaces();
-      updatePublisherState({
-        inventoryStatus: "empty",
-        lastUpdatedAt: new Date().toISOString(),
-      });
-      void getWalletController().refresh(false);
-      return;
-    }
-
-    if (isAuthError(response.status)) {
-      stopPollingForAuth(
-        `Serve auth failed (HTTP ${response.status}). Check your WaitSpin extension key and waitspin.installId.`,
-      );
-      hideAdSurfaces();
-      return;
-    }
-
-    if (!response.ok) {
-      logWaitSpin(`Serve request failed: HTTP ${response.status}`);
-      updatePublisherState({
-        inventoryStatus: "error",
-        lastError: `Serve request failed: HTTP ${response.status}`,
-      });
-      return;
-    }
-
-    const payload = await response.json();
-    const parsed = parseServePayload(payload);
-    if (!parsed) {
-      logWaitSpin("Serve response failed validation");
-      updatePublisherState({
-        inventoryStatus: "error",
-        lastError: "Serve response failed validation",
-      });
-      return;
-    }
-
-    activeServe = {
-      ...parsed,
-      apiBase,
-      installId,
-      shownAt: Date.now(),
-      visibleStartedAt: undefined,
-      impressionRecorded: false,
-      impressionRecording: false,
-    };
-    scheduleServeExpiry(activeServe);
-    updatePublisherState({
-      inventoryStatus: "serving",
-      activeServe,
-      lastUpdatedAt: new Date().toISOString(),
-      lastError: undefined,
-    });
-    scheduleVisibleImpression(activeServe, parsed.minVisibleMs);
-  } catch (error) {
-    const message = `Serve network error: ${error instanceof Error ? error.message : String(error)}`;
-    logWaitSpin(message);
-    updatePublisherState({ inventoryStatus: "error", lastError: message });
-  } finally {
-    isPolling = false;
-  }
-}
-
-function scheduleVisibleImpression(
-  serve: NonNullable<typeof activeServe>,
-  minVisibleMs: number,
-): void {
-  if (expireActiveServeIfNeeded(serve, "before scheduling impression")) {
-    queueFetchNextCreative();
-    return;
-  }
-  if (impressionTimeout) {
-    clearTimeout(impressionTimeout);
-  }
-  updateActiveServeVisibilityEvidence();
-  const visibleMs = activeServeVisibleEvidenceMs(serve);
-  const waitMs = Math.min(
-    Math.max(250, minVisibleMs - visibleMs),
-    Math.max(250, serveExpiryDelayMs(serve)),
-  );
-  impressionTimeout = setTimeout(() => {
-    impressionTimeout = undefined;
-    if (!activeServe || activeServe.serveId !== serve.serveId) {
-      return;
-    }
-    if (expireActiveServeIfNeeded(serve, "before recording impression")) {
-      queueFetchNextCreative();
-      return;
-    }
-    updateActiveServeVisibilityEvidence();
-    const visibleMs = activeServeVisibleEvidenceMs(serve);
-    if (visibleMs < minVisibleMs) {
-      scheduleVisibleImpression(serve, minVisibleMs);
-      return;
-    }
-    void recordImpression(serve.serveId, serve.serveReceipt, visibleMs);
-  }, waitMs);
-}
-
-function scheduleServeExpiry(serve: ActiveServe): void {
-  if (serveExpiryTimeout) {
-    clearTimeout(serveExpiryTimeout);
-  }
-  serveExpiryTimeout = setTimeout(() => {
-    serveExpiryTimeout = undefined;
-    if (!activeServe || activeServe.serveId !== serve.serveId) {
-      return;
-    }
-    clearActiveServe("serve expired before billable impression");
-    updatePublisherState({
-      inventoryStatus: "polling",
-      lastError: undefined,
-    });
-    queueFetchNextCreative();
-  }, Math.max(250, serveExpiryDelayMs(serve)));
-}
-
-function hasImpressionVisibilityEvidence(): boolean {
-  return vscode.window.state.focused && surfaces.hasVisibleSponsorSurface();
-}
-
-function updateActiveServeVisibilityEvidence(): void {
-  const serve = activeServe;
-  if (!serve || serve.impressionRecorded) {
-    return;
-  }
-  if (hasImpressionVisibilityEvidence()) {
-    serve.visibleStartedAt ??= Date.now();
-    return;
-  }
-  serve.visibleStartedAt = undefined;
-}
-
-function activeServeVisibleEvidenceMs(serve: ActiveServe): number {
-  if (!serve.visibleStartedAt) {
-    return 0;
-  }
-  return Math.max(0, Date.now() - serve.visibleStartedAt);
-}
-
-function shouldKeepActiveServeBeforeNextFetch(): boolean {
-  const serve = activeServe;
-  if (!serve) {
-    return false;
-  }
-  if (serve.impressionRecorded) {
-    clearActiveServe("impression already recorded");
-    return false;
-  }
-  if (expireActiveServeIfNeeded(serve, "polling gate")) {
-    return false;
-  }
-  return true;
-}
-
-function flushPendingImpressionIfEligible(): void {
-  const serve = activeServe;
-  if (!serve) {
-    return;
-  }
-  updateActiveServeVisibilityEvidence();
-  const visibleMs = activeServeVisibleEvidenceMs(serve);
-  if (visibleMs >= serve.minVisibleMs) {
-    if (expireActiveServeIfNeeded(serve, "flush before hide")) {
-      return;
-    }
-    void recordImpression(serve.serveId, serve.serveReceipt, visibleMs);
-  }
-}
-
-function clearImpressionSchedulingAndFlush(): void {
-  if (impressionTimeout) {
-    clearTimeout(impressionTimeout);
-    impressionTimeout = undefined;
-  }
-  if (serveExpiryTimeout) {
-    clearTimeout(serveExpiryTimeout);
-    serveExpiryTimeout = undefined;
-  }
-  flushPendingImpressionIfEligible();
-}
-
-function stopPollingAndFlushImpression(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = undefined;
-  }
-  clearImpressionSchedulingAndFlush();
-}
-
-function hideAdSurfaces(): void {
-  clearImpressionSchedulingAndFlush();
-  clearActiveServe("surfaces hidden");
-}
-
-function clearActiveServeIfCurrent(serveId: string): void {
-  if (!activeServe || activeServe.serveId !== serveId) {
-    return;
-  }
-  clearActiveServe("serve cleared");
-}
-
-function clearActiveServe(reason: string): void {
-  if (impressionTimeout) {
-    clearTimeout(impressionTimeout);
-    impressionTimeout = undefined;
-  }
-  if (serveExpiryTimeout) {
-    clearTimeout(serveExpiryTimeout);
-    serveExpiryTimeout = undefined;
-  }
-  if (activeServe) {
-    logWaitSpin(
-      `Cleared sponsor serve ${activeServe.serveId} (${activeServe.campaignId ?? "unknown campaign"}): ${reason}`,
-    );
-  }
-  activeServe = undefined;
-  updatePublisherState({ activeServe: undefined });
-}
-
-function expireActiveServeIfNeeded(serve: ActiveServe, reason: string): boolean {
-  if (!isServeExpired(serve, Date.now(), IMPRESSION_EXPIRY_SAFETY_MS)) {
-    return false;
-  }
-  if (!activeServe || activeServe.serveId !== serve.serveId) {
-    return true;
-  }
-  clearActiveServe(`expired ${reason}`);
-  updatePublisherState({
-    inventoryStatus: "polling",
-    lastError: undefined,
-  });
-  return true;
-}
-
-function queueFetchNextCreative(): void {
-  setTimeout(() => {
-    void fetchNextCreative();
-  }, 0);
-}
-
-function handleImpressionVisibilityChange(): void {
-  updateActiveServeVisibilityEvidence();
-  const serve = activeServe;
-  if (!serve || serve.impressionRecorded) {
-    return;
-  }
-  if (expireActiveServeIfNeeded(serve, "visibility change")) {
-    queueFetchNextCreative();
-    return;
-  }
-  scheduleVisibleImpression(serve, serve.minVisibleMs);
+  return sponsorController;
 }
 
 function disposeExtensionResources(): void {
-  stopPollingAndFlushImpression();
+  activationRetryController?.dispose();
+  activationRetryController = undefined;
+  sponsorController?.dispose();
   surfaces.dispose();
   outputChannel?.dispose();
 }
 
 function startPollingIfConfigured(): void {
-  if (authPollingStopped || pollTimer) {
-    return;
-  }
-  if (!resolveApiKey() || !resolveInstallId()) {
-    refreshConfiguredState();
-    return;
-  }
-  refreshConfiguredState();
-  getWalletController().resetThrottle();
-  void getWalletController().refresh(false);
-  void fetchNextCreative();
-  pollTimer = setInterval(() => {
-    void fetchNextCreative();
-  }, POLL_INTERVAL_MS);
+  getSponsorController().start();
 }
 
 async function showPublisherSetupPrompt(): Promise<void> {
@@ -613,98 +488,24 @@ async function showPublisherSetupPrompt(): Promise<void> {
   if (choice === "Connect WaitSpin") {
     await vscode.commands.executeCommand("waitspin.connectPublisher");
   } else if (choice === "Open docs") {
-    await vscode.env.openExternal(vscode.Uri.parse("https://waitspin.com/docs"));
-  }
-}
-
-async function recordImpression(
-  serveId: string,
-  serveReceipt: string,
-  visibleMs: number,
-): Promise<void> {
-  const serve = activeServe;
-  if (
-    !serve ||
-    serve.serveId !== serveId ||
-    serve.impressionRecorded ||
-    serve.impressionRecording
-  ) {
-    return;
-  }
-  const apiKey = resolveApiKey();
-  const apiBase = resolveApiBase();
-  const currentInstallId = resolveInstallId();
-  if (!apiKey || !currentInstallId || !apiBase) {
-    return;
-  }
-  if (
-    serve.installId !== currentInstallId ||
-    serve.apiBase !== apiBase ||
-    expireActiveServeIfNeeded(serve, "recording guard")
-  ) {
-    queueFetchNextCreative();
-    return;
-  }
-
-  serve.impressionRecording = true;
-  try {
-    const response = await fetchWithTimeout(`${serve.apiBase}/v1/events/impression`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        serve_id: serveId,
-        serve_receipt: serveReceipt,
-        install_id: serve.installId,
-        visible_ms: visibleMs,
-      }),
-    });
-
-    if (isAuthError(response.status)) {
-      stopPollingForAuth(
-        `Impression auth failed (HTTP ${response.status}). Check your WaitSpin extension key and waitspin.installId.`,
-      );
-      return;
-    }
-
-    if (!response.ok) {
-      const message = `Impression request failed: HTTP ${response.status}`;
-      logWaitSpin(message);
-      clearActiveServeIfCurrent(serveId);
-      updatePublisherState({
-        inventoryStatus: "error",
-        lastError: message,
-      });
-      return;
-    }
-    serve.impressionRecorded = true;
-    clearActiveServeIfCurrent(serveId);
-    updatePublisherState({
-      inventoryStatus: "polling",
-      lastUpdatedAt: new Date().toISOString(),
-      lastError: undefined,
-    });
-    getWalletController().resetThrottle();
-    void getWalletController().refresh(false);
-  } catch (error) {
-    const message = `Impression network error: ${error instanceof Error ? error.message : String(error)}`;
-    logWaitSpin(message);
-    clearActiveServeIfCurrent(serveId);
-    updatePublisherState({
-      inventoryStatus: "error",
-      lastError: message,
-    });
-  } finally {
-    serve.impressionRecording = false;
+    await vscode.env.openExternal(
+      vscode.Uri.parse("https://waitspin.com/docs"),
+    );
   }
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  surfaces.register(context, handleImpressionVisibilityChange);
+  const sponsor = getSponsorController();
+  surfaces.register(context, () => sponsor.handleVisibilityChange());
   context.subscriptions.push(
-    vscode.window.onDidChangeWindowState(handleImpressionVisibilityChange),
+    vscode.window.onDidChangeWindowState((state) => {
+      sponsor.handleVisibilityChange();
+      if (state.focused) {
+        void activateManagedBootstrapIfPresent(context, "focus").finally(() => {
+          startPollingIfConfigured();
+        });
+      }
+    }),
   );
   storedInstallId = context.globalState
     .get<string>(INSTALL_ID_GLOBAL_STATE_KEY)
@@ -716,14 +517,14 @@ export function activate(context: vscode.ExtensionContext): void {
     resolveApiBase,
     resolveApiKey,
     resolveInstallId,
-    storeApiKey: (apiKey) => storePublisherApiKey(context, apiKey),
-    storeInstallId: (installId) => storePublisherInstallId(context, installId),
+    activateManualCredential: (candidate) =>
+      activateManualPublisherCredential(context, candidate),
     startPolling: resetPollingAfterConfigChange,
     updatePublisherState,
   });
 
   const openAd = vscode.commands.registerCommand("waitspin.openAd", () => {
-    const destinationUrl = activeServe?.destinationUrl;
+    const destinationUrl = sponsor.destinationUrl();
     if (!destinationUrl || !isSafeExternalUrl(destinationUrl)) {
       return;
     }
@@ -736,13 +537,18 @@ export function activate(context: vscode.ExtensionContext): void {
     () => {
       authPollingStopped = false;
       updatePublisherState({ authStopped: false, lastError: undefined });
-      refreshConfiguredState();
-      if (!resolveApiKey() || !resolveInstallId()) {
-        void showPublisherSetupPrompt();
-        return;
-      }
-      void getWalletController().refresh(false);
-      startPollingIfConfigured();
+      void activateManagedBootstrapIfPresent(context, "manual", true).finally(
+        () => {
+          refreshConfiguredState();
+          if (!resolveApiKey() || !resolveInstallId()) {
+            void showPublisherSetupPrompt();
+            return;
+          }
+          getWalletController().resetThrottle();
+          void getWalletController().refresh(false, true);
+          startPollingIfConfigured();
+        },
+      );
     },
   );
   context.subscriptions.push(activatePublisher);
@@ -761,7 +567,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("waitspin.openDocs", () => {
-      void vscode.env.openExternal(vscode.Uri.parse("https://waitspin.com/docs"));
+      void vscode.env.openExternal(
+        vscode.Uri.parse("https://waitspin.com/docs"),
+      );
     }),
   );
 
@@ -784,23 +592,31 @@ export function activate(context: vscode.ExtensionContext): void {
 
   authPollingStopped = false;
   refreshConfiguredState();
-  void Promise.all([
-    migratePublisherInstallIdToGlobalState(context),
-    migratePublisherApiKeyToSecretStorage(context),
-  ]).finally(() => {
-    startPollingIfConfigured();
-  });
+  void (async () => {
+    await migratePublisherInstallIdToGlobalState(context);
+    await loadPublisherApiKeyFromSecretStorage(context);
+    await migrateLegacyManagedActivation({
+      stateRoot: waitSpinStateRoot(),
+      installTarget: currentEditorInstallTarget(),
+      secrets: context.secrets,
+      globalState: context.globalState,
+      allowDeveloperApiBase: allowDeveloperApiBase(),
+    });
+    void activateManagedBootstrapIfPresent(context, "startup");
+  })()
+    .catch((error) => {
+      warnCredentialStorageFailure("WaitSpin activation failed", error);
+    })
+    .finally(() => {
+      startPollingIfConfigured();
+    });
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
-        event.affectsConfiguration("waitspin.apiKey") ||
         event.affectsConfiguration("waitspin.installId") ||
         event.affectsConfiguration("waitspin.apiBase")
       ) {
-        void Promise.all([
-          migratePublisherInstallIdToGlobalState(context),
-          migratePublisherApiKeyToSecretStorage(context),
-        ]).finally(() => {
+        void migratePublisherInstallIdToGlobalState(context).finally(() => {
           resetPollingAfterConfigChange();
         });
       }
