@@ -6,6 +6,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertRegistryArtifactPolicy } from "./waitspin-vscode-artifact-policy.mjs";
+
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -18,6 +20,15 @@ const manifest = JSON.parse(
 const provenance = JSON.parse(
   await readFile(path.join(repoRoot, provenancePath), "utf8"),
 );
+const extensionPackage = JSON.parse(
+  await readFile(
+    path.join(repoRoot, "extensions/waitspin-vscode/package.json"),
+    "utf8",
+  ),
+);
+const npmPackage = JSON.parse(
+  await readFile(path.join(repoRoot, "packages/waitspin/package.json"), "utf8"),
+);
 
 if (manifest.schema_version !== 1 || !Array.isArray(manifest.files)) {
   throw new Error("public/export-manifest.json has an unsupported schema.");
@@ -27,6 +38,24 @@ if (provenance.source_repo !== "https://github.com/citedy/waitspin") {
 }
 if (!/^[0-9a-f]{40}$/.test(provenance.source_commit ?? "")) {
   throw new Error("Public provenance source_commit must be a full Git SHA.");
+}
+const expectedExtensionId =
+  `${extensionPackage.publisher}.${extensionPackage.name}`;
+const expectedVsixFilename =
+  `${extensionPackage.name}-${extensionPackage.version}.vsix`;
+const requiredProvenanceFields = new Map([
+  ["extension_id", expectedExtensionId],
+  ["version", extensionPackage.version],
+  ["source_directory", "extensions/waitspin-vscode"],
+  ["vsix_filename", expectedVsixFilename],
+  ["npm_package_version", npmPackage.version],
+]);
+for (const [field, expected] of requiredProvenanceFields) {
+  if (provenance[field] !== expected) {
+    throw new Error(
+      `Public provenance ${field} must be ${JSON.stringify(expected)}.`,
+    );
+  }
 }
 
 const actualEntries = [];
@@ -90,6 +119,13 @@ const canonicalVsixSha256 = createHash("sha256")
 if (canonicalVsixSha256 !== provenance.vsix_sha256) {
   throw new Error("Tracked canonical VSIX does not match public provenance.");
 }
+assertRegistryArtifactPolicy({
+  version: provenance.version,
+  canonicalSha256: canonicalVsixSha256,
+  marketplaceSha256:
+    provenance.registry_artifacts?.marketplace?.vsix_sha256,
+  openVsxSha256: provenance.registry_artifacts?.open_vsx?.vsix_sha256,
+});
 
 console.log(
   JSON.stringify({

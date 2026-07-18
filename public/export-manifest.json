@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "tree_sha256": "d1b52a16a7972d3ee5672b08b73399abda286b4ff8fd3f6b93f13e48db834bcd",
+  "tree_sha256": "935c6b892f893c70c474ab3c9cb1277c547705781cdff0cde60c721570eb621d",
   "files": [
     {
       "path": ".github/workflows/public-ci.yml",
-      "sha256": "160b890d9a900ccd0f847ffbaf279e5bad3a63e0f4bfdd629c8aec48cbc818cc"
+      "sha256": "7368dd3ce50be5155e974daedb14b93b4c0956cb9ed9685a44eda9e15fd2dcf9"
     },
     {
       "path": ".gitignore",
@@ -632,7 +632,7 @@
     },
     {
       "path": "scripts/waitspin-public-tree-check.mjs",
-      "sha256": "8444e0f2f9935819f2407062d5c7ffa6d4523cd9ce91e9affb9909d8de652492"
+      "sha256": "999f749745c31eebe61fe647ff87978e1656c2aa87a2f82112311c058995c527"
     },
     {
       "path": "scripts/waitspin-vscode-artifact-policy.mjs",
