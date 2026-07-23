@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "extension_id": "waitspin.waitspin-vscode",
-  "version": "0.1.15",
-  "source_commit": "93edf72f3880eb9e6a32ac894bc6d1941bce1ede",
+  "version": "0.1.16",
+  "source_commit": "ecda18ae95b70c01a0c8979ea6c7ea6cbff205d9",
   "source_repo": "https://github.com/citedy/waitspin",
   "source_directory": "extensions/waitspin-vscode",
   "marketplace_url": "https://marketplace.visualstudio.com/items?itemName=waitspin.waitspin-vscode",
-  "generated_at": "2026-07-18T04:14:39.963Z",
-  "vsix_filename": "waitspin-vscode-0.1.15.vsix",
-  "vsix_sha256": "6bae6074fc50f0002eabc766796340eae1228fb01abeb75a585ad2ed7acafd4a",
+  "generated_at": "2026-07-23T19:57:10.880Z",
+  "vsix_filename": "waitspin-vscode-0.1.16.vsix",
+  "vsix_sha256": "34943ce5c127ab56fde66662adece313915e553ffa45c9f4cd81e0aabc1c720f",
   "registry_artifacts": {
     "marketplace": {
-      "vsix_sha256": "dd3034623c9c3f6b623a4105e234966756866028f6ee8498ca49b39e417ff5e7",
-      "matches_canonical": false
+      "vsix_sha256": "34943ce5c127ab56fde66662adece313915e553ffa45c9f4cd81e0aabc1c720f",
+      "matches_canonical": true
     },
     "open_vsx": {
-      "vsix_sha256": "6bae6074fc50f0002eabc766796340eae1228fb01abeb75a585ad2ed7acafd4a",
+      "vsix_sha256": "34943ce5c127ab56fde66662adece313915e553ffa45c9f4cd81e0aabc1c720f",
       "matches_canonical": true
     }
   },
-  "npm_package_version": "0.1.15",
-  "npm_package_url": "https://www.npmjs.com/package/waitspin/v/0.1.15"
+  "npm_package_version": "0.1.16",
+  "npm_package_url": "https://www.npmjs.com/package/waitspin/v/0.1.16"
 }
