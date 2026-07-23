@@ -20,13 +20,13 @@ WaitSpin is an agent-first ad marketplace for developer wait-states. Advertisers
 - Published skill release: `v0.1.18`
 - API base: `https://api.waitspin.com`
 
-Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.18`; the npm CLI package is `waitspin@0.1.15`.
+Skill registry versions are independent from npm package versions. The current public skill release is `v0.1.18`; the npm CLI package is `waitspin@0.1.16`.
 
 Before making a claim about current package availability, verify it:
 
 ```bash
 npm view waitspin version
-npx --yes waitspin@0.1.15 --help
+npx --yes waitspin@0.1.16 --help
 ```
 
 ## Operating Rules
@@ -54,23 +54,23 @@ Use this loop whenever the user asks to register, onboard, create a key, install
 4. Request the code with structured output. Treat these as literal examples; for the real user email, pass the value through the host tool's structured argv field rather than replacing text inside a shell string:
 
 ```bash
-npx --yes waitspin@0.1.15 init --email you@example.com --key-profile control --json
-npx --yes waitspin@0.1.15 init --email you@example.com --key-profile publisher-extension --json
+npx --yes waitspin@0.1.16 init --email you@example.com --key-profile control --json
+npx --yes waitspin@0.1.16 init --email you@example.com --key-profile publisher-extension --json
 ```
 
 5. Confirm the response has `next: "enter_email_code"`. Tell the user exactly: `I sent a 6-digit WaitSpin code to <email>. Reply with the code and I will continue.` Then stop and wait for the user.
 6. When the user returns the code, verify it with the same email and key profile. Pass the real code through structured argv or a tool-scoped environment variable after validating it is exactly 6 digits:
 
 ```bash
-npx --yes waitspin@0.1.15 init --email you@example.com --code 123456 --key-profile control --json
-npx --yes waitspin@0.1.15 init --email you@example.com --code 123456 --key-profile publisher-extension --json
+npx --yes waitspin@0.1.16 init --email you@example.com --code 123456 --key-profile control --json
+npx --yes waitspin@0.1.16 init --email you@example.com --code 123456 --key-profile publisher-extension --json
 ```
 
 If the host agent cannot safely place the code in argv, put `WAITSPIN_VERIFICATION_CODE` in the tool's environment field for the single command rather than prefixing it in the shell string:
 
 ```bash
 # WAITSPIN_VERIFICATION_CODE is supplied by the host tool's env field.
-npx --yes waitspin@0.1.15 init --email you@example.com --key-profile control --json
+npx --yes waitspin@0.1.16 init --email you@example.com --key-profile control --json
 ```
 
 7. Parse the JSON response. Keep `api_key` secret; do not echo it in chat. Store it in the host-agent secret store or pass it through `WAITSPIN_API_KEY` in the tool's environment field for each follow-up command. Do not pass live API keys in argv with `--api-key`, and do not build inline shell assignments such as `WAITSPIN_API_KEY='...' command`.
@@ -103,8 +103,8 @@ If the code expired, request one fresh code and repeat the pause. Do not guess, 
 Use this path when the user wants to buy wait-state attention.
 
 ```bash
-npx --yes waitspin@0.1.15 init --email you@example.com --key-profile control --json
-npx --yes waitspin@0.1.15 init --email you@example.com --code 123456 --key-profile control --json
+npx --yes waitspin@0.1.16 init --email you@example.com --key-profile control --json
+npx --yes waitspin@0.1.16 init --email you@example.com --code 123456 --key-profile control --json
 # WAITSPIN_API_KEY is supplied by the host tool's env field.
 waitspin bid create --line "Short sponsor line" --url https://example.com --price-per-block 500 --blocks 1 --json
 waitspin bids list --json
@@ -123,8 +123,8 @@ Notes:
 Use this path when the user wants to earn from supported developer wait states.
 
 ```bash
-npx --yes waitspin@0.1.15 init --email you@example.com --key-profile publisher-extension --json
-npx --yes waitspin@0.1.15 init --email you@example.com --code 123456 --key-profile publisher-extension --json
+npx --yes waitspin@0.1.16 init --email you@example.com --key-profile publisher-extension --json
+npx --yes waitspin@0.1.16 init --email you@example.com --code 123456 --key-profile publisher-extension --json
 # WAITSPIN_API_KEY is supplied by the host tool's env field.
 waitspin install --all --dry-run --compose-existing --json
 waitspin install --all --compose-existing --json
@@ -249,5 +249,5 @@ stored in click rows; HMAC risk fields are marked for purge after 30 days.
 
 - `204` from `/v1/serve/next` means empty inventory; keep the host tool's normal UI.
 - Installer conflicts should be resolved target-by-target. Do not overwrite unmanaged local config unless the CLI offers an explicit flag such as `--compose-existing`.
-- For package or install claims, verify with a fresh `npx --yes waitspin@0.1.15 ...` command rather than relying on a local workspace build.
+- For package or install claims, verify with a fresh `npx --yes waitspin@0.1.16 ...` command rather than relying on a local workspace build.
 - For public source or skill publication claims, verify with `npx skills@1.5.12 add citedy/waitspin --skill waitspin --list`.

@@ -248,11 +248,14 @@ function getActivationRetryController(context) {
     activationRetryController = new extension_activation_retry_1.ManagedActivationRetryController({
         attempt: ({ allowManagedOverride, signal }) => runManagedActivationAttempt(context, allowManagedOverride, signal),
         onRetryScheduled: (failure, delayMs) => {
-            const status = failure.httpStatus === undefined ? "none" : String(failure.httpStatus);
-            logWaitSpin(`Managed activation retry scheduled phase=${failure.phase} reason=${failure.reason} status=${status} delay_ms=${delayMs}.`);
+            const status = failure.httpStatus
+                ? ` with HTTP ${failure.httpStatus}`
+                : "";
+            logWaitSpin(`Managed activation will retry in ${delayMs} ms after ${failure.phase} failed because of ${failure.reason}${status}.`);
         },
         onTerminalFailure: (failure) => {
-            warnCredentialStorageFailure(`Managed activation stopped phase=${failure.phase} reason=${failure.reason}`, failure);
+            logWaitSpin(`Managed activation stopped during ${failure.phase} because of ${failure.reason}: ${failure.message}`);
+            void vscode.window.showWarningMessage(`WaitSpin: ${(0, extension_activation_retry_1.formatManagedActivationFailure)(failure)}`);
         },
     });
     return activationRetryController;

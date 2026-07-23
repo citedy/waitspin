@@ -7,8 +7,8 @@
   "open_vsx_verified": true,
   "open_vsx_published_by": "nttylock",
   "namespace_access": "restricted",
-  "source_package_version": "0.1.15",
+  "source_package_version": "0.1.16",
   "provenance_version": "0.1.15",
-  "publish_state": "published",
-  "checked_at": "2026-07-18T02:17:24.986Z"
+  "publish_state": "pending_open_vsx_publish",
+  "checked_at": "2026-07-22T23:19:15.703Z"
 }

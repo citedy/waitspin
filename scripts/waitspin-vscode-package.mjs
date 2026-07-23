@@ -19,6 +19,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const yauzl = require("yauzl");
 const yazl = require("yazl");
+const vsceCli = require.resolve("@vscode/vsce/vsce");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -54,10 +55,8 @@ const normalizedVsixPath = path.join(tmpDir, `normalized-${vsixFilename}`);
 
 run("npm", ["run", "waitspin:extension:build"]);
 await normalizePackageMtimes();
-run("npm", [
-  "exec",
-  "--",
-  "vsce",
+run(process.execPath, [
+  vsceCli,
   "package",
   "--no-dependencies",
   "--skip-license",

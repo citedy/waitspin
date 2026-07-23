@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "tree_sha256": "935c6b892f893c70c474ab3c9cb1277c547705781cdff0cde60c721570eb621d",
+  "tree_sha256": "61eacea5dbdad02cb68f14c6e7cb3eac10990b6715b99acdc7fdd088a2eaf883",
   "files": [
     {
       "path": ".github/workflows/public-ci.yml",
@@ -20,7 +20,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "6f7321d6ff9e9f4f0d85b42f6638d2840b9d949937af53c7fd60dee398243806"
+      "sha256": "73be9092aeac91383d482256f0fe0932bbb6b5029a8b0ac449cfd1008617b55f"
     },
     {
       "path": "SECURITY.md",
@@ -36,7 +36,7 @@
     },
     {
       "path": "app/llms.txt/route.ts",
-      "sha256": "ec9d514402748b4778c28f2739e404811ea748d039249130e4279077441ac0c8"
+      "sha256": "ae18da48cf9ba95e5937552a3885fae25c5a8a0c18f913f68072cee49d576186"
     },
     {
       "path": "app/quickstart.md/route.ts",
@@ -108,11 +108,11 @@
     },
     {
       "path": "extensions/waitspin-vscode/__tests__/extension-activation-lock.test.ts",
-      "sha256": "ee7241b1df0cf5d549ca966cbbef304450caa1df457d02ffbec5dfd92c07ac8d"
+      "sha256": "ca27f85a04761ddd571b85b99890368d5a3d12021f330a8c0c90a405de21283c"
     },
     {
       "path": "extensions/waitspin-vscode/__tests__/extension-activation-retry.test.ts",
-      "sha256": "aeae63004e4bbe6d2eec31b4aa65b181f82022f2758fde6cfe3a418369ac0bf5"
+      "sha256": "6e00dea63d2ef047a4792bb15f6c5e7a7be19349d7432b6642f0fd2c3ca87276"
     },
     {
       "path": "extensions/waitspin-vscode/__tests__/extension-activation-state.test.ts",
@@ -164,19 +164,19 @@
     },
     {
       "path": "extensions/waitspin-vscode/package-lock.json",
-      "sha256": "3d30a431018f67f491ec22dc3457fdee273f6e39a91b7f1f1004337b70712635"
+      "sha256": "15adc425e7eaba17c9befeb72d055f0fca925d6270ac1c8431726979843d85a2"
     },
     {
       "path": "extensions/waitspin-vscode/package.json",
-      "sha256": "7cb80856d59181dc22f5971b35e25f9f05d0379dd3360d68177ed078464145a0"
+      "sha256": "c1044ccfdf4a94d5d0089ab3db565183d9d14c6b76fb6b807c6dd17fde77a64d"
     },
     {
       "path": "extensions/waitspin-vscode/src/extension-activation-lock.ts",
-      "sha256": "c3b96c9653d4a7274d381815223a333e7af5c7fd582678c8bf77ac080e4c91cd"
+      "sha256": "3421cb76d17279e6d67e04b122e122bb9d775155f9787ebd7ede9daa5ced686a"
     },
     {
       "path": "extensions/waitspin-vscode/src/extension-activation-retry.ts",
-      "sha256": "eaaea1989f6c49f7243c7516e4d8b4565e7dc011689364b9c36f03d0017b38f3"
+      "sha256": "9638adbf3e90d90a078387b5c8ca1f877df9f21df42271cd0642ba3b8b16ad26"
     },
     {
       "path": "extensions/waitspin-vscode/src/extension-activation-state.ts",
@@ -224,7 +224,7 @@
     },
     {
       "path": "extensions/waitspin-vscode/src/extension.ts",
-      "sha256": "9392228b06b76e1c58bb3e71f00a1e4c083b8f4bb7c617121936756d6b6013d6"
+      "sha256": "c0f54557d69c281b48d6f7eec542b2887010085a65eb07331ecbe75b07c49151"
     },
     {
       "path": "extensions/waitspin-vscode/tsconfig.json",
@@ -256,7 +256,7 @@
     },
     {
       "path": "package-lock.json",
-      "sha256": "17fc94a5a1be58eb0f52e3dfdba5651e18e567ac16dd8f685aa9d423d6b50a36"
+      "sha256": "30c000fda288aebead968846312d36ebc02e5dc4132a8d002ffad0818a3ef6ef"
     },
     {
       "path": "package.json",
@@ -312,19 +312,19 @@
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-lock.js",
-      "sha256": "4f6d2a4128352c3fd14c2473d1ffa1cdf3efa584b09377edc789fb124d6140ea"
+      "sha256": "1f9e11c63e4ad15ab6d3e3839364e36e1fd8a19846100f539a9b530bb0860976"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-lock.js.map",
-      "sha256": "df1154ea9fe7370bd6db285d9c0ad36a7f190391df086152826d310a9e880917"
+      "sha256": "10d887625e3fc96486b50e88f412ffacff91d37a31f0eef1d48b26f769a129b6"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-retry.js",
-      "sha256": "c85c7d2efa4cb5cd181c2f77d0b2662fe6000a8573d46f9000c6e7b9150bacc9"
+      "sha256": "fa7d344d8c41b83c01500f745306ff9293ae163a87c766d00ec561c14a3f516e"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-retry.js.map",
-      "sha256": "6975221d87f608567d6e1e2423a64ac92224825908690ff396ecac40e5fb9ecb"
+      "sha256": "d0739bcb819ffa1d63e23853f30965e0da73e6467097e3a927cbd9b039425838"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/out/extension-activation-state.js",
@@ -416,27 +416,27 @@
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/out/extension.js",
-      "sha256": "37e97e2a2680fae5b8a5bfd7cf75769a0583990f0307cb7f66666ab33d1f6517"
+      "sha256": "d5fe3bebea237a511de5d017af4b54528668a03d3017c1353ea2a6f453ed35eb"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/out/extension.js.map",
-      "sha256": "2c99c2333efc8b673328a41829fc6323b023e30afbae08757783dc9188c87fa4"
+      "sha256": "22f6ba7cc590a44137c5b2897f54ae5e440e61db40ffeca268cc2878528d18af"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/package-lock.json",
-      "sha256": "3d30a431018f67f491ec22dc3457fdee273f6e39a91b7f1f1004337b70712635"
+      "sha256": "15adc425e7eaba17c9befeb72d055f0fca925d6270ac1c8431726979843d85a2"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/package.json",
-      "sha256": "7cb80856d59181dc22f5971b35e25f9f05d0379dd3360d68177ed078464145a0"
+      "sha256": "c1044ccfdf4a94d5d0089ab3db565183d9d14c6b76fb6b807c6dd17fde77a64d"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/src/extension-activation-lock.ts",
-      "sha256": "c3b96c9653d4a7274d381815223a333e7af5c7fd582678c8bf77ac080e4c91cd"
+      "sha256": "3421cb76d17279e6d67e04b122e122bb9d775155f9787ebd7ede9daa5ced686a"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/src/extension-activation-retry.ts",
-      "sha256": "eaaea1989f6c49f7243c7516e4d8b4565e7dc011689364b9c36f03d0017b38f3"
+      "sha256": "9638adbf3e90d90a078387b5c8ca1f877df9f21df42271cd0642ba3b8b16ad26"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/src/extension-activation-state.ts",
@@ -484,7 +484,7 @@
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/src/extension.ts",
-      "sha256": "9392228b06b76e1c58bb3e71f00a1e4c083b8f4bb7c617121936756d6b6013d6"
+      "sha256": "c0f54557d69c281b48d6f7eec542b2887010085a65eb07331ecbe75b07c49151"
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/tsconfig.json",
@@ -492,11 +492,11 @@
     },
     {
       "path": "packages/waitspin/assets/waitspin-vscode/waitspin-vscode.vsix",
-      "sha256": "6bae6074fc50f0002eabc766796340eae1228fb01abeb75a585ad2ed7acafd4a"
+      "sha256": "34943ce5c127ab56fde66662adece313915e553ffa45c9f4cd81e0aabc1c720f"
     },
     {
       "path": "packages/waitspin/package.json",
-      "sha256": "adacfba32ae742de0bb2ba2f44492f7309523c341ba104a169fe81c053e4f2a5"
+      "sha256": "ea126262778be432f16c24b9f701bc178911d591befe66a8b1e660ccbe821b26"
     },
     {
       "path": "packages/waitspin/scripts/build.mjs",
@@ -612,11 +612,11 @@
     },
     {
       "path": "public/status/waitspin-vscode-marketplace.json",
-      "sha256": "45ce5fffeb50c01e5ae49529b0e53903cba9b6726ba9cde77c06437b90f29096"
+      "sha256": "0c46eb88f624dc0d7f572a738eb4bf405deb9038d56820e7481e4db01f5bcd2e"
     },
     {
       "path": "public/status/waitspin-vscode-open-vsx.json",
-      "sha256": "e757a0e793834beacd356513d2d06d33821a0d0c144ecf3815fdda1e41c95332"
+      "sha256": "ddb77baae29591bb04378031d8b3e1e91b00313a367f2f0fd7a06db2d26c1c37"
     },
     {
       "path": "scripts/copy-openapi.js",
@@ -648,7 +648,7 @@
     },
     {
       "path": "scripts/waitspin-vscode-package.mjs",
-      "sha256": "ac7a37d4954afa64231fedc67b876f7d0b108281edbd88a2ee205c1fd180f6ac"
+      "sha256": "5d92b27fd497fab94e109d4cb8a7ec439d1e0f6a232f343c4f49ff11f5f8cbf7"
     },
     {
       "path": "scripts/waitspin-vscode-provenance.mjs",
@@ -656,7 +656,7 @@
     },
     {
       "path": "skills/waitspin/SKILL.md",
-      "sha256": "0e44958c2653e7d097f0bbe6e4891453bd2dc334d2ad5b794d0b0added3e0c4a"
+      "sha256": "4f619a6192dee11fc7f58be1e10cd678680a4c808d95b069e810312f8efdc1c3"
     },
     {
       "path": "skills/waitspin/skill-card.md",

@@ -198,7 +198,7 @@ describe("editor activation lock", () => {
     await second.release();
   });
 
-  it("takes over a stale lock only after validating its inode and owner record", async () => {
+  it("takes over a dead-owner lock after validating its inode and owner record", async () => {
     const stateRoot = path.join(
       os.tmpdir(),
       `waitspin-stale-lock-${process.pid}-${Date.now()}`,
@@ -225,6 +225,33 @@ describe("editor activation lock", () => {
       retryDelayMs: 1,
     });
     await replacement.release();
+  });
+
+  it("takes over a fresh lock as soon as its owner process has exited", async () => {
+    const stateRoot = path.join(
+      os.tmpdir(),
+      `waitspin-dead-owner-lock-${process.pid}-${Date.now()}`,
+    );
+    await mkdir(stateRoot, { recursive: true, mode: 0o700 });
+    const lockPath = editorActivationLockPath(stateRoot, "cursor");
+    const now = Date.now();
+    await writeFile(
+      lockPath,
+      JSON.stringify({
+        owner_token: "dead-owner",
+        pid: 999_999,
+        created_at_ms: now,
+      }),
+      { mode: 0o600 },
+    );
+
+    const recovered = await acquireEditorActivationLock(stateRoot, "cursor", {
+      now: () => now + 1,
+      staleAfterMs: 60_000,
+      waitTimeoutMs: 0,
+    });
+
+    await recovered.release();
   });
 
   it("makes two hosts converge on the pending key stored by the lock winner", async () => {

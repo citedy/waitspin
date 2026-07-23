@@ -1,6 +1,7 @@
 import {
   EditorActivationFailure,
   ManagedActivationRetryController,
+  formatManagedActivationFailure,
   isRetryableEditorActivationFailure,
   parseRetryAfterMs,
 } from "../src/extension-activation-retry";
@@ -38,6 +39,40 @@ describe("ManagedActivationRetryController", () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it("describes local activation failures without internal key-value labels", () => {
+    const lockBusy = new EditorActivationFailure(
+      "descriptor",
+      "state",
+      "WaitSpin activation lock is busy",
+    );
+    const unsafeDescriptor = new EditorActivationFailure(
+      "descriptor",
+      "descriptor-unsafe",
+      "bootstrap descriptor ownership, mode, or contents are unsafe",
+    );
+    const networkFailure = new EditorActivationFailure(
+      "register",
+      "network",
+      "fetch failed url=https://internal.invalid?token=secret",
+    );
+
+    expect(formatManagedActivationFailure(lockBusy)).toBe(
+      "Automatic setup is already running in another editor window. Try again in a moment.",
+    );
+    expect(formatManagedActivationFailure(unsafeDescriptor)).toBe(
+      "Automatic setup stopped because a local WaitSpin setup file is invalid or has unsafe permissions.",
+    );
+    expect(formatManagedActivationFailure(networkFailure)).toBe(
+      "Automatic setup could not reach WaitSpin while registering this editor. Check your connection and try again.",
+    );
+    expect(formatManagedActivationFailure(lockBusy)).not.toContain("=");
+    expect(formatManagedActivationFailure(unsafeDescriptor)).not.toContain("=");
+    expect(formatManagedActivationFailure(networkFailure)).not.toContain("=");
+    expect(formatManagedActivationFailure(networkFailure)).not.toContain(
+      "internal.invalid",
+    );
   });
 
   it("safely parses Retry-After delta-seconds and HTTP-date values", () => {

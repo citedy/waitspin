@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ManagedActivationRetryController = exports.EditorActivationFailure = void 0;
+exports.formatManagedActivationFailure = formatManagedActivationFailure;
 exports.parseRetryAfterMs = parseRetryAfterMs;
 exports.isRetryableEditorActivationFailure = isRetryableEditorActivationFailure;
 exports.assertEditorActivationCurrent = assertEditorActivationCurrent;
@@ -22,6 +23,37 @@ class EditorActivationFailure extends Error {
     }
 }
 exports.EditorActivationFailure = EditorActivationFailure;
+const ACTIVATION_PHASE_ACTION = {
+    descriptor: "checking local setup",
+    redeem: "verifying setup details",
+    register: "registering this editor",
+    ready: "confirming editor access",
+    promotion: "saving editor access",
+};
+function formatManagedActivationFailure(failure) {
+    if (failure.message === "WaitSpin activation lock is busy") {
+        return "Automatic setup is already running in another editor window. Try again in a moment.";
+    }
+    if (failure.reason === "descriptor-unsafe") {
+        return "Automatic setup stopped because a local WaitSpin setup file is invalid or has unsafe permissions.";
+    }
+    if (failure.reason === "credential-expired") {
+        return "Automatic setup expired before it could finish. Reconnect WaitSpin to try again.";
+    }
+    if (failure.reason === "budget-exhausted") {
+        return "Automatic setup could not finish after several attempts. Try again from the WaitSpin panel.";
+    }
+    if (failure.reason === "network") {
+        return `Automatic setup could not reach WaitSpin while ${ACTIVATION_PHASE_ACTION[failure.phase]}. Check your connection and try again.`;
+    }
+    if (failure.reason === "http") {
+        return `WaitSpin could not complete automatic setup while ${ACTIVATION_PHASE_ACTION[failure.phase]}. Try again in a moment.`;
+    }
+    if (failure.reason === "descriptor-absent") {
+        return "Automatic setup is not ready yet. Open the WaitSpin panel and try again.";
+    }
+    return `Automatic setup stopped while ${ACTIVATION_PHASE_ACTION[failure.phase]}. Reconnect WaitSpin and try again.`;
+}
 function parseRetryAfterMs(value, now = Date.now()) {
     const trimmed = value?.trim();
     if (!trimmed)

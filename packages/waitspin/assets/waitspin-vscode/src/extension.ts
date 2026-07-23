@@ -18,6 +18,7 @@ import {
   runManagedEditorActivation,
 } from "./extension-managed-activation";
 import {
+  formatManagedActivationFailure,
   ManagedActivationRetryController,
   type ManagedActivationCompletion,
   type ManagedActivationTriggerSource,
@@ -312,16 +313,19 @@ function getActivationRetryController(
     attempt: ({ allowManagedOverride, signal }) =>
       runManagedActivationAttempt(context, allowManagedOverride, signal),
     onRetryScheduled: (failure, delayMs) => {
-      const status =
-        failure.httpStatus === undefined ? "none" : String(failure.httpStatus);
+      const status = failure.httpStatus
+        ? ` with HTTP ${failure.httpStatus}`
+        : "";
       logWaitSpin(
-        `Managed activation retry scheduled phase=${failure.phase} reason=${failure.reason} status=${status} delay_ms=${delayMs}.`,
+        `Managed activation will retry in ${delayMs} ms after ${failure.phase} failed because of ${failure.reason}${status}.`,
       );
     },
     onTerminalFailure: (failure) => {
-      warnCredentialStorageFailure(
-        `Managed activation stopped phase=${failure.phase} reason=${failure.reason}`,
-        failure,
+      logWaitSpin(
+        `Managed activation stopped during ${failure.phase} because of ${failure.reason}: ${failure.message}`,
+      );
+      void vscode.window.showWarningMessage(
+        `WaitSpin: ${formatManagedActivationFailure(failure)}`,
       );
     },
   });
