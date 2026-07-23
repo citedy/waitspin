@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "tree_sha256": "7af19c34fc59aadeab2587faa07d8b2ec7a34ea650ce9fb8a5b5a46b0d5a0a0c",
+  "tree_sha256": "24e960d2f41993611d822d02cee6b6cb0f28ceb79d923c8163fcf192b7cf7ebf",
   "files": [
     {
       "path": ".github/workflows/public-ci.yml",
@@ -20,7 +20,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "73be9092aeac91383d482256f0fe0932bbb6b5029a8b0ac449cfd1008617b55f"
+      "sha256": "c930a6eb9fad09a197f4fffe97b3a45a228e26d892297e6b2c33b49475324089"
     },
     {
       "path": "SECURITY.md",
@@ -656,7 +656,7 @@
     },
     {
       "path": "skills/waitspin/SKILL.md",
-      "sha256": "4f619a6192dee11fc7f58be1e10cd678680a4c808d95b069e810312f8efdc1c3"
+      "sha256": "d84e2fe3c6efcd0ebc777047a06d7f19745b4f1e5a5f6facf56b51ee4ce21844"
     },
     {
       "path": "skills/waitspin/skill-card.md",
