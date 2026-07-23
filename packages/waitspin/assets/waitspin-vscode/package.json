@@ -2,7 +2,7 @@
   "name": "waitspin-vscode",
   "displayName": "WaitSpin: Sponsored Wait States",
   "description": "Earn from VS Code wait states with sponsored cards, wallet status, and ledger visibility without giving WaitSpin access to your code.",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "publisher": "waitspin",
   "license": "AGPL-3.0-or-later",
   "icon": "media/waitspin-icon.png",

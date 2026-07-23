@@ -312,7 +312,6 @@ export async function acquireEditorActivationLock(
       const existing = await inspectLock(lockPath);
       if (
         existing.kind === "owned" &&
-        now() - existing.owner.createdAtMs >= staleAfterMs &&
         !isProcessAlive(existing.owner.pid) &&
         (await unlinkMatchingLock(
           lockPath,
