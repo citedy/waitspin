@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "tree_sha256": "61eacea5dbdad02cb68f14c6e7cb3eac10990b6715b99acdc7fdd088a2eaf883",
+  "tree_sha256": "7af19c34fc59aadeab2587faa07d8b2ec7a34ea650ce9fb8a5b5a46b0d5a0a0c",
   "files": [
     {
       "path": ".github/workflows/public-ci.yml",
@@ -612,11 +612,11 @@
     },
     {
       "path": "public/status/waitspin-vscode-marketplace.json",
-      "sha256": "0c46eb88f624dc0d7f572a738eb4bf405deb9038d56820e7481e4db01f5bcd2e"
+      "sha256": "0414737a4d92cd45530d124317917a5dfa3b966fcbf1a20d34b23d24b72233f2"
     },
     {
       "path": "public/status/waitspin-vscode-open-vsx.json",
-      "sha256": "ddb77baae29591bb04378031d8b3e1e91b00313a367f2f0fd7a06db2d26c1c37"
+      "sha256": "a19b3c44c30232714be6e50d3f51f5a878f4e062816e88c1c6d86eeee785ed0b"
     },
     {
       "path": "scripts/copy-openapi.js",

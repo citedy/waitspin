@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "extension_id": "waitspin.waitspin-vscode",
-  "open_vsx_version": "0.1.15",
-  "open_vsx_published_at": "2026-07-18T02:14:00.071431Z",
+  "open_vsx_version": "0.1.16",
+  "open_vsx_published_at": "2026-07-23T21:24:25.797739Z",
   "open_vsx_url": "https://open-vsx.org/extension/waitspin/waitspin-vscode",
   "open_vsx_verified": true,
   "open_vsx_published_by": "nttylock",
   "namespace_access": "restricted",
   "source_package_version": "0.1.16",
-  "provenance_version": "0.1.15",
-  "publish_state": "pending_open_vsx_publish",
-  "checked_at": "2026-07-22T23:19:15.703Z"
+  "provenance_version": "0.1.16",
+  "publish_state": "published",
+  "checked_at": "2026-07-23T22:11:42.207Z"
 }
