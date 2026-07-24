@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "tree_sha256": "24e960d2f41993611d822d02cee6b6cb0f28ceb79d923c8163fcf192b7cf7ebf",
+  "tree_sha256": "ea16a8aeef92916cd699752930891abd468eab057a6b3192d0b7ae79f50837e3",
   "files": [
     {
       "path": ".github/workflows/public-ci.yml",
@@ -36,7 +36,7 @@
     },
     {
       "path": "app/llms.txt/route.ts",
-      "sha256": "ae18da48cf9ba95e5937552a3885fae25c5a8a0c18f913f68072cee49d576186"
+      "sha256": "43260c74f148e65e10bb4b019ce1c718b388754853fe9ed530952ddcd399bed5"
     },
     {
       "path": "app/quickstart.md/route.ts",
