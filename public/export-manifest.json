@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "tree_sha256": "ea16a8aeef92916cd699752930891abd468eab057a6b3192d0b7ae79f50837e3",
+  "tree_sha256": "45f087e43cefc5aa3ee747db4658d59310e7d7f079a97b3a8ebcb680ee9de40d",
   "files": [
     {
       "path": ".github/workflows/public-ci.yml",
@@ -52,7 +52,7 @@
     },
     {
       "path": "app/waitspin/docs/page.tsx",
-      "sha256": "6e7716a8c67b7b02f7bdd231bd455a46463c820800ada1e82d4d8e2150ea2c47"
+      "sha256": "d0e3b910b52a26d11278dffcdf9d0d48b7ec48f519cfa7855e34e877c7e4a0b4"
     },
     {
       "path": "app/waitspin/legal-content.tsx",
@@ -60,7 +60,7 @@
     },
     {
       "path": "app/waitspin/privacy/page.tsx",
-      "sha256": "86a5eb2e7f15cc754fe220ca53ef42c5f9c7d2853510a3e38a92333381b93560"
+      "sha256": "bb17fb7d2471a1f03e20d6bf56af754c05aeea842dce98f2251cf53aa1ad50c8"
     },
     {
       "path": "app/waitspin/public-surface-copy-label.tsx",
@@ -256,7 +256,7 @@
     },
     {
       "path": "package-lock.json",
-      "sha256": "30c000fda288aebead968846312d36ebc02e5dc4132a8d002ffad0818a3ef6ef"
+      "sha256": "c3347275833aab96f89d5c484f4d6fb0077d256a442c8206c5eac1dbcd52e33b"
     },
     {
       "path": "package.json",

@@ -215,7 +215,7 @@ response: { "ok": true }`;
 export default function WaitSpinDocsPage() {
   return (
     <>
-      <script src="/waitspin/webmcp-origin-trial.js" async />
+      <script src="/waitspin/webmcp-origin-trial.js" />
       <WaitSpinWebMcpRegistry />
       <WaitSpinLegalPage
         title="WaitSpin API And Agent Docs"
