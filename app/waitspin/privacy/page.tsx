@@ -180,9 +180,10 @@ export default function WaitSpinPrivacyPage() {
           and does not run on text-only surfaces.
         </p>
         <p>
-          On the public website, Google Analytics 4 page and conversion
-          measurement is gated by a GDPR cookie preference notice for EU/EEA
-          visitors and runs without that notice outside the EU/EEA. EU/EEA
+          On the public website, Google Analytics 4 and the X Pixel provide page
+          and conversion measurement. Both are gated by a{" "}
+          GDPR cookie preference notice for EU/EEA visitors and run without that
+          notice outside the EU/EEA. EU/EEA
           visitors can accept all cookies, keep necessary cookies only, or
           choose analytics and advertising measurement separately. Website
           events are limited to page views, install-link clicks, command-copy
@@ -240,9 +241,10 @@ export default function WaitSpinPrivacyPage() {
         <p>
           WaitSpin uses PostgreSQL/Supabase-compatible database infrastructure,
           a dedicated DigitalOcean VPS, Cloudflare DNS/security services, Stripe
-          for payments, Resend for email, Google Analytics 4 for consent-gated
-          website measurement, GitHub Actions for public smoke checks, and
-          logging/monitoring tools needed for reliability and abuse response.
+          for payments, Resend for email, Google Analytics 4 and the X Pixel for
+          consent-gated website page-view and conversion measurement, GitHub
+          Actions for public smoke checks, and logging/monitoring tools needed
+          for reliability and abuse response.
           These providers receive only the data needed for their function.
           Professional advisers, auditors, payment partners, or public
           authorities receive data only when necessary for a service, legal
