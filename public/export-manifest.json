@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "tree_sha256": "45f087e43cefc5aa3ee747db4658d59310e7d7f079a97b3a8ebcb680ee9de40d",
+  "tree_sha256": "a006c85527cb79f1884a5d946c6fdd1fdb46eb888a93c8b18360178f75f9218e",
   "files": [
     {
       "path": ".github/workflows/public-ci.yml",
@@ -616,7 +616,7 @@
     },
     {
       "path": "public/status/waitspin-vscode-open-vsx.json",
-      "sha256": "a19b3c44c30232714be6e50d3f51f5a878f4e062816e88c1c6d86eeee785ed0b"
+      "sha256": "9d7b684578fd94ef318b9a000955c25d157bc144efa17f6d5e12ff88bc83c746"
     },
     {
       "path": "scripts/copy-openapi.js",
