@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "tree_sha256": "a006c85527cb79f1884a5d946c6fdd1fdb46eb888a93c8b18360178f75f9218e",
+  "tree_sha256": "cdff3dc9b9fdc3e38f630339c9f8e797fcc97d9d17a409ee8428ab98a20d396d",
   "files": [
     {
       "path": ".github/workflows/public-ci.yml",
@@ -8,7 +8,7 @@
     },
     {
       "path": ".gitignore",
-      "sha256": "8eef2c05c34c446d207093c5d29e0cdbcf398add2a7c37113107693669ccd97f"
+      "sha256": "9a6d97e21e2684acb2b500f662498844b0ee0e060ebb0049d7f7bbd67e0be401"
     },
     {
       "path": "LICENSE",
