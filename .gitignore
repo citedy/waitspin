@@ -25,12 +25,18 @@ docs/waitspin/promo/pics/*
 !docs/waitspin/promo/pics/promo-copy.mjs
 !docs/waitspin/promo/pics/generate-social-announce-docs.mjs
 !docs/waitspin/promo/pics/generate-x-ads-sheet.mjs
+!docs/waitspin/promo/pics/generate-leak-1x1.mjs
+!docs/waitspin/promo/pics/generate-leak-1x1-x-sheet.mjs
+!docs/waitspin/promo/pics/lnkgo-short-link.mjs
+!docs/waitspin/promo/pics/xlsx-lite.mjs
 !docs/waitspin/promo/pics/viral-fomo-hooks.mjs
 !docs/waitspin/promo/pics/generate-winners-landscape.mjs
 !docs/waitspin/promo/pics/layout-headline-landscape/
 !docs/waitspin/promo/pics/layout-headline-landscape/**
 !docs/waitspin/promo/pics/layout-split-v2-landscape/
 !docs/waitspin/promo/pics/layout-split-v2-landscape/**
+!docs/waitspin/promo/pics/layout-leak-1x1/
+!docs/waitspin/promo/pics/layout-leak-1x1/**
 !docs/waitspin/promo/VIRAL_FOMO_WINNERS.md
 !docs/waitspin/promo/pics/viral-fomo/
 docs/waitspin/promo/pics/viral-fomo/*
@@ -38,6 +44,10 @@ docs/waitspin/promo/pics/viral-fomo/*
 docs/waitspin/promo/pics/viral-fomo/winners-terminal/*
 !docs/waitspin/promo/pics/viral-fomo/winners-terminal/announce/
 !docs/waitspin/promo/pics/viral-fomo/winners-terminal/announce/**
+!docs/waitspin/promo/pics/viral-fomo/leak-1x1/
+!docs/waitspin/promo/pics/viral-fomo/leak-1x1/**
+# Generated ad sheet — regenerated on demand with real minted lnkgo links, not committed.
+docs/waitspin/promo/pics/viral-fomo/leak-1x1/X_ADS_SHEET.xlsx
 !docs/waitspin/promo/splash/
 docs/waitspin/promo/splash/*
 !docs/waitspin/promo/splash/WAITSPIN_OG_SPLASH_SPEC.md
